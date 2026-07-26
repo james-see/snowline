@@ -41,48 +41,49 @@ interface SnowTuning {
 }
 
 /**
- * Tuned darker than pure white so the rider/board silhouette stays readable,
- * with clear powder / packed / ice separation under directional sun.
+ * Intentionally mid-grey alpine — not plastic white. Powder soft/matte,
+ * packed corduroy with readable specular, ice darker cyan with sharp coat.
+ * Colors stay below ~0.75 luma so rider gear reads even under bright fill.
  */
 const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   powder: {
-    color: 0xdde6f0,
-    roughness: 0.9,
+    color: 0xa8b8c8,
+    roughness: 0.94,
     metalness: 0.0,
-    clearcoat: 0.16,
-    clearcoatRoughness: 0.5,
-    sheen: 0.55,
-    sheenColor: 0xc4dcf0,
-    sheenRoughness: 0.7,
-    envMapIntensity: 0.5,
-    normalScale: 1.15,
-    speckle: 0.1,
+    clearcoat: 0.06,
+    clearcoatRoughness: 0.72,
+    sheen: 0.72,
+    sheenColor: 0x9eb8d0,
+    sheenRoughness: 0.82,
+    envMapIntensity: 0.38,
+    normalScale: 1.65,
+    speckle: 0.22,
   },
   packed: {
-    color: 0xc8d4e2,
-    roughness: 0.62,
-    metalness: 0.02,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.28,
-    sheen: 0.32,
-    sheenColor: 0xb0d0e8,
-    sheenRoughness: 0.42,
-    envMapIntensity: 0.75,
-    normalScale: 1.35,
-    speckle: 0.14,
+    color: 0x8fa3b6,
+    roughness: 0.52,
+    metalness: 0.03,
+    clearcoat: 0.48,
+    clearcoatRoughness: 0.18,
+    sheen: 0.22,
+    sheenColor: 0x8cb0cc,
+    sheenRoughness: 0.38,
+    envMapIntensity: 0.95,
+    normalScale: 1.95,
+    speckle: 0.28,
   },
   ice: {
-    color: 0xa8c8e0,
-    roughness: 0.14,
-    metalness: 0.06,
-    clearcoat: 0.92,
-    clearcoatRoughness: 0.06,
-    sheen: 0.18,
-    sheenColor: 0x9cc8e8,
-    sheenRoughness: 0.2,
-    envMapIntensity: 1.35,
-    normalScale: 0.75,
-    speckle: 0.05,
+    color: 0x6a92ae,
+    roughness: 0.1,
+    metalness: 0.08,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04,
+    sheen: 0.1,
+    sheenColor: 0x7ab0d0,
+    sheenRoughness: 0.16,
+    envMapIntensity: 1.55,
+    normalScale: 1.05,
+    speckle: 0.08,
   },
 };
 
@@ -146,7 +147,9 @@ export class MaterialLibrary {
       sheenColor: new THREE.Color(tuning.sheenColor),
       sheenRoughness: tuning.sheenRoughness,
       envMapIntensity: tuning.envMapIntensity,
-      vertexColors: true,
+      // Terrain is already split by tint in applyTerrain; vertex multiply
+      // against near-white authored colours washed albedo into plastic fill.
+      vertexColors: false,
       flatShading: false,
     });
     this.#bindSnowMaps(mat, maps, setId, tuning);
@@ -253,12 +256,14 @@ export class MaterialLibrary {
 
       const tuning = SNOW_TUNING[v];
       const mat = this.snow(v).clone() as THREE.MeshPhysicalMaterial;
-      mat.vertexColors = true;
+      mat.vertexColors = false;
       const setId = SNOW_VARIANT_TO_PBR[v];
       const maps = this.#mapsFor(setId);
+      // Tighter repeats → micro-detail + corduroy readable at chase distance.
+      const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * 0.72;
       this.#bindSnowMaps(mat, maps, setId, tuning, {
-        repeatU: width / (maps.tileScale || DEFAULT_TILE_SCALE[setId]),
-        repeatV: length / (maps.tileScale || DEFAULT_TILE_SCALE[setId]),
+        repeatU: width / tile,
+        repeatV: length / tile,
       });
       mat.name = `terrain-${v}`;
       this.#owned.push(mat);
@@ -365,19 +370,31 @@ export class MaterialLibrary {
     }
     applyPbrMaps(mat, local, repeat);
     mat.normalScale.set(tuning.normalScale, tuning.normalScale);
-    mat.aoMapIntensity = 0.95;
+    // Strong AO so micro-valleys read as grain, not flat fill.
+    mat.aoMapIntensity = 1.25;
     mat.color.setHex(tuning.color);
     mat.roughness = tuning.roughness;
     mat.metalness = tuning.metalness;
     mat.clearcoat = tuning.clearcoat;
     mat.clearcoatRoughness = tuning.clearcoatRoughness;
     mat.envMapIntensity = tuning.envMapIntensity;
+    mat.sheen = tuning.sheen;
+    mat.sheenColor.setHex(tuning.sheenColor);
+    mat.sheenRoughness = tuning.sheenRoughness;
 
     if (setId === 'ice_glass' || setId === 'ice_frost') {
       // Wet ice gloss — keep clearcoat dominant even if ORM pulls roughness up.
-      mat.roughness = Math.min(mat.roughness, 0.22);
-      mat.clearcoat = Math.max(mat.clearcoat, 0.85);
-      mat.clearcoatRoughness = Math.min(mat.clearcoatRoughness, 0.1);
+      mat.roughness = Math.min(mat.roughness, 0.16);
+      mat.clearcoat = Math.max(mat.clearcoat, 0.95);
+      mat.clearcoatRoughness = Math.min(mat.clearcoatRoughness, 0.05);
+    } else if (setId === 'snow_groom') {
+      // Packed: preserve specular response for sun glints on corduroy.
+      mat.roughness = Math.min(mat.roughness, 0.58);
+      mat.clearcoat = Math.max(mat.clearcoat, 0.42);
+    } else if (setId === 'snow_powder') {
+      // Powder stays soft — kill accidental hard specular from ORM lows.
+      mat.roughness = Math.max(mat.roughness, 0.88);
+      mat.clearcoat = Math.min(mat.clearcoat, 0.1);
     }
   }
 
@@ -386,19 +403,20 @@ export class MaterialLibrary {
     const isSnow = id.startsWith('snow_');
     const isIce = id.startsWith('ice_');
     const mat = new THREE.MeshPhysicalMaterial({
-      color: isIce ? 0xb0d0e8 : isSnow ? 0xd0dce8 : 0x7a7670,
-      roughness: isIce ? 0.2 : isSnow ? 0.78 : 0.92,
-      metalness: isIce ? 0.05 : 0.02,
-      clearcoat: isIce ? 0.85 : isSnow ? 0.28 : 0,
-      clearcoatRoughness: isIce ? 0.08 : 0.4,
-      sheen: isSnow ? 0.4 : 0,
-      sheenColor: new THREE.Color(0xb8d8f0),
-      sheenRoughness: 0.5,
-      envMapIntensity: isIce ? 1.2 : 0.6,
+      color: isIce ? 0x6a92ae : isSnow ? 0xa0b4c6 : 0x7a7670,
+      roughness: isIce ? 0.14 : isSnow ? 0.86 : 0.92,
+      metalness: isIce ? 0.06 : 0.02,
+      clearcoat: isIce ? 0.95 : isSnow ? 0.22 : 0,
+      clearcoatRoughness: isIce ? 0.05 : 0.45,
+      sheen: isSnow ? 0.55 : 0,
+      sheenColor: new THREE.Color(0x9eb8d0),
+      sheenRoughness: 0.65,
+      envMapIntensity: isIce ? 1.4 : 0.55,
     });
     const local = cloneMaps(maps);
     applyPbrMaps(mat, local);
-    mat.normalScale.set(isSnow ? 1.2 : isIce ? 0.8 : 1.7, isSnow ? 1.2 : isIce ? 0.8 : 1.7);
+    mat.aoMapIntensity = isSnow || isIce ? 1.2 : 0.85;
+    mat.normalScale.set(isSnow ? 1.7 : isIce ? 1.05 : 1.7, isSnow ? 1.7 : isIce ? 1.05 : 1.7);
     mat.name = id;
     this.#owned.push(mat);
     return mat;

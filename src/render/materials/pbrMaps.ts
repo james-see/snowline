@@ -22,14 +22,14 @@ export interface ManifestMaterialEntry {
   };
 }
 
-/** Default metres-per-repeat when manifest omits tileScale. */
+/** Default metres-per-repeat when manifest omits tileScale. Smaller = denser micro-detail. */
 export const DEFAULT_TILE_SCALE: Record<PbrSetId, number> = {
-  snow_powder: 6,
-  snow_groom: 8,
+  snow_powder: 3.5,
+  snow_groom: 4.5,
   rock_face: 4,
   rock_scree: 3,
-  ice_glass: 5,
-  ice_frost: 4,
+  ice_glass: 3.2,
+  ice_frost: 2.8,
 };
 
 export function configureColorMap(tex: THREE.Texture, anisotropy: number): void {
