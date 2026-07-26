@@ -137,6 +137,30 @@ export const CRASH = {
   recoverySpeed: 6,
 } as const;
 
+/**
+ * Off-mesh / void freefall recovery.
+ * When board rays miss trimesh (holes, map edge), soft powder wallow then
+ * restore toward the last grounded pose instead of falling forever.
+ */
+export const VOID = {
+  /** Airborne with zero terrain hits longer than this triggers recovery, s. */
+  freefallTime: 1.75,
+  /** Drop this far below last grounded Y to trigger, m. */
+  maxDrop: 14,
+  /** Absolute world kill-plane Y. */
+  killPlaneY: -48,
+  /** Soft powder wallow before hard restore, s. */
+  wallowTime: 0.85,
+  /** Pull toward last grounded pose during wallow, 1/s. */
+  pullRate: 3.2,
+  /** Extra velocity damping while wallowing (deep powder), 1/s. */
+  powderDrag: 5.8,
+  /** Mild sink during early wallow for arcade “deep powder” feel, m/s. */
+  sinkRate: 1.8,
+  /** Brief control lock after wallow snap, s. */
+  recoverStun: 0.55,
+} as const;
+
 /** Boost meter behaviour. */
 export const BOOST = {
   maxMeter: 1,

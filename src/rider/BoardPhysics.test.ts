@@ -10,7 +10,7 @@ import type {
   RigidBodyHandle,
 } from '@/types/physics.ts';
 import { BoardPhysics } from './BoardPhysics.ts';
-import { BOOST, CRASH, JUMP, LANDING, SPEED } from './tuning.ts';
+import { BOOST, CRASH, JUMP, LANDING, SPEED, VOID } from './tuning.ts';
 
 function idleInput(overrides: Partial<RiderInput> = {}): RiderInput {
   return {
@@ -266,6 +266,98 @@ describe('BoardPhysics', () => {
     assert.equal(recovered, true);
     assert.equal(board.crashed, false);
     assert.equal(board.speed, CRASH.recoverySpeed);
+  });
+
+  it('recovers from off-mesh void freefall after freefallTime', () => {
+    const ground = flatGroundPhysics(0);
+    const voidWorld: PhysicsWorld = {
+      ...ground,
+      raycast() {
+        return null;
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(2, JUMP.rideHeight, -1), yaw: 0.4 });
+    board.fixedUpdate(1 / 60, idleInput(), ground);
+    assert.equal(board.grounded, true);
+    const anchored = board.position.clone();
+
+    let voidCrash = false;
+    const fallSteps = Math.ceil(VOID.freefallTime / (1 / 60)) + 8;
+    for (let i = 0; i < fallSteps; i++) {
+      const frame = board.fixedUpdate(1 / 60, idleInput(), voidWorld);
+      if (frame.crashed && frame.crashReason === 'void') {
+        voidCrash = true;
+        break;
+      }
+    }
+    assert.equal(voidCrash, true);
+    assert.equal(board.crashed, true);
+
+    let recovered = false;
+    const recoverSteps = Math.ceil((VOID.wallowTime + VOID.recoverStun) / (1 / 60)) + 6;
+    for (let i = 0; i < recoverSteps; i++) {
+      const frame = board.fixedUpdate(1 / 60, idleInput(), voidWorld);
+      if (frame.recovered) {
+        recovered = true;
+        break;
+      }
+    }
+    assert.equal(recovered, true);
+    assert.equal(board.crashed, false);
+    assert.ok(board.position.distanceTo(anchored) < 0.35);
+    assert.ok(Math.abs(board.boardYaw - 0.4) < 1e-3);
+  });
+
+  it('recovers when falling past the world kill plane', () => {
+    const physics = flatGroundPhysics(0);
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.equal(board.grounded, true);
+
+    board.position.y = VOID.killPlaneY - 2;
+    board.velocity.set(3, -30, 0);
+    const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.equal(frame.crashed, true);
+    assert.equal(frame.crashReason, 'void');
+
+    let recovered = false;
+    const steps = Math.ceil((VOID.wallowTime + VOID.recoverStun) / (1 / 60)) + 6;
+    for (let i = 0; i < steps; i++) {
+      const next = board.fixedUpdate(1 / 60, idleInput(), physics);
+      if (next.recovered) {
+        recovered = true;
+        break;
+      }
+    }
+    assert.equal(recovered, true);
+    assert.ok(board.position.y > VOID.killPlaneY + 10);
+  });
+
+  it('recovers when dropped far below last grounded Y', () => {
+    const physics = flatGroundPhysics(0);
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(1, JUMP.rideHeight, 2), yaw: -0.2 });
+    board.fixedUpdate(1 / 60, idleInput(), physics);
+    const lastY = board.position.y;
+
+    board.position.y = lastY - VOID.maxDrop - 1.5;
+    board.velocity.set(0, -12, 5);
+    const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.equal(frame.crashed, true);
+    assert.equal(frame.crashReason, 'void');
+
+    const steps = Math.ceil((VOID.wallowTime + VOID.recoverStun) / (1 / 60)) + 6;
+    let recovered = false;
+    for (let i = 0; i < steps; i++) {
+      if (board.fixedUpdate(1 / 60, idleInput(), physics).recovered) {
+        recovered = true;
+        break;
+      }
+    }
+    assert.equal(recovered, true);
+    assert.ok(Math.abs(board.position.y - lastY) < 0.35);
   });
 
   it('exposes speed limits from tuning', () => {
