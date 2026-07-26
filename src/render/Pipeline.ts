@@ -12,31 +12,35 @@ export class RenderPipelineImpl implements RenderPipeline {
   #fogColor = new THREE.Color(0x9ec4e8);
   // Post-stack grade density (not scene FogExp2). Zero = no UV fog wash.
   #fogDensity = 0;
+  #sunDirWorld = new THREE.Vector3(0.62, 0.68, 0.39);
+  #sunDirView = new THREE.Vector3();
+  #viewMatrix = new THREE.Matrix4();
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {
     this.post = new PostStack(renderer);
+    const depth = new THREE.DepthTexture(1, 1);
+    depth.format = THREE.DepthFormat;
+    depth.type = THREE.UnsignedIntType;
     this.#hdrTarget = new THREE.WebGLRenderTarget(1, 1, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
       depthBuffer: true,
+      depthTexture: depth,
     });
-    this.#hdrTarget.depthTexture = new THREE.DepthTexture(1, 1);
   }
 
   setSize(width: number, height: number, _dpr: number): void {
     this.#width = width;
     this.#height = height;
     this.#hdrTarget.setSize(width, height);
-    if (this.#hdrTarget.depthTexture) {
-      this.#hdrTarget.depthTexture.image.width = width;
-      this.#hdrTarget.depthTexture.image.height = height;
-    }
     this.post.setSize(width, height);
   }
 
   setFog(color: THREE.Color, density: number): void {
     this.#fogColor.copy(color);
-    this.#fogDensity = density;
+    // Hard clamp — never reintroduce white-out UV fog from callers.
+    void density;
+    this.#fogDensity = 0;
   }
 
   render(ctx: EngineContext): void {
@@ -44,11 +48,35 @@ export class RenderPipelineImpl implements RenderPipeline {
 
     renderer.shadowMap.enabled = settings.shadowsEnabled;
 
+    this.#updateSunDirection(scene, camera);
+
     renderer.setRenderTarget(this.#hdrTarget);
-    renderer.clear(true, true, false);
+    renderer.clear(true, true, true);
     renderer.render(scene, camera);
 
-    this.post.apply(this.#hdrTarget.texture, settings, this.#fogColor, this.#fogDensity);
+    this.post.apply(
+      this.#hdrTarget.texture,
+      settings,
+      this.#fogColor,
+      this.#fogDensity,
+      {
+        depth: this.#hdrTarget.depthTexture,
+        camera,
+        sunDirView: this.#sunDirView,
+      }
+    );
+  }
+
+  #updateSunDirection(scene: THREE.Scene, camera: THREE.Camera): void {
+    let found = false;
+    scene.traverse((obj) => {
+      if (found || !(obj instanceof THREE.DirectionalLight)) return;
+      if (!obj.castShadow && obj.intensity < 1) return;
+      this.#sunDirWorld.subVectors(obj.position, obj.target.position).normalize();
+      found = true;
+    });
+    this.#viewMatrix.copy(camera.matrixWorldInverse);
+    this.#sunDirView.copy(this.#sunDirWorld).transformDirection(this.#viewMatrix).normalize();
   }
 
   dispose(): void {

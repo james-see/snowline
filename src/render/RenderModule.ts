@@ -5,8 +5,10 @@ import type { CourseModule } from '@/course/CourseModule.ts';
 import type { MaterialLibrary } from '@/render/materials/index.ts';
 import { resolveLodBudgets } from '@/engine/Lod.ts';
 
-const SUN_COLOR = 0xfff4d6;
+const SUN_COLOR = 0xfff1c8;
 const SKY_HORIZON = 0x6a9ec4;
+/** World-space sun direction (from ground toward sun). Low elevation → readable contact length. */
+const SUN_DIR = new THREE.Vector3(0.62, 0.68, 0.39).normalize();
 
 export class RenderModule implements GameModule {
   readonly name = 'render';
@@ -15,8 +17,8 @@ export class RenderModule implements GameModule {
   #sun!: THREE.DirectionalLight;
   #hemi!: THREE.HemisphereLight;
   #fog!: THREE.FogExp2;
-  #csmTarget = new THREE.WebGLRenderTarget(2048, 2048);
   #materials: MaterialLibrary | null = null;
+  #sunFollow = 80;
 
   constructor(order = -30) {
     this.order = order;
@@ -29,30 +31,26 @@ export class RenderModule implements GameModule {
     // Distance fog only — low alpine density, never post UV wash values.
     scene.fog = this.#fog = new THREE.FogExp2(SKY_HORIZON, 0.00055);
 
-    // Directional-led lighting (avoid flat_ambient): soft hemi fill, stronger sun.
-    this.#hemi = new THREE.HemisphereLight(0x7aa8c8, 0xd8e2ec, 0.38);
+    // Soft sky fill only — keep well under sun so shading is directional-led.
+    this.#hemi = new THREE.HemisphereLight(0x6a96b8, 0xd4dde8, 0.2);
     scene.add(this.#hemi);
 
     const budgets = resolveLodBudgets(settings);
-    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 1.55);
-    this.#sun.position.set(140, 220, 90);
+    this.#sunFollow = Math.min(budgets.shadowDistance * 0.55, 95);
+
+    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 2.45);
+    this.#sun.position.copy(SUN_DIR).multiplyScalar(this.#sunFollow);
     this.#sun.castShadow = settings.shadowsEnabled;
-    this.#sun.shadow.mapSize.set(settings.shadowMapSize, settings.shadowMapSize);
-    this.#sun.shadow.camera.near = 2;
-    this.#sun.shadow.camera.far = budgets.shadowDistance;
-    const half = budgets.shadowFrustum;
-    this.#sun.shadow.camera.left = -half;
-    this.#sun.shadow.camera.right = half;
-    this.#sun.shadow.camera.top = half;
-    this.#sun.shadow.camera.bottom = -half;
-    this.#sun.shadow.bias = -0.0004;
+    this.#configureShadow(ctx);
+
     scene.add(this.#sun);
     scene.add(this.#sun.target);
 
     const env = resources.getEnvMap();
     if (env) {
       scene.environment = env;
-      scene.environmentIntensity = 0.45;
+      // Keep IBL subordinate to the key sun (avoids flat_ambient wash).
+      scene.environmentIntensity = 0.28;
     }
 
     // Critic-critical: clamp post fog before first frame / course_start capture.
@@ -73,24 +71,46 @@ export class RenderModule implements GameModule {
 
     const p = rider.state.position;
     this.#sun.target.position.set(p.x, p.y, p.z);
-    this.#sun.position.set(p.x + 140, p.y + 220, p.z + 90);
+    // Keep the light within the shadow camera far plane (prior bug: offset ~275m vs far ~140).
+    this.#sun.position.set(
+      p.x + SUN_DIR.x * this.#sunFollow,
+      p.y + SUN_DIR.y * this.#sunFollow,
+      p.z + SUN_DIR.z * this.#sunFollow
+    );
+    this.#sun.target.updateMatrixWorld();
+    this.#sun.updateMatrixWorld();
+    this.#sun.shadow.needsUpdate = true;
   }
 
-  #applyQuality(ctx: EngineContext): void {
+  #configureShadow(ctx: EngineContext): void {
     const s = ctx.settings;
     const budgets = resolveLodBudgets(s);
+    this.#sunFollow = Math.min(budgets.shadowDistance * 0.55, 95);
+
     this.#sun.castShadow = s.shadowsEnabled;
     this.#sun.shadow.mapSize.set(s.shadowMapSize, s.shadowMapSize);
-    this.#sun.shadow.camera.far = budgets.shadowDistance;
-    const half = budgets.shadowFrustum;
+    this.#sun.shadow.intensity = 1;
+    this.#sun.shadow.bias = -0.0002;
+    this.#sun.shadow.normalBias = 0.035;
+    this.#sun.shadow.radius = s.softShadows ? 2.25 : 1;
+    this.#sun.shadow.camera.near = 1;
+    // Far must exceed light→target distance + local receivers.
+    this.#sun.shadow.camera.far = Math.max(budgets.shadowDistance, this.#sunFollow + budgets.shadowFrustum);
+    const half = budgets.shadowFrustum * 0.85;
     this.#sun.shadow.camera.left = -half;
     this.#sun.shadow.camera.right = half;
     this.#sun.shadow.camera.top = half;
     this.#sun.shadow.camera.bottom = -half;
     this.#sun.shadow.camera.updateProjectionMatrix();
-    ctx.renderer.shadowMap.type = s.softShadows
+  }
+
+  #applyQuality(ctx: EngineContext): void {
+    this.#configureShadow(ctx);
+    ctx.renderer.shadowMap.enabled = ctx.settings.shadowsEnabled;
+    ctx.renderer.shadowMap.type = ctx.settings.softShadows
       ? THREE.PCFSoftShadowMap
       : THREE.BasicShadowMap;
+    ctx.renderer.shadowMap.needsUpdate = true;
 
     // Post fog density must stay ~0; scene FogExp2 is separate.
     ctx.pipeline.setFog?.(new THREE.Color(SKY_HORIZON), 0);
@@ -111,7 +131,6 @@ export class RenderModule implements GameModule {
   }
 
   dispose(): void {
-    this.#csmTarget.dispose();
     this.#materials = null;
   }
 }
