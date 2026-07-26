@@ -303,8 +303,10 @@ export class MaterialLibrary {
     geo.clearGroups();
     for (let g = 0; g < 4; g++) {
       const start = merged.length;
-      merged.push(...buckets[g]!);
-      const count = buckets[g]!.length;
+      const bucket = buckets[g]!;
+      // Avoid `push(...bucket)` — apron meshes have huge tri counts and blow the stack.
+      for (let i = 0; i < bucket.length; i++) merged.push(bucket[i]!);
+      const count = bucket.length;
       if (count > 0) geo.addGroup(start, count, g);
     }
     geo.setIndex(merged);
