@@ -1,9 +1,7 @@
 import * as THREE from 'three';
 import type { EngineContext, GameModule } from '@/types/engine.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
-
-const MAX_SPRAY = 400;
-const MAX_SNOW = 2500;
+import { LOD_BUFFER_CAPS, resolveLodBudgets } from '@/engine/Lod.ts';
 
 export class VfxModule implements GameModule {
   readonly name = 'vfx';
@@ -17,11 +15,14 @@ export class VfxModule implements GameModule {
   #trailPts: THREE.Vector3[] = [];
   #boostLight: THREE.PointLight;
   #root = new THREE.Group();
+  #sprayBudget: number = LOD_BUFFER_CAPS.spray;
+  #snowBudget: number = LOD_BUFFER_CAPS.snow;
 
   constructor() {
     const sprayGeo = new THREE.BufferGeometry();
-    const sprayPos = new Float32Array(MAX_SPRAY * 3);
+    const sprayPos = new Float32Array(LOD_BUFFER_CAPS.spray * 3);
     sprayGeo.setAttribute('position', new THREE.BufferAttribute(sprayPos, 3));
+    sprayGeo.setDrawRange(0, LOD_BUFFER_CAPS.spray);
     this.#spray = new THREE.Points(
       sprayGeo,
       new THREE.PointsMaterial({
@@ -32,17 +33,18 @@ export class VfxModule implements GameModule {
         depthWrite: false,
       })
     );
-    this.#sprayVel = new Float32Array(MAX_SPRAY * 3);
-    this.#sprayLife = new Float32Array(MAX_SPRAY);
+    this.#sprayVel = new Float32Array(LOD_BUFFER_CAPS.spray * 3);
+    this.#sprayLife = new Float32Array(LOD_BUFFER_CAPS.spray);
 
     const snowGeo = new THREE.BufferGeometry();
-    const snowPos = new Float32Array(MAX_SNOW * 3);
-    for (let i = 0; i < MAX_SNOW; i++) {
+    const snowPos = new Float32Array(LOD_BUFFER_CAPS.snow * 3);
+    for (let i = 0; i < LOD_BUFFER_CAPS.snow; i++) {
       snowPos[i * 3] = (Math.random() - 0.5) * 80;
       snowPos[i * 3 + 1] = Math.random() * 40;
       snowPos[i * 3 + 2] = (Math.random() - 0.5) * 80;
     }
     snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+    snowGeo.setDrawRange(0, LOD_BUFFER_CAPS.snow);
     this.#snow = new THREE.Points(
       snowGeo,
       new THREE.PointsMaterial({
@@ -66,6 +68,8 @@ export class VfxModule implements GameModule {
 
   init(ctx: EngineContext): void {
     ctx.scene.add(this.#root);
+    this.#applyBudgets(ctx);
+    ctx.events.on('settings:changed', () => this.#applyBudgets(ctx));
     ctx.events.on('rider:spray', ({ intensity, surface }) => {
       const rider = ctx.getModule<RiderModule>('rider');
       if (!rider) return;
@@ -81,13 +85,22 @@ export class VfxModule implements GameModule {
     });
   }
 
+  #applyBudgets(ctx: EngineContext): void {
+    const budgets = resolveLodBudgets(ctx.settings);
+    this.#sprayBudget = budgets.maxSprayParticles;
+    this.#snowBudget = budgets.maxSnowParticles;
+    this.#spray.geometry.setDrawRange(0, this.#sprayBudget);
+    this.#snow.geometry.setDrawRange(0, this.#snowBudget);
+  }
+
   update(dt: number, ctx: EngineContext): void {
     const rider = ctx.getModule<RiderModule>('rider');
-    const budget = Math.min(ctx.settings.maxParticles, MAX_SNOW);
+    const sprayCap = this.#sprayBudget;
+    const snowCap = this.#snowBudget;
 
     // Spray integrate
     const pos = this.#spray.geometry.getAttribute('position') as THREE.BufferAttribute;
-    for (let i = 0; i < MAX_SPRAY; i++) {
+    for (let i = 0; i < sprayCap; i++) {
       if (this.#sprayLife[i]! <= 0) continue;
       this.#sprayLife[i]! -= dt;
       pos.array[i * 3]! += this.#sprayVel[i * 3]! * dt;
@@ -103,7 +116,7 @@ export class VfxModule implements GameModule {
     // Snowfall around camera
     const snowPos = this.#snow.geometry.getAttribute('position') as THREE.BufferAttribute;
     const cam = ctx.camera.position;
-    for (let i = 0; i < budget; i++) {
+    for (let i = 0; i < snowCap; i++) {
       snowPos.array[i * 3 + 1]! -= dt * (1.5 + (i % 5) * 0.3);
       snowPos.array[i * 3]! += dt * 0.4;
       if (snowPos.array[i * 3 + 1]! < cam.y - 10) {
@@ -136,7 +149,7 @@ export class VfxModule implements GameModule {
     const count = Math.floor(8 + intensity * 28 * (surface === 'powder' ? 1.4 : 1));
     const pos = this.#spray.geometry.getAttribute('position') as THREE.BufferAttribute;
     let spawned = 0;
-    for (let i = 0; i < MAX_SPRAY && spawned < count; i++) {
+    for (let i = 0; i < this.#sprayBudget && spawned < count; i++) {
       if (this.#sprayLife[i]! > 0) continue;
       pos.array[i * 3] = origin.x + (Math.random() - 0.5) * 0.4;
       pos.array[i * 3 + 1] = origin.y + 0.05;

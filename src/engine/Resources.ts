@@ -1,22 +1,38 @@
 import * as THREE from 'three';
 import type { LoadProgress, ResourceManager } from '@/types/assets.ts';
+import { presetBudgets, type LodBudgets } from '@/engine/Lod.ts';
+
+export interface ResourcesPreloadOptions {
+  budgets?: Pick<LodBudgets, 'textureSize' | 'anisotropy'>;
+}
 
 /** Procedural / lightweight resources; CC0 packs augment via manifest when present. */
 export class Resources implements ResourceManager {
   #textures = new Map<string, THREE.Texture>();
   #env: THREE.Texture | null = null;
   #renderer: THREE.WebGLRenderer;
+  #anisotropy = 8;
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.#renderer = renderer;
   }
 
-  async preload(onProgress?: (p: LoadProgress) => void): Promise<void> {
+  async preload(
+    onProgress?: (p: LoadProgress) => void,
+    options?: ResourcesPreloadOptions
+  ): Promise<void> {
+    const budgets = options?.budgets ?? presetBudgets('high');
+    this.#anisotropy = Math.min(
+      budgets.anisotropy,
+      this.#renderer.capabilities.getMaxAnisotropy()
+    );
+    const texSize = budgets.textureSize;
+
     const ids = ['snow', 'rock', 'ice', 'wood', 'metal'];
     let loaded = 0;
     for (const id of ids) {
       onProgress?.({ loaded, total: ids.length, current: id });
-      this.#textures.set(id, this.#makeNoiseTexture(id));
+      this.#textures.set(id, this.#makeNoiseTexture(id, texSize));
       loaded++;
     }
     this.#env = this.#makeSkyEnv();
@@ -36,7 +52,7 @@ export class Resources implements ResourceManager {
               const tex = await loader.loadAsync(url);
               tex.colorSpace = THREE.SRGBColorSpace;
               tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-              tex.anisotropy = this.#renderer.capabilities.getMaxAnisotropy();
+              tex.anisotropy = this.#anisotropy;
               this.#textures.set(id, tex);
             } catch {
               /* keep procedural */
@@ -49,8 +65,7 @@ export class Resources implements ResourceManager {
     }
   }
 
-  #makeNoiseTexture(kind: string): THREE.DataTexture {
-    const size = 256;
+  #makeNoiseTexture(kind: string, size: number): THREE.DataTexture {
     const data = new Uint8Array(size * size * 4);
     let seed = kind.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const rand = (): number => {
@@ -76,6 +91,7 @@ export class Resources implements ResourceManager {
     const tex = new THREE.DataTexture(data, size, size);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = this.#anisotropy;
     tex.needsUpdate = true;
     return tex;
   }

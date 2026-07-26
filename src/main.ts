@@ -1,6 +1,7 @@
 import { Engine } from '@/engine/Engine.ts';
 import { RapierPhysics } from '@/engine/Physics.ts';
 import { Resources } from '@/engine/Resources.ts';
+import { resolveLodBudgets } from '@/engine/Lod.ts';
 import { ForwardPipeline } from '@/render/Pipeline.ts';
 import { CaptureBridge, parseCaptureParams } from '@/engine/CaptureBridge.ts';
 import { RenderModule } from '@/render/RenderModule.ts';
@@ -81,10 +82,14 @@ async function main(): Promise<void> {
   engine.setServices({ pipeline, physics, resources });
 
   setStatus('Loading assets');
-  await resources.preload((p) => {
-    setProgress(p.total > 0 ? p.loaded / p.total : 1);
-    setStatus(`Loading ${p.current}`);
-  });
+  const lod = resolveLodBudgets(engine.settings);
+  await resources.preload(
+    (p) => {
+      setProgress(p.total > 0 ? p.loaded / p.total : 1);
+      setStatus(`Loading ${p.current}`);
+    },
+    { budgets: { textureSize: lod.textureSize, anisotropy: lod.anisotropy } }
+  );
 
   const flow = new GameFlowModule();
   const ui = new UiModule();

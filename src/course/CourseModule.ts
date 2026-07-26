@@ -13,6 +13,7 @@ import {
   type PropTrigger,
   type PropsBuildResult,
 } from '@/course/Props.ts';
+import { resolveLodBudgets } from '@/engine/Lod.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
 
 const _playerPos = new THREE.Vector3();
@@ -63,7 +64,8 @@ export class CourseModule implements GameModule {
     const path = new SplinePath(def.controlPoints);
     const rng = new SeededRng(def.seed);
     const terrain = buildTerrain({ course: def, path, rng });
-    const props = buildCourseProps(def.props, path, def.checkpoints);
+    const budgets = ctx ? resolveLodBudgets(ctx.settings) : undefined;
+    const props = buildCourseProps(def.props, path, def.checkpoints, budgets);
 
     this.#root.add(terrain.mesh);
     this.#root.add(props.root);

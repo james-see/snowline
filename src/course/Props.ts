@@ -3,6 +3,7 @@ import type { CheckpointDef, PropPlacement } from '@/types/course.ts';
 import type { SurfaceKind } from '@/types/gameplay.ts';
 import type { PhysicsWorld } from '@/types/physics.ts';
 import type { SplinePath } from '@/course/SplinePath.ts';
+import { presetBudgets, type LodBudgets } from '@/engine/Lod.ts';
 
 export interface PropTrigger {
   id: string;
@@ -208,35 +209,107 @@ function registerMeshCollider(
   geometry.dispose();
 }
 
+function pathDist(path: SplinePath, position: readonly [number, number, number]): number {
+  return path.closestPoint(new THREE.Vector3(...position), 64).distance;
+}
+
+function addInstancedParts(
+  root: THREE.Group,
+  proto: THREE.Object3D,
+  matrices: THREE.Matrix4[],
+  name: string,
+  castShadow: boolean,
+  disposables: Set<THREE.BufferGeometry>
+): void {
+  if (matrices.length === 0) return;
+  proto.updateMatrixWorld(true);
+  proto.traverse((child) => {
+    const part = child as THREE.Mesh;
+    if (!part.isMesh) return;
+    const inst = new THREE.InstancedMesh(
+      part.geometry,
+      part.material as THREE.Material,
+      matrices.length
+    );
+    inst.castShadow = castShadow;
+    inst.receiveShadow = part.receiveShadow;
+    inst.name = name;
+    // Bake proto local transform (trunk/canopy offsets) into each instance.
+    const local = part.matrixWorld;
+    for (let i = 0; i < matrices.length; i++) {
+      inst.setMatrixAt(i, matrices[i]!.clone().multiply(local));
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    inst.count = matrices.length;
+    root.add(inst);
+    disposables.add(part.geometry);
+  });
+}
+
 export function buildCourseProps(
   placements: readonly PropPlacement[],
   path: SplinePath,
-  checkpointDefs: readonly CheckpointDef[]
+  checkpointDefs: readonly CheckpointDef[],
+  budgets: LodBudgets = presetBudgets('high')
 ): PropsBuildResult {
   const root = new THREE.Group();
   root.name = 'course-props';
   const triggers: PropTrigger[] = [];
-  const treeTransforms: { matrix: THREE.Matrix4; variant: number }[] = [];
-  const disposables: THREE.BufferGeometry[] = [];
+  const treeCandidates: {
+    matrix: THREE.Matrix4;
+    variant: number;
+    dist: number;
+    id: string;
+  }[] = [];
+  const rockCandidates: {
+    matrix: THREE.Matrix4;
+    variant: number;
+    dist: number;
+    placement: PropPlacement;
+  }[] = [];
+  const disposables = new Set<THREE.BufferGeometry>();
+  const keptTreeIds = new Set<string>();
+  const keptRockIds = new Set<string>();
 
   for (const placement of placements) {
     if (placement.kind === 'tree') {
-      treeTransforms.push({
+      const scale = new THREE.Vector3(1, 1, 1);
+      if (placement.scale !== undefined) {
+        if (typeof placement.scale === 'number') scale.setScalar(placement.scale);
+        else scale.set(...placement.scale);
+      }
+      treeCandidates.push({
         matrix: new THREE.Matrix4().compose(
           new THREE.Vector3(...placement.position),
           yawQuat(placement.rotationY ?? 0),
-          new THREE.Vector3(1, 1, 1)
+          scale
         ),
         variant: placement.variant ?? 0,
+        dist: pathDist(path, placement.position),
+        id: placement.id,
+      });
+      continue;
+    }
+
+    if (placement.kind === 'rock') {
+      const s = (placement.scale as number | undefined) ?? 1;
+      const variant = placement.variant ?? 0;
+      const scaleMul = s * (0.85 + (variant % 3) * 0.12);
+      rockCandidates.push({
+        matrix: new THREE.Matrix4().compose(
+          new THREE.Vector3(...placement.position),
+          yawQuat(placement.rotationY ?? 0),
+          new THREE.Vector3(scaleMul * 1.2, scaleMul * 0.75, scaleMul * 1.05)
+        ),
+        variant,
+        dist: pathDist(path, placement.position),
+        placement,
       });
       continue;
     }
 
     let object: THREE.Object3D;
     switch (placement.kind) {
-      case 'rock':
-        object = buildRock(placement.variant ?? 0, (placement.scale as number | undefined) ?? 1);
-        break;
       case 'rail':
         object = buildRail(placement.length ?? 12);
         break;
@@ -261,6 +334,14 @@ export function buildCourseProps(
 
     applyTransform(object, placement);
     object.name = placement.id;
+
+    const dist = pathDist(path, placement.position);
+    object.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (dist > budgets.shadowCasterDistance) mesh.castShadow = false;
+    });
+
     root.add(object);
 
     if (placement.kind === 'checkpoint_gate') {
@@ -277,30 +358,69 @@ export function buildCourseProps(
     }
   }
 
-  const byVariant = new Map<number, THREE.Matrix4[]>();
-  for (const t of treeTransforms) {
-    let list = byVariant.get(t.variant);
+  treeCandidates.sort((a, b) => a.dist - b.dist);
+  const trees = treeCandidates.slice(0, budgets.maxTreeInstances);
+  for (const t of trees) keptTreeIds.add(t.id);
+
+  const shadowTrees = trees.slice(0, budgets.maxTreeShadowCasters);
+  const farTrees = trees.slice(budgets.maxTreeShadowCasters);
+
+  const groupByVariant = (
+    list: { matrix: THREE.Matrix4; variant: number }[]
+  ): Map<number, THREE.Matrix4[]> => {
+    const map = new Map<number, THREE.Matrix4[]>();
+    for (const t of list) {
+      let arr = map.get(t.variant);
+      if (!arr) {
+        arr = [];
+        map.set(t.variant, arr);
+      }
+      arr.push(t.matrix);
+    }
+    return map;
+  };
+
+  for (const [variant, matrices] of groupByVariant(shadowTrees)) {
+    const proto = buildTree(variant);
+    addInstancedParts(root, proto, matrices, `trees-v${variant}-shadow`, true, disposables);
+  }
+  for (const [variant, matrices] of groupByVariant(farTrees)) {
+    const proto = buildTree(variant);
+    addInstancedParts(root, proto, matrices, `trees-v${variant}`, false, disposables);
+  }
+
+  rockCandidates.sort((a, b) => a.dist - b.dist);
+  const rocks = rockCandidates.slice(0, budgets.maxRockInstances);
+  for (const r of rocks) keptRockIds.add(r.placement.id);
+
+  type RockInst = { matrix: THREE.Matrix4; dist: number };
+  const rocksByVariant = new Map<number, RockInst[]>();
+  for (const r of rocks) {
+    let list = rocksByVariant.get(r.variant);
     if (!list) {
       list = [];
-      byVariant.set(t.variant, list);
+      rocksByVariant.set(r.variant, list);
     }
-    list.push(t.matrix);
+    list.push({ matrix: r.matrix, dist: r.dist });
   }
-  for (const [variant, matrices] of byVariant) {
-    const proto = buildTree(variant);
-    for (const part of proto.children as THREE.Mesh[]) {
-      const inst = new THREE.InstancedMesh(part.geometry, part.material as THREE.Material, matrices.length);
-      inst.castShadow = true;
-      inst.name = `trees-v${variant}`;
-      for (let i = 0; i < matrices.length; i++) inst.setMatrixAt(i, matrices[i]!);
-      inst.instanceMatrix.needsUpdate = true;
-      root.add(inst);
-    }
-    proto.traverse((c) => {
-      const m = c as THREE.Mesh;
-      if (m.isMesh) disposables.push(m.geometry);
-    });
+  for (const [variant, items] of rocksByVariant) {
+    const proto = buildRock(variant, 1);
+    // Scale already baked into instance matrices; reset proto scale.
+    proto.scale.set(1, 1, 1);
+    const near = items
+      .filter((i) => i.dist <= budgets.shadowCasterDistance)
+      .map((i) => i.matrix);
+    const far = items
+      .filter((i) => i.dist > budgets.shadowCasterDistance)
+      .map((i) => i.matrix);
+    addInstancedParts(root, proto, near, `rocks-v${variant}-shadow`, true, disposables);
+    addInstancedParts(root, proto, far, `rocks-v${variant}`, false, disposables);
   }
+
+  (root.userData as { keptTreeIds?: Set<string>; keptRockIds?: Set<string> }).keptTreeIds =
+    keptTreeIds;
+  (root.userData as { keptTreeIds?: Set<string>; keptRockIds?: Set<string> }).keptRockIds =
+    keptRockIds;
 
   for (let i = 0; i < checkpointDefs.length; i++) {
     const cp = checkpointDefs[i]!;
@@ -326,6 +446,7 @@ export function buildCourseProps(
         if (mesh.isMesh && !(mesh as THREE.InstancedMesh).isInstancedMesh) mesh.geometry.dispose();
       });
       for (const geo of disposables) geo.dispose();
+      disposables.clear();
       root.removeFromParent();
     },
   };
@@ -387,13 +508,30 @@ export function registerPropsPhysics(
     registerMeshCollider(physics, mesh, surface, placement?.id ?? mesh.name);
   });
 
+  const keptTreeIds = (root.userData as { keptTreeIds?: Set<string> }).keptTreeIds;
+  const keptRockIds = (root.userData as { keptRockIds?: Set<string> }).keptRockIds;
+
   for (const placement of placements) {
     if (placement.recovery || placement.kind !== 'tree') continue;
+    if (keptTreeIds && !keptTreeIds.has(placement.id)) continue;
     physics.createStaticBox(
       new THREE.Vector3(0.5, 2.2, 0.5),
       new THREE.Vector3(...placement.position).add(new THREE.Vector3(0, 2, 0)),
       yawQuat(placement.rotationY ?? 0),
       'wood',
+      placement.id
+    );
+  }
+
+  for (const placement of placements) {
+    if (placement.kind !== 'rock') continue;
+    if (keptRockIds && !keptRockIds.has(placement.id)) continue;
+    const s = (placement.scale as number | undefined) ?? 1;
+    physics.createStaticBox(
+      new THREE.Vector3(s * 0.9, s * 0.55, s * 0.8),
+      new THREE.Vector3(...placement.position),
+      yawQuat(placement.rotationY ?? 0),
+      placement.surface ?? 'rock',
       placement.id
     );
   }
