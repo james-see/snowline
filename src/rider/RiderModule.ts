@@ -1,5 +1,5 @@
 /**
- * Rider game module — board physics, trick tracking and a lightweight visual.
+ * Rider game module — board physics, trick tracking and visual rig.
  */
 
 import * as THREE from 'three';
@@ -8,6 +8,7 @@ import type { RiderSpawn, RiderState, SurfaceKind } from '@/types/gameplay.ts';
 import { readRiderInput } from '@/types/input.ts';
 import { AirTricks } from './AirTricks.ts';
 import { BoardPhysics } from './BoardPhysics.ts';
+import { RiderVisual } from './visual/RiderVisual.ts';
 
 const DEFAULT_SPAWN: RiderSpawn = {
   position: new THREE.Vector3(0, 2, 0),
@@ -39,10 +40,7 @@ export class RiderModule implements GameModule {
 
   readonly board = new BoardPhysics();
   readonly tricks = new AirTricks();
-
-  readonly #root = new THREE.Group();
-  readonly #boardMesh: THREE.Mesh;
-  readonly #bodyGroup = new THREE.Group();
+  readonly #visual = new RiderVisual();
   readonly #published: RiderStateStore;
 
   #ctx: EngineContext | null = null;
@@ -53,20 +51,6 @@ export class RiderModule implements GameModule {
 
   constructor(order = 10) {
     this.order = order;
-
-    const boardGeo = new THREE.BoxGeometry(0.22, 0.06, 1.56);
-    const boardMat = new THREE.MeshStandardMaterial({
-      color: 0x2a6cb8,
-      metalness: 0.35,
-      roughness: 0.45,
-    });
-    this.#boardMesh = new THREE.Mesh(boardGeo, boardMat);
-    this.#boardMesh.castShadow = true;
-    this.#boardMesh.receiveShadow = true;
-    this.#root.add(this.#boardMesh);
-
-    this.#buildRiderBody(this.#bodyGroup);
-    this.#root.add(this.#bodyGroup);
 
     this.#published = {
       position: this.board.position,
@@ -92,9 +76,9 @@ export class RiderModule implements GameModule {
     return this.#published;
   }
 
-  /** Scene graph root for the board and procedural rider. */
+  /** Scene graph root for the board and rider visual. */
   get object3d(): THREE.Group {
-    return this.#root;
+    return this.#visual.root;
   }
 
   getPosition(): THREE.Vector3 {
@@ -105,17 +89,7 @@ export class RiderModule implements GameModule {
     this.#ctx = ctx;
     this.reset(DEFAULT_SPAWN);
     this.board.attachBody(ctx.physics);
-    this.#root.visible = false;
-    ctx.scene.add(this.#root);
-
-    ctx.events.on('run:start', () => {
-      this.#root.visible = true;
-    });
-    ctx.events.on('ui:navigate', ({ screen }) => {
-      if (screen === 'title' || screen === 'course' || screen === 'mode' || screen === 'settings') {
-        this.#root.visible = false;
-      }
-    });
+    this.#visual.mount(ctx);
   }
 
   /** Respawn at a course spawn pose. */
@@ -129,7 +103,7 @@ export class RiderModule implements GameModule {
     this.tricks.cancelAir();
     this.#wasAirborne = false;
     this.#grindElapsed = 0;
-    this.#syncVisual();
+    this.#visual.sync(0, this.board);
     this.#syncPublished();
   }
 
@@ -205,22 +179,12 @@ export class RiderModule implements GameModule {
     this.#syncPublished();
   }
 
-  update(_dt: number, _ctx: EngineContext): void {
-    this.#syncVisual();
+  update(dt: number, _ctx: EngineContext): void {
+    this.#visual.sync(dt, this.board);
   }
 
   dispose(): void {
-    this.#ctx?.scene.remove(this.#root);
-    this.#boardMesh.geometry.dispose();
-    (this.#boardMesh.material as THREE.Material).dispose();
-    this.#bodyGroup.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-        const mat = obj.material;
-        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-        else mat.dispose();
-      }
-    });
+    this.#visual.dispose(this.#ctx ?? undefined);
     this.#ctx = null;
   }
 
@@ -239,54 +203,6 @@ export class RiderModule implements GameModule {
     this.#published.surfaceKind = b.surfaceKind;
     this.#published.boostMeter = b.boostMeter;
     this.#published.recoveryRemaining = b.recoveryRemaining;
-  }
-
-  #syncVisual(): void {
-    this.#root.position.copy(this.board.position);
-    this.#root.rotation.set(this.board.boardPitch, this.board.boardYaw, this.board.boardRoll, 'YXZ');
-
-    const leanVis = this.board.lean * 0.28;
-    this.#bodyGroup.rotation.set(0, 0, leanVis);
-    this.#bodyGroup.position.set(-leanVis * 0.08, 0.18, -0.08);
-  }
-
-  #buildRiderBody(group: THREE.Group): void {
-    const suit = new THREE.MeshStandardMaterial({ color: 0xe8e4dc, roughness: 0.85 });
-    const accent = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 });
-
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.18), suit);
-    torso.position.set(0, 0.48, -0.06);
-    torso.castShadow = true;
-    group.add(torso);
-
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), suit);
-    head.position.set(0, 0.78, -0.06);
-    head.castShadow = true;
-    group.add(head);
-
-    const hip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.16), accent);
-    hip.position.set(0, 0.24, -0.04);
-    group.add(hip);
-
-    const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.38, 0.12), accent);
-    leftLeg.position.set(-0.1, 0.02, 0.02);
-    leftLeg.rotation.x = 0.35;
-    group.add(leftLeg);
-
-    const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.38, 0.12), accent);
-    rightLeg.position.set(0.1, 0.02, 0.06);
-    rightLeg.rotation.x = -0.25;
-    group.add(rightLeg);
-
-    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.32, 0.1), suit);
-    leftArm.position.set(-0.24, 0.52, -0.02);
-    leftArm.rotation.z = 0.45;
-    group.add(leftArm);
-
-    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.32, 0.1), suit);
-    rightArm.position.set(0.24, 0.5, 0.04);
-    rightArm.rotation.z = -0.35;
-    group.add(rightArm);
   }
 }
 
