@@ -141,6 +141,7 @@ export const GAMEPLAY_CATEGORIES = [
  * Binary defects. Any one present fails the gate regardless of category scores.
  */
 export const DISQUALIFIERS = [
+  { id: 'blank_sky', desc: 'Near-uniform washed sky with no readable terrain, rider, or mountain silhouette' },
   { id: 'flat_white_snow', desc: 'Large snow areas of uniform flat white with no micro-detail or specular' },
   { id: 'plastic_ice', desc: 'Ice surfaces reading as matte plastic rather than glossy/translucent' },
   { id: 'camera_clipping', desc: 'Camera intersecting terrain, trees or the rider' },
