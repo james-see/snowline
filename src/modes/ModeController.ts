@@ -1,15 +1,17 @@
 import type { CourseId, GameModeId } from '@/types/gameplay.ts';
+import { normalizeMode } from '@/score/SaveData.ts';
 
 export type FlowScreen =
   | 'title'
-  | 'course_select'
-  | 'mode_select'
+  | 'course'
+  | 'mode'
   | 'playing'
   | 'paused'
-  | 'results';
+  | 'results'
+  | 'settings';
 
 export interface ModeDescriptor {
-  id: GameModeId;
+  id: 'freeride' | 'time_trial' | 'trick_attack';
   label: string;
   description: string;
 }
@@ -18,17 +20,17 @@ export const MODE_DESCRIPTORS: ModeDescriptor[] = [
   {
     id: 'freeride',
     label: 'Freeride',
-    description: 'Explore the mountain — no timer, score tricks for fun.',
+    description: 'Ride end-to-end. Medals on time.',
   },
   {
     id: 'time_trial',
     label: 'Time Trial',
-    description: 'Hit every gate and race to the finish arch.',
+    description: 'Ghost the clock. Clean lines win.',
   },
   {
     id: 'trick_attack',
     label: 'Trick Attack',
-    description: 'Maximize score with combos, grinds, and clean landings.',
+    description: 'Bank style points. Variety pays.',
   },
 ];
 
@@ -40,6 +42,10 @@ export interface FlowState {
   runActive: boolean;
 }
 
+/**
+ * Pure navigation state for title → course → mode → run → results → restart.
+ * GameFlowModule owns side effects (load course, pointer lock, events).
+ */
 export class ModeController {
   #screen: FlowScreen = 'title';
   #courseId: CourseId = 'alpine';
@@ -57,13 +63,47 @@ export class ModeController {
     };
   }
 
+  get screen(): FlowScreen {
+    return this.#screen;
+  }
+
+  set screen(screen: FlowScreen) {
+    this.navigate(screen);
+  }
+
+  get courseId(): CourseId {
+    return this.#courseId;
+  }
+
+  set courseId(id: CourseId) {
+    this.#courseId = id;
+  }
+
+  get mode(): GameModeId {
+    return this.#mode;
+  }
+
+  set mode(mode: GameModeId) {
+    this.#mode = normalizeMode(mode);
+  }
+
   navigate(screen: FlowScreen): void {
     this.#screen = screen;
     if (screen === 'playing') {
       this.#paused = false;
       this.#runActive = true;
-    }
-    if (screen === 'title' || screen === 'course_select' || screen === 'mode_select') {
+    } else if (screen === 'paused') {
+      this.#paused = true;
+      this.#runActive = true;
+    } else if (screen === 'results') {
+      this.#runActive = false;
+      this.#paused = false;
+    } else if (
+      screen === 'title' ||
+      screen === 'course' ||
+      screen === 'mode' ||
+      screen === 'settings'
+    ) {
       this.#runActive = false;
       this.#paused = false;
     }
@@ -71,19 +111,22 @@ export class ModeController {
 
   selectCourse(id: CourseId): void {
     this.#courseId = id;
-    this.#screen = 'mode_select';
+    this.#screen = 'mode';
+    this.#runActive = false;
+    this.#paused = false;
   }
 
   selectMode(mode: GameModeId): void {
-    this.#mode = mode;
+    this.#mode = normalizeMode(mode);
     this.#screen = 'playing';
     this.#runActive = true;
     this.#paused = false;
   }
 
   setPaused(paused: boolean): void {
+    if (!this.#runActive && this.#screen !== 'paused' && this.#screen !== 'playing') return;
     this.#paused = paused;
-    this.#screen = paused ? 'paused' : this.#runActive ? 'playing' : this.#screen;
+    this.#screen = paused ? 'paused' : 'playing';
   }
 
   finishRun(): void {
@@ -105,10 +148,20 @@ export class ModeController {
   }
 
   backFromModeSelect(): void {
-    this.#screen = 'course_select';
+    this.#screen = 'course';
+    this.#runActive = false;
+    this.#paused = false;
   }
 
   backFromCourseSelect(): void {
     this.#screen = 'title';
+    this.#runActive = false;
+    this.#paused = false;
+  }
+
+  goSettings(): void {
+    this.#screen = 'settings';
+    this.#runActive = false;
+    this.#paused = false;
   }
 }
