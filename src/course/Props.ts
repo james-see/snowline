@@ -32,6 +32,9 @@ const _snapQuat = new THREE.Quaternion();
 const _snapScale = new THREE.Vector3();
 const _snapBed = new THREE.Vector3();
 const _snapComposed = new THREE.Matrix4();
+const _rayOrigin = new THREE.Vector3();
+const _rayDir = new THREE.Vector3(0, -1, 0);
+const _raycaster = new THREE.Raycaster();
 
 /** World transform for one instanced tree before part-local bake. */
 export interface TreeInstanceBase {
@@ -135,18 +138,30 @@ function buildPropObject(placement: PropPlacement): THREE.Object3D | null {
   }
 }
 
-/** Sample terrain bed Y under a world XZ via path closest + mesh height. */
+/**
+ * Sample terrain bed Y under world XZ by raycasting the visual mesh.
+ * Path (t,u) sampling drifts on apron / curved runs and floats forest props.
+ */
 function terrainBedY(
   terrain: TerrainBuildResult,
   path: SplinePath,
-  corridorWidth: number,
+  meshWidth: number,
   x: number,
   y: number,
   z: number
 ): number {
+  const mesh = terrain.mesh;
+  mesh.updateMatrixWorld(true);
+  const top = Math.max(y + 400, 800);
+  _rayOrigin.set(x, top, z);
+  _raycaster.set(_rayOrigin, _rayDir);
+  const hits = _raycaster.intersectObject(mesh, false);
+  if (hits.length > 0 && hits[0]) return hits[0].point.y;
+
+  // Fallback: path sample (gates / offline meshes).
   _snapPos.set(x, y, z);
   const { t, lateral } = path.closestPoint(_snapPos);
-  const u = lateralToU(lateral, corridorWidth);
+  const u = lateralToU(lateral, meshWidth);
   return sampleTerrainAt(terrain, t, u, _snapBed).y;
 }
 

@@ -58,7 +58,11 @@ export class RenderModule implements GameModule {
 
     this.#materials = resources.getMaterials();
 
-    ctx.events.on('course:loaded', (ev) => this.#upgradeSnowMaterials(ctx, ev.length));
+    ctx.events.on('course:loaded', (ev) => {
+      this.#upgradeSnowMaterials(ctx, ev.length);
+      this.#sun.shadow.needsUpdate = true;
+      ctx.renderer.shadowMap.needsUpdate = true;
+    });
     ctx.events.on('settings:changed', () => this.#applyQuality(ctx));
     ctx.events.on('engine:resized', () => this.#applyQuality(ctx));
 
@@ -89,19 +93,23 @@ export class RenderModule implements GameModule {
 
     this.#sun.castShadow = s.shadowsEnabled;
     this.#sun.shadow.mapSize.set(s.shadowMapSize, s.shadowMapSize);
-    this.#sun.shadow.intensity = 1;
-    this.#sun.shadow.bias = -0.0002;
-    this.#sun.shadow.normalBias = 0.035;
+    this.#sun.shadow.intensity = 1.35;
+    this.#sun.shadow.bias = -0.00035;
+    this.#sun.shadow.normalBias = 0.04;
     this.#sun.shadow.radius = s.softShadows ? 2.25 : 1;
     this.#sun.shadow.camera.near = 1;
     // Far must exceed light→target distance + local receivers.
-    this.#sun.shadow.camera.far = Math.max(budgets.shadowDistance, this.#sunFollow + budgets.shadowFrustum);
-    const half = budgets.shadowFrustum * 0.85;
+    this.#sun.shadow.camera.far = Math.max(
+      budgets.shadowDistance,
+      this.#sunFollow + budgets.shadowFrustum + 40
+    );
+    const half = budgets.shadowFrustum;
     this.#sun.shadow.camera.left = -half;
     this.#sun.shadow.camera.right = half;
     this.#sun.shadow.camera.top = half;
     this.#sun.shadow.camera.bottom = -half;
     this.#sun.shadow.camera.updateProjectionMatrix();
+    this.#sun.shadow.needsUpdate = true;
   }
 
   #applyQuality(ctx: EngineContext): void {
