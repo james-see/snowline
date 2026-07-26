@@ -36,6 +36,8 @@ export const ALPINE_FLOW: CourseDef = {
   ],
   terrain: {
     width: 100,
+    apronWidth: 140,
+    apronT: 0.12,
     drop: 300,
     pathSegmentsPer100m: 14,
     lateralSegments: 30,
@@ -126,6 +128,8 @@ export const TIMBERLINE: CourseDef = {
   ],
   terrain: {
     width: 42,
+    apronWidth: 110,
+    apronT: 0.12,
     drop: 265,
     pathSegmentsPer100m: 17,
     lateralSegments: 18,
@@ -230,6 +234,8 @@ export const SUMMIT_DROP: CourseDef = {
   ],
   terrain: {
     width: 68,
+    apronWidth: 130,
+    apronT: 0.12,
     drop: 440,
     pathSegmentsPer100m: 15,
     lateralSegments: 24,

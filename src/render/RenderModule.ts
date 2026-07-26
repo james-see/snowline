@@ -99,7 +99,8 @@ export class RenderModule implements GameModule {
   #upgradeSnowMaterials(ctx: EngineContext, courseLength: number): void {
     const library = this.#materials ?? ctx.resources.getMaterials();
     const course = ctx.getModule<CourseModule>('course');
-    const width = course?.getDefinition()?.terrain.width ?? 80;
+    const terrain = course?.getTerrain?.();
+    const width = terrain?.meshWidth ?? course?.getDefinition()?.terrain.width ?? 80;
     const length = courseLength > 0 ? courseLength : (course?.getDefinition()?.length ?? 2000);
 
     ctx.scene.traverse((obj) => {

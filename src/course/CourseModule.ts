@@ -238,11 +238,11 @@ export class CourseModule implements GameModule {
     terrain: TerrainBuildResult,
     props: PropsBuildResult
   ): void {
-    const width = def.terrain.width;
+    const meshWidth = terrain.meshWidth;
 
     for (let i = 0; i < def.checkpoints.length; i++) {
       const cp = def.checkpoints[i]!;
-      const u = lateralToU(cp.lateral ?? 0, width);
+      const u = lateralToU(cp.lateral ?? 0, meshWidth);
       const bed = sampleTerrainAt(terrain, cp.t, u, _gateBed);
       const tan = path.tangent(cp.t);
       const yaw = Math.atan2(tan.x, tan.z);

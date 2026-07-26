@@ -7,6 +7,11 @@ import { SplinePath } from '@/course/SplinePath.ts';
 
 const SURFACE_TABLE: SurfaceKind[] = ['powder', 'packed', 'ice'];
 
+/** Default flank width beyond each side of the race corridor (metres). */
+const DEFAULT_APRON_WIDTH = 120;
+/** Default path-t apron beyond each end of the run. */
+const DEFAULT_APRON_T = 0.1;
+
 const _sample = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _tan = new THREE.Vector3();
@@ -67,9 +72,9 @@ function envelope01(t: number, start: number, end: number): number {
 }
 
 /**
- * Builds a downhill corridor meshed for rendering and Rapier trimesh.
- * Surface regions blend powder / packed / ice from slope, distance to line,
- * and authored overrides.
+ * Builds a downhill mountain meshed for rendering and Rapier trimesh.
+ * Race corridor stays centered; wide powder flanks + nose/tail aprons keep
+ * off-piste riding on snow instead of falling into the void.
  *
  * Visual mesh stays in world Y so spawn/props/path samples share one space.
  * The heightfield array is still origin-relative for the legacy API shape.
@@ -79,14 +84,22 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
   const profile = course.terrain;
   const seed = course.seed;
 
+  const corridorWidth = profile.width;
+  const raceHalf = corridorWidth * 0.5;
+  const apronWidth = profile.apronWidth ?? Math.max(DEFAULT_APRON_WIDTH, corridorWidth * 1.4);
+  const apronT = profile.apronT ?? DEFAULT_APRON_T;
+  const meshHalfWidth = raceHalf + apronWidth;
+  const meshWidth = meshHalfWidth * 2;
+  const tSpan = 1 + 2 * apronT;
+
   const pathSamples = Math.max(
-    24,
-    Math.round((course.length / 100) * profile.pathSegmentsPer100m)
+    32,
+    Math.round((course.length / 100) * profile.pathSegmentsPer100m * tSpan)
   );
-  const lateralCells = profile.lateralSegments * 2;
+  const widthScale = meshWidth / Math.max(1e-4, corridorWidth);
+  const lateralCells = Math.max(16, Math.round(profile.lateralSegments * 2 * widthScale));
   const nrows = pathSamples;
   const ncols = lateralCells + 1;
-  const halfWidth = profile.width * 0.5;
 
   const positions: number[] = [];
   const colors: number[] = [];
@@ -105,17 +118,21 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
   let baseY = Infinity;
 
   for (let row = 0; row < nrows; row++) {
-    const t = row / (nrows - 1);
-    path.sample(t, _sample);
-    path.tangent(t, _tan);
-    path.right(t, _right);
+    const rowU = row / (nrows - 1);
+    const pathT = -apronT + rowU * tSpan;
+    const featureT = THREE.MathUtils.clamp(pathT, 0, 1);
 
-    const corridorCenterY = _sample.y - dropPerT * t;
-    const bank = Math.sin(t * Math.PI * 4 + seed * 0.001) * 2.5 * profile.roughness;
+    path.sampleExtended(pathT, _sample);
+    path.tangent(featureT, _tan);
+    path.right(featureT, _right);
+
+    // Continue the fall-line drop past the authored ends.
+    const corridorCenterY = _sample.y - dropPerT * featureT;
+    const bank = Math.sin(featureT * Math.PI * 4 + seed * 0.001) * 2.5 * profile.roughness;
 
     for (let col = 0; col < ncols; col++) {
       const u = col / lateralCells;
-      const lateral = (u - 0.5) * 2 * halfWidth;
+      const lateral = (u - 0.5) * 2 * meshHalfWidth;
       const wx = _sample.x + _right.x * lateral;
       const wz = _sample.z + _right.z * lateral;
 
@@ -124,27 +141,48 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       maxX = Math.max(maxX, wx);
       maxZ = Math.max(maxZ, wz);
 
-      const distNorm = Math.abs(lateral) / halfWidth;
+      const absLat = Math.abs(lateral);
+      const raceDistNorm = absLat / Math.max(1e-4, raceHalf);
+      const meshDistNorm = absLat / Math.max(1e-4, meshHalfWidth);
+      const apronNorm =
+        absLat <= raceHalf ? 0 : (absLat - raceHalf) / Math.max(1e-4, apronWidth);
+
       const macro = fbm(wx * 0.018, wz * 0.018, seed, 4) - 0.5;
       const micro = fbm(wx * 0.09, wz * 0.09, seed + 17, 3) - 0.5;
+      const shelfNoise = fbm(wx * 0.035, wz * 0.035, seed + 53, 3) - 0.5;
       const rough = (macro * 6 + micro * 2.2) * profile.roughness;
 
       let y =
         corridorCenterY -
-        Math.tan(pitch) * path.distanceAt(t) * 0.015 +
+        Math.tan(pitch) * path.distanceAt(featureT) * 0.015 +
         rough +
         bank * lateral * 0.04;
 
-      // Soft berms keep the main line readable without walling riders in.
-      if (distNorm > 0.82) {
-        y += (distNorm - 0.82) * (distNorm - 0.82) * 18 * (0.35 + profile.roughness);
+      // Soft berms at the race-corridor edge — readable line, not a wall.
+      if (raceDistNorm > 0.78 && raceDistNorm < 1.15) {
+        const edge = raceDistNorm - 0.78;
+        y += edge * edge * 14 * (0.35 + profile.roughness);
       }
 
-      // Halfpipe depression.
-      if (profile.halfpipe) {
+      // Off-piste powder shelves / soft berms continuing the mountain flanks.
+      if (apronNorm > 0) {
+        const shelf = Math.sin(Math.min(1, apronNorm) * Math.PI);
+        y -= shelf * (2.4 + shelfNoise * 1.8) * (0.55 + profile.roughness * 0.5);
+        y += apronNorm * apronNorm * 16 * (0.4 + profile.roughness * 0.6);
+        y += shelfNoise * 3.2 * apronNorm;
+      }
+
+      // Gentle catch berm near the absolute mesh border.
+      if (meshDistNorm > 0.86) {
+        const lip = meshDistNorm - 0.86;
+        y += lip * lip * 55 * (0.7 + profile.roughness * 0.4);
+      }
+
+      // Halfpipe depression (race corridor features only).
+      if (profile.halfpipe && pathT >= 0 && pathT <= 1) {
         const { startT, endT, depth, width } = profile.halfpipe;
-        if (t >= startT && t <= endT) {
-          const pipeU = (t - startT) / (endT - startT);
+        if (featureT >= startT && featureT <= endT) {
+          const pipeU = (featureT - startT) / (endT - startT);
           const edge = Math.abs(lateral) / (width * 0.5);
           if (edge <= 1) {
             const bowl = (1 - edge * edge) * depth;
@@ -154,19 +192,19 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       }
 
       // Canyon walls pinch the finish corridor without blocking the line.
-      if (profile.canyon) {
+      if (profile.canyon && pathT >= 0 && pathT <= 1) {
         const { startT, endT, depth } = profile.canyon;
-        if (t >= startT && t <= endT) {
-          const pinch = (t - startT) / (endT - startT);
-          const wall = Math.max(0, Math.abs(lateral) - halfWidth * (0.55 - pinch * 0.2));
+        if (featureT >= startT && featureT <= endT) {
+          const pinch = (featureT - startT) / (endT - startT);
+          const wall = Math.max(0, Math.abs(lateral) - raceHalf * (0.55 - pinch * 0.2));
           y += wall * wall * 0.015 * depth;
         }
       }
 
       // Alternate-line shelves — viable side channels, not traps.
-      if (profile.altLines) {
+      if (profile.altLines && pathT >= 0 && pathT <= 1) {
         for (const alt of profile.altLines) {
-          const env = envelope01(t, alt.startT, alt.endT);
+          const env = envelope01(featureT, alt.startT, alt.endT);
           if (env <= 0) continue;
           const edge = Math.abs(lateral - alt.lateral) / (alt.width * 0.5);
           if (edge < 1) {
@@ -183,14 +221,23 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       let surface: SurfaceKind = 'packed';
       const slopeProxy = Math.abs(macro) + Math.abs(lateral) * 0.002;
       const powderBias = valueNoise(wx * 0.04, wz * 0.04, seed + 401);
-      if (distNorm > 0.55 || powderBias > 0.55 - distNorm * 0.3) {
+
+      // Center stays groomed; flanks and apron bias hard to powder.
+      if (raceDistNorm < 0.2) {
+        surface = 'packed';
+      } else if (raceDistNorm > 0.42 || apronNorm > 0 || powderBias > 0.42 - raceDistNorm * 0.35) {
         surface = 'powder';
       }
-      if (slopeProxy > 0.42 && t > 0.35) {
+      // Ice only on the race strip — steep packed patches, not the powder apron.
+      if (raceDistNorm < 0.95 && slopeProxy > 0.42 && featureT > 0.35) {
         surface = 'ice';
       }
-      if (distNorm < 0.22) {
+      if (raceDistNorm < 0.18) {
         surface = 'packed';
+      }
+      // Absolute apron / catch zone is always deep powder.
+      if (apronNorm > 0.15) {
+        surface = 'powder';
       }
 
       for (const region of course.surfaceRegions ?? []) {
@@ -205,7 +252,7 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       const tint = getSurfaceParams(surface).tint;
       colors.push(tint[0], tint[1], tint[2]);
       positions.push(wx, y, wz);
-      uvs.push(u, t);
+      uvs.push(u, rowU);
     }
   }
 
@@ -262,12 +309,16 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
     },
     surfaceIndices,
     surfaceKinds: SURFACE_TABLE,
+    corridorWidth,
+    meshWidth,
+    apronT,
   };
 }
 
 /**
  * Bilinear sample of the authored visual mesh at path parameter t.
- * `lateralU` is 0..1 across the corridor (0.5 = centerline).
+ * `lateralU` is 0..1 across the full mesh (0.5 = centerline).
+ * Path t∈[0,1] maps into the interior rows, accounting for nose/tail apron.
  */
 export function sampleTerrainAt(
   terrain: TerrainBuildResult,
@@ -279,7 +330,10 @@ export function sampleTerrainAt(
   const pos = terrain.mesh.geometry.getAttribute('position');
   if (!pos) return out.set(0, 0, 0);
 
-  const rowF = THREE.MathUtils.clamp(t, 0, 1) * (nrows - 1);
+  const apronT = terrain.apronT ?? 0;
+  const tSpan = 1 + 2 * apronT;
+  const rowU = THREE.MathUtils.clamp((t + apronT) / tSpan, 0, 1);
+  const rowF = rowU * (nrows - 1);
   const colF = THREE.MathUtils.clamp(lateralU, 0, 1) * (ncols - 1);
   const r0 = Math.floor(rowF);
   const r1 = Math.min(nrows - 1, r0 + 1);
@@ -303,11 +357,13 @@ export function sampleTerrainAt(
   return out.copy(_a.lerp(_c, fr));
 }
 
-/** Convert metres of lateral offset to corridor U for a given course width. */
-export function lateralToU(lateralMetres: number, corridorWidth: number): number {
-  const half = corridorWidth * 0.5;
-  if (half <= 1e-4) return 0.5;
-  return THREE.MathUtils.clamp(0.5 + lateralMetres / (2 * half), 0.02, 0.98);
+/**
+ * Convert metres of lateral offset to mesh U.
+ * Pass full `meshWidth` (corridor + flanks) so gates stay on the race line.
+ */
+export function lateralToU(lateralMetres: number, meshWidth: number): number {
+  if (meshWidth <= 1e-4) return 0.5;
+  return THREE.MathUtils.clamp(0.5 + lateralMetres / meshWidth, 0.02, 0.98);
 }
 
 export { SURFACE_TABLE, SNOW_SURFACES };

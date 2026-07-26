@@ -63,13 +63,23 @@ export interface SurfaceRegionDef {
 
 /** Authoring knobs that drive terrain synthesis for a course. */
 export interface TerrainProfile {
-  /** Full width of the playable corridor at the start, in metres. */
+  /** Full width of the race corridor (groomed fall line), in metres. */
   width: number;
+  /**
+   * Extra metres of mountain flank beyond each side of the race corridor.
+   * Defaults in the generator when omitted.
+   */
+  apronWidth?: number;
+  /**
+   * Extra path-t beyond each end of the run ([0,1]) for nose/tail snow.
+   * Defaults in the generator when omitted.
+   */
+  apronT?: number;
   /** Vertical drop from spawn to finish, in metres. */
   drop: number;
   /** Grid resolution along the path (segments per 100 m). */
   pathSegmentsPer100m: number;
-  /** Cross-slope grid cells per half-width. */
+  /** Cross-slope grid cells per half-width of the race corridor. */
   lateralSegments: number;
   /** Base pitch of the fall line in degrees. */
   pitchDeg: number;
@@ -140,4 +150,10 @@ export interface TerrainBuildResult {
   /** Per-vertex surface kind index into `surfaceKinds`. */
   surfaceIndices: Uint8Array;
   surfaceKinds: SurfaceKind[];
+  /** Race corridor width in metres (authoring `terrain.width`). */
+  corridorWidth: number;
+  /** Full mesh width including mountain flanks, in metres. */
+  meshWidth: number;
+  /** Path-t apron beyond each end of [0, 1]. */
+  apronT: number;
 }
