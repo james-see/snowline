@@ -14,19 +14,19 @@ export const SPEED = {
   max: 42,
   boostMax: 58,
   /** Below this, steering authority is reduced so idle shuffling feels heavy. */
-  minSteer: 3.5,
+  minSteer: 3.2,
   /** Brake bleeds speed at this constant rate, m/s². */
-  brakeDecel: 18,
+  brakeDecel: 24,
 } as const;
 
 /** Longitudinal and lateral acceleration on snow, m/s². */
 export const ACCEL = {
   /** Downhill gravity projection scale while grounded. */
-  slopeGravity: 1.05,
+  slopeGravity: 1.12,
   /** Forward push from pumping / natural roll on packed snow. */
-  coast: 2.4,
+  coast: 2.6,
   /** Extra downhill push while boosting. */
-  boost: 14,
+  boost: 17,
   /** Air drag along velocity, 1/s. */
   airDrag: 0.35,
 } as const;
@@ -34,23 +34,23 @@ export const ACCEL = {
 /** Carve and edge behaviour. */
 export const CARVE = {
   /** How quickly lean reaches its target, 1/s. */
-  leanRate: 9,
+  leanRate: 12,
   /** Maximum lean input magnitude. */
   maxLean: 1,
   /** Edge angle per unit lean, radians. */
-  edgePerLean: 0.62,
+  edgePerLean: 0.7,
   /** Yaw rate from lean × speed, rad/(s·m/s). */
-  steerRate: 0.055,
+  steerRate: 0.072,
   /** Extra yaw when actively steering with stick/keys, rad/s. */
-  steerInputRate: 1.85,
-  /** Lateral grip from edge angle on packed snow, 1/s. */
-  baseGrip: 14,
-  /** How much lateral velocity bleeds when not on edge. */
-  flatSlideGrip: 4.5,
+  steerInputRate: 2.25,
+  /** Lateral grip at full edge on packed snow, 1/s. */
+  baseGrip: 18,
+  /** Lateral grip when flat / low edge — allows readable slides. */
+  flatSlideGrip: 3.2,
   /** Minimum speed before carve spray is emitted. */
-  sprayMinSpeed: 8,
+  sprayMinSpeed: 7.5,
   /** Edge angle threshold for full spray intensity. */
-  sprayEdgeThreshold: 0.35,
+  sprayEdgeThreshold: 0.32,
 } as const;
 
 /** Per-surface friction multipliers applied to longitudinal drag and lateral grip. */
@@ -70,19 +70,31 @@ export const JUMP = {
   /** Extra impulse from a brief pre-load (anticipation), m/s. */
   anticipationBonus: 1.6,
   /** Seconds jump input is remembered after leaving a lip. */
-  buffer: 0.14,
+  buffer: 0.16,
   /** Seconds after leaving ground where a jump still registers. */
-  coyote: 0.1,
+  coyote: 0.12,
   /** Downward ray length for ground sensing, m. */
-  rayLength: 2.4,
-  /** Distance from ray hit to count as grounded, m. */
-  groundEpsilon: 0.22,
+  rayLength: 3.2,
+  /**
+   * Rays start this far above the board origin so trimesh contact just under
+   * the board still registers (and we clear numeric penetration).
+   */
+  rayLift: 0.4,
+  /**
+   * Contact band below the board after subtracting `rayLift`. A hit with
+   * `distance <= rayLift + groundEpsilon` counts as near-ground.
+   */
+  groundEpsilon: 0.32,
+  /** Minimum near-ground ray hits required when the center probe misses. */
+  groundMinHits: 2,
+  /** Preferred ride height above the hit surface, m. */
+  rideHeight: 0.05,
   /** Snap the board down toward the surface when grounded, m/s. */
-  groundStick: 4.5,
+  groundStick: 6,
   /** Board half-length for ray offsets, m. */
   boardHalfLength: 0.78,
-  /** Board half-width for edge roll, m. */
-  boardHalfWidth: 0.11,
+  /** Board half-width for lateral ray offsets, m. */
+  boardHalfWidth: 0.14,
 } as const;
 
 /** Air rotation limits, rad/s. */
@@ -129,11 +141,11 @@ export const CRASH = {
 export const BOOST = {
   maxMeter: 1,
   /** Drain rate while boosting, 1/s. */
-  drainRate: 0.42,
+  drainRate: 0.36,
   /** Recharge rate on ground when not boosting, 1/s. */
-  rechargeRate: 0.18,
+  rechargeRate: 0.24,
   /** Minimum meter required to start boosting. */
-  minToUse: 0.08,
+  minToUse: 0.05,
 } as const;
 
 /** Grind stub tuning. */
