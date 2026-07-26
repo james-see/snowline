@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import type { EngineContext, GameModule } from '@/types/engine.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
+import type { CourseModule } from '@/course/CourseModule.ts';
+import type { MaterialLibrary } from '@/render/materials/index.ts';
 
 const SUN_COLOR = 0xfff4d6;
-const SKY_TOP = 0x1a2844;
 const SKY_HORIZON = 0x6a9ec4;
 
 export class RenderModule implements GameModule {
@@ -14,6 +15,7 @@ export class RenderModule implements GameModule {
   #hemi!: THREE.HemisphereLight;
   #fog!: THREE.FogExp2;
   #csmTarget = new THREE.WebGLRenderTarget(2048, 2048);
+  #materials: MaterialLibrary | null = null;
 
   constructor(order = -30) {
     this.order = order;
@@ -53,7 +55,9 @@ export class RenderModule implements GameModule {
     // Critic-critical: clamp post fog before first frame / course_start capture.
     ctx.pipeline.setFog?.(new THREE.Color(SKY_HORIZON), 0);
 
-    ctx.events.on('course:loaded', () => this.#upgradeSnowMaterials(scene));
+    this.#materials = resources.getMaterials();
+
+    ctx.events.on('course:loaded', (ev) => this.#upgradeSnowMaterials(ctx, ev.length));
     ctx.events.on('settings:changed', () => this.#applyQuality(ctx));
     ctx.events.on('engine:resized', () => this.#applyQuality(ctx));
 
@@ -82,29 +86,21 @@ export class RenderModule implements GameModule {
     ctx.pipeline.setFog?.(new THREE.Color(SKY_HORIZON), 0);
   }
 
-  #upgradeSnowMaterials(scene: THREE.Scene): void {
-    scene.traverse((obj) => {
+  #upgradeSnowMaterials(ctx: EngineContext, courseLength: number): void {
+    const library = this.#materials ?? ctx.resources.getMaterials();
+    const course = ctx.getModule<CourseModule>('course');
+    const width = course?.getDefinition()?.terrain.width ?? 80;
+    const length = courseLength > 0 ? courseLength : (course?.getDefinition()?.length ?? 2000);
+
+    ctx.scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
       if (!obj.name.startsWith('terrain-')) return;
-      const old = obj.material as THREE.MeshStandardMaterial;
-      const phys = new THREE.MeshPhysicalMaterial({
-        color: 0xe6eef6,
-        vertexColors: old.vertexColors,
-        roughness: 0.84,
-        metalness: 0.02,
-        clearcoat: 0.18,
-        clearcoatRoughness: 0.35,
-        sheen: 0.28,
-        sheenColor: new THREE.Color(0xc8e8ff),
-        sheenRoughness: 0.55,
-      });
-      old.dispose();
-      obj.material = phys;
-      obj.receiveShadow = true;
+      library.applyTerrain(obj, { width, length });
     });
   }
 
   dispose(): void {
     this.#csmTarget.dispose();
+    this.#materials = null;
   }
 }

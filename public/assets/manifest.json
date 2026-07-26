@@ -1,1 +1,110 @@
-{"textures":{},"version":1}
+{
+  "version": 1,
+  "generatedAt": "2026-07-26T23:00:00.000Z",
+  "materials": [
+    {
+      "id": "snow_groom",
+      "albedo": "/assets/textures/snow_groom_albedo.webp",
+      "normal": "/assets/textures/snow_groom_normal.jpg",
+      "orm": "/assets/textures/snow_groom_orm.jpg",
+      "tileScale": 8,
+      "source": {
+        "name": "Ground Snow",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/ground_snow"
+      }
+    },
+    {
+      "id": "snow_powder",
+      "albedo": "/assets/textures/snow_powder_albedo.webp",
+      "normal": "/assets/textures/snow_powder_normal.jpg",
+      "orm": "/assets/textures/snow_powder_orm.jpg",
+      "tileScale": 6,
+      "source": {
+        "name": "Snow 01",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/snow_01"
+      }
+    },
+    {
+      "id": "rock_face",
+      "albedo": "/assets/textures/rock_face_albedo.webp",
+      "normal": "/assets/textures/rock_face_normal.jpg",
+      "orm": "/assets/textures/rock_face_orm.jpg",
+      "tileScale": 4,
+      "source": {
+        "name": "Cliff Side",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/cliff_side"
+      }
+    },
+    {
+      "id": "rock_scree",
+      "albedo": "/assets/textures/rock_scree_albedo.webp",
+      "normal": "/assets/textures/rock_scree_normal.jpg",
+      "orm": "/assets/textures/rock_scree_orm.jpg",
+      "tileScale": 3,
+      "source": {
+        "name": "Rock Face",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/rock_face"
+      }
+    },
+    {
+      "id": "ice_glass",
+      "albedo": "/assets/textures/ice_glass_albedo.webp",
+      "normal": "/assets/textures/ice_glass_normal.jpg",
+      "orm": "/assets/textures/ice_glass_orm.jpg",
+      "tileScale": 5,
+      "source": {
+        "name": "Ice 01",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/ice_01"
+      }
+    },
+    {
+      "id": "ice_frost",
+      "albedo": "/assets/textures/ice_frost_albedo.webp",
+      "normal": "/assets/textures/ice_frost_normal.jpg",
+      "orm": "/assets/textures/ice_frost_orm.jpg",
+      "tileScale": 4,
+      "source": {
+        "name": "Frozen Ground 01",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/frozen_ground_01"
+      }
+    }
+  ],
+  "models": [],
+  "audio": [],
+  "environments": [
+    {
+      "id": "alpine_noon",
+      "url": "/assets/env/alpine_noon.hdr",
+      "intensity": 1.15,
+      "source": {
+        "name": "Snowy Field",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/snowy_field"
+      }
+    },
+    {
+      "id": "summit_dawn",
+      "url": "/assets/env/summit_dawn.hdr",
+      "intensity": 0.9,
+      "source": {
+        "name": "Kiara 1 Dawn",
+        "author": "Poly Haven",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/kiara_1_dawn"
+      }
+    }
+  ]
+}

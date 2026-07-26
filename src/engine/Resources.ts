@@ -1,14 +1,28 @@
 import * as THREE from 'three';
 import type { LoadProgress, ResourceManager } from '@/types/assets.ts';
+import {
+  configureColorMap,
+  configureDataMap,
+  createMaterialLibrary,
+  DEFAULT_TILE_SCALE,
+  PBR_SET_IDS,
+  type ManifestMaterialEntry,
+  type MaterialLibrary,
+  type PbrMaps,
+  type PbrSetId,
+} from '@/render/materials/index.ts';
 
 /** Procedural / lightweight resources; CC0 packs augment via manifest when present. */
 export class Resources implements ResourceManager {
   #textures = new Map<string, THREE.Texture>();
+  #pbr = new Map<string, PbrMaps>();
+  #materials: MaterialLibrary;
   #env: THREE.Texture | null = null;
   #renderer: THREE.WebGLRenderer;
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.#renderer = renderer;
+    this.#materials = createMaterialLibrary(this);
   }
 
   async preload(onProgress?: (p: LoadProgress) => void): Promise<void> {
@@ -27,25 +41,138 @@ export class Resources implements ResourceManager {
       if (res.ok) {
         const manifest = (await res.json()) as {
           textures?: Record<string, string>;
+          materials?: ManifestMaterialEntry[];
+          environments?: { id: string; url: string; intensity?: number }[];
           env?: string;
         };
+
+        const anisotropy = this.#renderer.capabilities.getMaxAnisotropy();
+        const loader = new THREE.TextureLoader();
+
+        if (manifest.materials?.length) {
+          const total = manifest.materials.length;
+          let i = 0;
+          for (const entry of manifest.materials) {
+            onProgress?.({ loaded: i, total, current: entry.id });
+            await this.#loadPbrEntry(entry, loader, anisotropy);
+            i++;
+          }
+          onProgress?.({ loaded: total, total, current: 'materials' });
+        } else {
+          // Textures on disk even if manifest.materials is empty.
+          await this.#loadDefaultPbrSets(loader, anisotropy, onProgress);
+        }
+
         if (manifest.textures) {
-          const loader = new THREE.TextureLoader();
           for (const [id, url] of Object.entries(manifest.textures)) {
             try {
               const tex = await loader.loadAsync(url);
-              tex.colorSpace = THREE.SRGBColorSpace;
-              tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-              tex.anisotropy = this.#renderer.capabilities.getMaxAnisotropy();
+              configureColorMap(tex, anisotropy);
               this.#textures.set(id, tex);
             } catch {
               /* keep procedural */
             }
           }
         }
+      } else {
+        await this.#loadDefaultPbrSets(
+          new THREE.TextureLoader(),
+          this.#renderer.capabilities.getMaxAnisotropy(),
+          onProgress
+        );
       }
     } catch {
-      /* offline / no assets yet */
+      /* offline / no assets yet — try direct texture paths */
+      try {
+        await this.#loadDefaultPbrSets(
+          new THREE.TextureLoader(),
+          this.#renderer.capabilities.getMaxAnisotropy(),
+          onProgress
+        );
+      } catch {
+        /* procedural only */
+      }
+    }
+  }
+
+  getTexture(id: string): THREE.Texture | null {
+    return this.#textures.get(id) ?? null;
+  }
+
+  getPbrMaps(id: string): PbrMaps | null {
+    return this.#pbr.get(id) ?? null;
+  }
+
+  getMaterials(): MaterialLibrary {
+    return this.#materials;
+  }
+
+  getEnvMap(): THREE.Texture | null {
+    return this.#env;
+  }
+
+  dispose(): void {
+    this.#materials.dispose();
+    for (const t of this.#textures.values()) t.dispose();
+    this.#textures.clear();
+    for (const set of this.#pbr.values()) {
+      set.albedo.dispose();
+      set.normal.dispose();
+      set.orm.dispose();
+    }
+    this.#pbr.clear();
+    this.#env?.dispose();
+    this.#env = null;
+  }
+
+  async #loadDefaultPbrSets(
+    loader: THREE.TextureLoader,
+    anisotropy: number,
+    onProgress?: (p: LoadProgress) => void
+  ): Promise<void> {
+    const total = PBR_SET_IDS.length;
+    let i = 0;
+    for (const id of PBR_SET_IDS) {
+      onProgress?.({ loaded: i, total, current: id });
+      await this.#loadPbrEntry(
+        {
+          id,
+          albedo: `/assets/textures/${id}_albedo.webp`,
+          normal: `/assets/textures/${id}_normal.jpg`,
+          orm: `/assets/textures/${id}_orm.jpg`,
+          tileScale: DEFAULT_TILE_SCALE[id],
+        },
+        loader,
+        anisotropy
+      );
+      i++;
+    }
+  }
+
+  async #loadPbrEntry(
+    entry: ManifestMaterialEntry,
+    loader: THREE.TextureLoader,
+    anisotropy: number
+  ): Promise<void> {
+    try {
+      const [albedo, normal, orm] = await Promise.all([
+        loader.loadAsync(entry.albedo),
+        loader.loadAsync(entry.normal),
+        loader.loadAsync(entry.orm),
+      ]);
+      configureColorMap(albedo, anisotropy);
+      configureDataMap(normal, anisotropy);
+      configureDataMap(orm, anisotropy);
+      const tileScale =
+        entry.tileScale ||
+        DEFAULT_TILE_SCALE[entry.id as PbrSetId] ||
+        4;
+      this.#pbr.set(entry.id, { albedo, normal, orm, tileScale });
+      this.#textures.set(`${entry.id}_albedo`, albedo);
+      this.#textures.set(`${entry.id}_normal`, normal);
+      this.#textures.set(`${entry.id}_orm`, orm);
+    } catch {
+      /* keep procedural fallbacks */
     }
   }
 
@@ -98,20 +225,5 @@ export class Resources implements ResourceManager {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.needsUpdate = true;
     return tex;
-  }
-
-  getTexture(id: string): THREE.Texture | null {
-    return this.#textures.get(id) ?? null;
-  }
-
-  getEnvMap(): THREE.Texture | null {
-    return this.#env;
-  }
-
-  dispose(): void {
-    for (const t of this.#textures.values()) t.dispose();
-    this.#textures.clear();
-    this.#env?.dispose();
-    this.#env = null;
   }
 }
