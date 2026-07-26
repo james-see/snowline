@@ -14,30 +14,31 @@ export interface SnowSurfaceParams {
   tint: [number, number, number];
 }
 
+/** Snow kinds used by terrain vertex paint and board grip. */
 export const SNOW_SURFACES: Record<'powder' | 'packed' | 'ice', SnowSurfaceParams> = {
   powder: {
     kind: 'powder',
-    friction: 0.04,
-    gripScale: 0.72,
-    drag: 0.18,
-    landingScale: 1.15,
-    tint: [0.92, 0.95, 1.0],
+    friction: 0.035,
+    gripScale: 0.7,
+    drag: 0.2,
+    landingScale: 1.18,
+    tint: [0.93, 0.96, 1.0],
   },
   packed: {
     kind: 'packed',
     friction: 0.09,
     gripScale: 1.0,
-    drag: 0.08,
+    drag: 0.075,
     landingScale: 1.0,
     tint: [0.86, 0.9, 0.94],
   },
   ice: {
     kind: 'ice',
-    friction: 0.02,
-    gripScale: 0.45,
-    drag: 0.04,
-    landingScale: 0.82,
-    tint: [0.78, 0.88, 1.0],
+    friction: 0.018,
+    gripScale: 0.42,
+    drag: 0.035,
+    landingScale: 0.8,
+    tint: [0.76, 0.87, 1.0],
   },
 };
 

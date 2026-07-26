@@ -5,7 +5,11 @@ import type { CourseId } from '@/types/gameplay.ts';
 import type { PhysicsWorld, RigidBodyHandle } from '@/types/physics.ts';
 import { SeededRng } from '@/engine/Rng.ts';
 import { SplinePath } from '@/course/SplinePath.ts';
-import { buildTerrain } from '@/course/TerrainGenerator.ts';
+import {
+  buildTerrain,
+  lateralToU,
+  sampleTerrainAt,
+} from '@/course/TerrainGenerator.ts';
 import { getCourseDef } from '@/course/CourseDefs.ts';
 import {
   buildCourseProps,
@@ -16,6 +20,13 @@ import {
 import type { RiderModule } from '@/rider/RiderModule.ts';
 
 const _playerPos = new THREE.Vector3();
+const _spawnBed = new THREE.Vector3();
+const _gateBed = new THREE.Vector3();
+
+/** Path parameter for run start — just downhill of the lip, on generated mesh. */
+export const SPAWN_PATH_T = 0.02;
+/** Board clearance above terrain bed at spawn (metres). */
+export const SPAWN_HOVER = 1.2;
 
 export interface CourseModuleOptions {
   defaultCourseId?: CourseId;
@@ -51,11 +62,6 @@ export class CourseModule implements GameModule {
     this.#root.visible = false;
     ctx.scene.add(this.#root);
     // Defer heavy course build until a run starts — title stays clean.
-    ctx.events.on('ui:navigate', ({ screen }) => {
-      if (screen === 'title' || screen === 'course' || screen === 'mode' || screen === 'settings') {
-        this.#root.visible = false;
-      }
-    });
   }
 
   loadCourse(id: CourseId, physics?: PhysicsWorld): CourseDef {
@@ -64,15 +70,23 @@ export class CourseModule implements GameModule {
     this.#clearVisual();
     world?.clearWorld();
 
-    const base = getCourseDef(id);
-    const def: CourseDef = {
-      ...base,
-      spawn: { ...base.spawn, position: [...base.spawn.position] },
-    };
+    const def = structuredClone(getCourseDef(id));
     const path = new SplinePath(def.controlPoints);
     const rng = new SeededRng(def.seed);
     const terrain = buildTerrain({ course: def, path, rng });
     const props = buildCourseProps(def.props, path, def.checkpoints);
+
+    // Snap gates/finish onto the visual mesh before physics registration.
+    this.#snapMarkersToTerrain(def, path, terrain, props);
+
+    // Spawn on generated terrain at path.sample(~0.02), not authored Y.
+    const bed = sampleTerrainAt(terrain, SPAWN_PATH_T, 0.5, _spawnBed);
+    const tan = path.tangent(SPAWN_PATH_T);
+    def.spawn = {
+      ...def.spawn,
+      position: [bed.x, bed.y + SPAWN_HOVER, bed.z],
+      yaw: Math.atan2(-tan.x, -tan.z),
+    };
 
     this.#root.add(terrain.mesh);
     this.#root.add(props.root);
@@ -103,23 +117,8 @@ export class CourseModule implements GameModule {
     this.#terrain = terrain;
     this.#props = props;
     this.#triggers = props.triggers;
-    this.resetRun();
-
-    // Snap spawn onto the generated mesh centerline (all courses).
-    const SPAWN_T = 0.02;
-    const { nrows, ncols } = terrain.heightfield;
-    const row = Math.round(SPAWN_T * (nrows - 1));
-    const col = (ncols - 1) >> 1;
-    const posAttr = terrain.mesh.geometry.getAttribute('position');
-    const vi = row * ncols + col;
-    const tan = path.tangent(SPAWN_T, new THREE.Vector3());
-    def.spawn = {
-      ...def.spawn,
-      position: [posAttr.getX(vi), posAttr.getY(vi) + 1.2, posAttr.getZ(vi)],
-      yaw: Math.atan2(tan.x, tan.z),
-    };
-
     this.#root.visible = true;
+    this.resetRun();
 
     ctx?.events.emit('course:loaded', {
       courseId: def.id,
@@ -162,6 +161,10 @@ export class CourseModule implements GameModule {
 
   getDefinition(): CourseDef | null {
     return this.#def;
+  }
+
+  getTerrain(): TerrainBuildResult | null {
+    return this.#terrain;
   }
 
   fixedUpdate(dt: number, ctx: EngineContext): void {
@@ -223,8 +226,60 @@ export class CourseModule implements GameModule {
     this.#ctx = null;
   }
 
+  /** Place checkpoint/finish markers and triggers on the generated mesh. */
+  #snapMarkersToTerrain(
+    def: CourseDef,
+    path: SplinePath,
+    terrain: TerrainBuildResult,
+    props: PropsBuildResult
+  ): void {
+    const width = def.terrain.width;
+
+    for (let i = 0; i < def.checkpoints.length; i++) {
+      const cp = def.checkpoints[i]!;
+      const u = lateralToU(cp.lateral ?? 0, width);
+      const bed = sampleTerrainAt(terrain, cp.t, u, _gateBed);
+      const tan = path.tangent(cp.t);
+      const yaw = Math.atan2(tan.x, tan.z);
+      const halfW = (cp.width ?? 14) * 0.5;
+
+      const gate = props.root.getObjectByName(`gate-${cp.id}`);
+      if (gate) {
+        gate.position.copy(bed);
+        gate.rotation.y = yaw;
+      }
+
+      const trigger = props.triggers.find(
+        (t) => t.kind === 'checkpoint' && t.checkpointIndex === i
+      );
+      if (trigger) {
+        trigger.bounds.set(
+          new THREE.Vector3(bed.x - halfW, bed.y - 2, bed.z - 5),
+          new THREE.Vector3(bed.x + halfW, bed.y + 12, bed.z + 5)
+        );
+      }
+    }
+
+    const fin = def.finish;
+    const finBed = sampleTerrainAt(terrain, fin.t, 0.5, _gateBed);
+    const finTan = path.tangent(fin.t);
+    const finYaw = Math.atan2(finTan.x, finTan.z);
+    const finHalf = (fin.width ?? 20) * 0.5;
+    const arch = props.root.getObjectByName('finish');
+    if (arch) {
+      arch.position.copy(finBed);
+      arch.rotation.y = finYaw;
+    }
+    const finTrigger = props.triggers.find((t) => t.kind === 'finish');
+    if (finTrigger) {
+      finTrigger.bounds.set(
+        new THREE.Vector3(finBed.x - finHalf, finBed.y - 2, finBed.z - 6),
+        new THREE.Vector3(finBed.x + finHalf, finBed.y + 14, finBed.z + 6)
+      );
+    }
+  }
+
   #clearVisual(): void {
-    this.#root.visible = false;
     this.#terrain?.mesh.geometry.dispose();
     const mat = this.#terrain?.mesh.material;
     if (Array.isArray(mat)) mat.forEach((m) => m.dispose());

@@ -10,6 +10,10 @@ const SURFACE_TABLE: SurfaceKind[] = ['powder', 'packed', 'ice'];
 const _sample = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _tan = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
+const _c = new THREE.Vector3();
+const _d = new THREE.Vector3();
 
 export interface TerrainGeneratorOptions {
   course: CourseDef;
@@ -55,10 +59,20 @@ function fbm(x: number, z: number, seed: number, octaves = 4): number {
   return sum / norm;
 }
 
+function envelope01(t: number, start: number, end: number): number {
+  const span = Math.max(1e-4, end - start);
+  const u = (t - start) / span;
+  if (u <= 0 || u >= 1) return 0;
+  return Math.sin(u * Math.PI);
+}
+
 /**
- * Builds a downhill heightfield corridor meshed for rendering and Rapier.
+ * Builds a downhill corridor meshed for rendering and Rapier trimesh.
  * Surface regions blend powder / packed / ice from slope, distance to line,
  * and authored overrides.
+ *
+ * Visual mesh stays in world Y so spawn/props/path samples share one space.
+ * The heightfield array is still origin-relative for the legacy API shape.
  */
 export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResult {
   const { course, path } = options;
@@ -121,6 +135,11 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
         rough +
         bank * lateral * 0.04;
 
+      // Soft berms keep the main line readable without walling riders in.
+      if (distNorm > 0.82) {
+        y += (distNorm - 0.82) * (distNorm - 0.82) * 18 * (0.35 + profile.roughness);
+      }
+
       // Halfpipe depression.
       if (profile.halfpipe) {
         const { startT, endT, depth, width } = profile.halfpipe;
@@ -141,6 +160,18 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
           const pinch = (t - startT) / (endT - startT);
           const wall = Math.max(0, Math.abs(lateral) - halfWidth * (0.55 - pinch * 0.2));
           y += wall * wall * 0.015 * depth;
+        }
+      }
+
+      // Alternate-line shelves — viable side channels, not traps.
+      if (profile.altLines) {
+        for (const alt of profile.altLines) {
+          const env = envelope01(t, alt.startT, alt.endT);
+          if (env <= 0) continue;
+          const edge = Math.abs(lateral - alt.lateral) / (alt.width * 0.5);
+          if (edge < 1) {
+            y -= alt.depth * (1 - edge * edge) * env;
+          }
         }
       }
 
@@ -178,7 +209,7 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
     }
   }
 
-  // Origin for heightfield — snap Y to minimum bed.
+  // Heightfield array is origin-relative; visual mesh keeps world Y for spawn/props.
   const originX = minX;
   const originZ = minZ;
   const cellSizeX = (maxX - minX) / Math.max(1, ncols - 1);
@@ -191,7 +222,6 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
     heights[i] -= baseY;
   }
 
-  // Indices & normals.
   for (let row = 0; row < nrows - 1; row++) {
     for (let col = 0; col < ncols - 1; col++) {
       const a = row * ncols + col;
@@ -233,6 +263,51 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
     surfaceIndices,
     surfaceKinds: SURFACE_TABLE,
   };
+}
+
+/**
+ * Bilinear sample of the authored visual mesh at path parameter t.
+ * `lateralU` is 0..1 across the corridor (0.5 = centerline).
+ */
+export function sampleTerrainAt(
+  terrain: TerrainBuildResult,
+  t: number,
+  lateralU = 0.5,
+  out = new THREE.Vector3()
+): THREE.Vector3 {
+  const { nrows, ncols } = terrain.heightfield;
+  const pos = terrain.mesh.geometry.getAttribute('position');
+  if (!pos) return out.set(0, 0, 0);
+
+  const rowF = THREE.MathUtils.clamp(t, 0, 1) * (nrows - 1);
+  const colF = THREE.MathUtils.clamp(lateralU, 0, 1) * (ncols - 1);
+  const r0 = Math.floor(rowF);
+  const r1 = Math.min(nrows - 1, r0 + 1);
+  const c0 = Math.floor(colF);
+  const c1 = Math.min(ncols - 1, c0 + 1);
+  const fr = rowF - r0;
+  const fc = colF - c0;
+
+  const read = (r: number, c: number, target: THREE.Vector3): THREE.Vector3 => {
+    const i = r * ncols + c;
+    return target.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+  };
+
+  read(r0, c0, _a);
+  read(r0, c1, _b);
+  read(r1, c0, _c);
+  read(r1, c1, _d);
+
+  _a.lerp(_b, fc);
+  _c.lerp(_d, fc);
+  return out.copy(_a.lerp(_c, fr));
+}
+
+/** Convert metres of lateral offset to corridor U for a given course width. */
+export function lateralToU(lateralMetres: number, corridorWidth: number): number {
+  const half = corridorWidth * 0.5;
+  if (half <= 1e-4) return 0.5;
+  return THREE.MathUtils.clamp(0.5 + lateralMetres / (2 * half), 0.02, 0.98);
 }
 
 export { SURFACE_TABLE, SNOW_SURFACES };
