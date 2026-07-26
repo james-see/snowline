@@ -5,6 +5,7 @@ export {
   type PbrSetId,
   type PropMaterialId,
   type SnowVariantId,
+  type TerrainVariantId,
 } from '@/render/materials/ids.ts';
 
 export {
@@ -18,6 +19,11 @@ export {
   type ManifestMaterialEntry,
   type PbrMaps,
 } from '@/render/materials/pbrMaps.ts';
+
+export {
+  makeProceduralPbr,
+  speckledAlbedo,
+} from '@/render/materials/proceduralMaps.ts';
 
 export {
   MaterialLibrary,
