@@ -8,6 +8,8 @@ import type { RiderSpawn, RiderState, SurfaceKind } from '@/types/gameplay.ts';
 import { readRiderInput } from '@/types/input.ts';
 import { AirTricks } from './AirTricks.ts';
 import { BoardPhysics } from './BoardPhysics.ts';
+import { GrindSystem } from './GrindSystem.ts';
+import { evaluateLanding } from './LandingEvaluator.ts';
 import { RiderVisual } from './visual/RiderVisual.ts';
 
 const DEFAULT_SPAWN: RiderSpawn = {
@@ -40,6 +42,7 @@ export class RiderModule implements GameModule {
 
   readonly board = new BoardPhysics();
   readonly tricks = new AirTricks();
+  readonly grinds = new GrindSystem();
   readonly #visual = new RiderVisual();
   readonly #published: RiderStateStore;
 
@@ -47,7 +50,6 @@ export class RiderModule implements GameModule {
   #wasAirborne = false;
   #boostActive = false;
   #lastBoostMeter = 1;
-  #grindElapsed = 0;
 
   constructor(order = 10) {
     this.order = order;
@@ -101,8 +103,8 @@ export class RiderModule implements GameModule {
   reset(spawn: RiderSpawn = DEFAULT_SPAWN): void {
     this.board.reset(spawn);
     this.tricks.cancelAir();
+    this.grinds.cancel();
     this.#wasAirborne = false;
-    this.#grindElapsed = 0;
     this.#visual.sync(0, this.board);
     this.#syncPublished();
   }
@@ -112,13 +114,16 @@ export class RiderModule implements GameModule {
 
     const input = readRiderInput(ctx.input);
     const frame = this.board.fixedUpdate(dt, input, ctx.physics);
+    const pose = { boardYaw: this.board.boardYaw, boardPitch: this.board.boardPitch };
 
     if (!this.#wasAirborne && this.board.airborne) {
-      this.tricks.beginAir();
+      this.tricks.beginAir(pose);
     }
 
     if (this.board.airborne) {
-      this.tricks.update(dt, input);
+      this.tricks.update(dt, input, pose);
+      const grab = this.tricks.consumeGrabChanged();
+      if (grab) ctx.events.emit('rider:grab', { grab });
     }
 
     if (frame.jumped) {
@@ -126,11 +131,18 @@ export class RiderModule implements GameModule {
     }
 
     if (frame.landed) {
-      ctx.events.emit('rider:landing', {
-        grade: frame.landed.grade,
-        impact: frame.landed.impactSpeed,
+      const graded = evaluateLanding({
+        alignment: frame.landed.alignment,
+        impactSpeed: frame.landed.impactSpeed,
+        speed: frame.landed.speed,
+        surface: frame.landed.surface,
+        assist: ctx.settings.landingAssist,
       });
-      const trick = this.tricks.resolveLanding(frame.landed.grade);
+      ctx.events.emit('rider:landing', {
+        grade: graded.grade,
+        impact: graded.impactSpeed,
+      });
+      const trick = this.tricks.resolveLanding(graded.grade);
       if (trick) {
         ctx.events.emit('rider:trick', trick);
       } else {
@@ -141,6 +153,7 @@ export class RiderModule implements GameModule {
     if (frame.crashed && frame.crashReason) {
       ctx.events.emit('rider:crash', { reason: frame.crashReason });
       this.tricks.cancelAir();
+      this.grinds.cancel();
     }
 
     if (frame.recovered) {
@@ -155,17 +168,18 @@ export class RiderModule implements GameModule {
     }
 
     if (frame.grindStarted) {
-      this.#grindElapsed = 0;
+      this.grinds.begin(this.board.surfaceKind);
       ctx.events.emit('rider:grind:start');
     }
 
     if (this.board.grinding) {
-      this.#grindElapsed += dt;
+      this.grinds.update(dt, this.board.boardYaw);
     }
 
     if (frame.grindEnded) {
-      ctx.events.emit('rider:grind:end', { duration: this.#grindElapsed });
-      this.#grindElapsed = 0;
+      const grind = this.grinds.end();
+      // Duration scores in ScoreModule; GrindSystem classifies kind/name for HUD later.
+      ctx.events.emit('rider:grind:end', { duration: grind?.duration ?? 0 });
     }
 
     const boosting = input.boost && frame.boostMeter >= 0.08;
