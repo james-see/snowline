@@ -13,6 +13,32 @@ const _rayOrigin = new THREE.Vector3();
 const _rayDir = new THREE.Vector3();
 const _probe = new THREE.Vector3();
 const _down = new THREE.Vector3(0, -1, 0);
+const _toLook = new THREE.Vector3();
+
+/** Mountain-scale clip planes (spawn ~y=100–400, runs span hundreds of metres). */
+const CAM_NEAR = 0.45;
+const CAM_FAR = 8000;
+const MIN_CHASE_DIST = 3.2;
+
+/**
+ * Alpine chase snap — marketing-readable start frame:
+ * rider in the lower third, look pinned to the fall-line terrain so the
+ * horizon shows mountain relief / course line instead of empty fog.
+ */
+const SNAP_BACK = 6.6;
+const SNAP_HEIGHT = 2.3;
+const SNAP_LOOK_AHEAD = 26;
+const SNAP_FOV = 56;
+/** Metres above sampled terrain at the look point. */
+const SNAP_LOOK_TERRAIN_LIFT = 1.15;
+/** Max camera→look elevation (rad). Above this, pull look down toward terrain. */
+const SNAP_MAX_LOOK_ELEV = -0.06;
+
+/** Runtime chase (playable, still shows upcoming line). */
+const RUN_BACK = 6.2;
+const RUN_HEIGHT = 2.25;
+const RUN_LOOK_AHEAD = 14;
+const RUN_LOOK_DROP = 0.22;
 
 /** Match BoardPhysics forwardFromYaw: (sin(yaw), 0, cos(yaw)). */
 function headingFromYaw(yaw: number, out: THREE.Vector3): THREE.Vector3 {
@@ -38,7 +64,7 @@ function terrainHeight(
 export class ChaseCamera {
   #pos = new THREE.Vector3(0, 4, -8);
   #lookAt = new THREE.Vector3();
-  #fov = 62;
+  #fov = SNAP_FOV;
   #shakeAmp = 0;
   #landPulse = 0;
   #airBlend = 0;
@@ -82,8 +108,49 @@ export class ChaseCamera {
     if (ahead != null && behind != null && ahead > behind + 1.5) {
       out.negate();
     } else if (ahead != null && behind == null) {
-      // Only ahead hit and it's above us → likely uphill; prefer opposite.
       if (ahead > fromY + 1) out.negate();
+    }
+  }
+
+  /**
+   * Pin look.y to terrain ahead; if the look ray aims at sky, bias further down.
+   * Optional `pathAim` (course sample ahead) pulls framing onto the upcoming line.
+   */
+  #frameLookAlongTerrain(
+    rider: RiderState,
+    physics: PhysicsWorld,
+    heading: THREE.Vector3,
+    lookAhead: number,
+    lookDrop: number,
+    pathAim: THREE.Vector3 | null,
+    out: THREE.Vector3
+  ): void {
+    if (pathAim) {
+      out.copy(pathAim);
+    } else {
+      out.copy(rider.position).addScaledVector(heading, lookAhead);
+    }
+
+    const bed = terrainHeight(physics, out.x, out.z, rider.position.y);
+    if (bed != null) {
+      out.y = bed + SNAP_LOOK_TERRAIN_LIFT;
+    } else {
+      out.y = rider.position.y + 0.55 - lookAhead * lookDrop;
+    }
+
+    // Sky guard: if cam→look elevation is too high, pull look down onto terrain.
+    _toLook.subVectors(out, this.#pos);
+    const horiz = Math.hypot(_toLook.x, _toLook.z);
+    if (horiz > 0.01) {
+      const elev = Math.atan2(_toLook.y, horiz);
+      if (elev > SNAP_MAX_LOOK_ELEV) {
+        const targetY = this.#pos.y + Math.tan(SNAP_MAX_LOOK_ELEV) * horiz;
+        out.y = Math.min(out.y, targetY);
+        const bed2 = terrainHeight(physics, out.x, out.z, rider.position.y);
+        if (bed2 != null) {
+          out.y = Math.min(out.y, bed2 + SNAP_LOOK_TERRAIN_LIFT);
+        }
+      }
     }
   }
 
@@ -99,12 +166,9 @@ export class ChaseCamera {
     const speed = rider.speed;
     this.#resolveHeading(rider, physics, _heading);
 
-    // Mountain-scale chase: further back/above so the fall line reads in-frame.
-    const back = 8 + Math.min(10, speed * 0.1);
-    const height = 3.2 + Math.min(3.5, speed * 0.035);
-    const lookAhead = 14 + Math.min(22, speed * 0.18);
-    // Bias look down the slope so framing isn't blank sky above the crest.
-    const lookDrop = lookAhead * 0.28;
+    const back = RUN_BACK + Math.min(7, speed * 0.09);
+    const height = RUN_HEIGHT + Math.min(2.2, speed * 0.028);
+    const lookAhead = RUN_LOOK_AHEAD + Math.min(16, speed * 0.16);
 
     this.#airBlend = THREE.MathUtils.damp(
       this.#airBlend,
@@ -115,7 +179,7 @@ export class ChaseCamera {
 
     _desired.copy(rider.position);
     _desired.addScaledVector(_heading, -back);
-    _desired.y += height + this.#airBlend * 1.6;
+    _desired.y += height + this.#airBlend * 1.35;
 
     _right.crossVectors(_up, _heading);
     if (_right.lengthSq() > 1e-6) {
@@ -138,7 +202,8 @@ export class ChaseCamera {
         exclude: ['rider'],
       });
       if (hit && hit.distance < dist - 0.4) {
-        _desired.copy(hit.point).addScaledVector(hit.normal, 0.45);
+        const useDist = Math.max(MIN_CHASE_DIST, hit.distance - 0.45);
+        _desired.copy(_rayOrigin).addScaledVector(_rayDir, useDist);
       }
     }
 
@@ -146,12 +211,18 @@ export class ChaseCamera {
     const follow = dt > 0 ? 1 - Math.exp(-dt * 8) : 1;
     this.#pos.lerp(_desired, follow);
 
-    _look.copy(rider.position);
-    _look.addScaledVector(_heading, lookAhead);
-    if (rider.velocity.y * rider.velocity.y > 0.25) {
-      _look.y += rider.velocity.y * Math.min(0.35, lookAhead * 0.02);
+    this.#frameLookAlongTerrain(
+      rider,
+      physics,
+      _heading,
+      lookAhead,
+      RUN_LOOK_DROP,
+      null,
+      _look
+    );
+    if (rider.velocity.y < -0.5) {
+      _look.y += rider.velocity.y * 0.06;
     }
-    _look.y += 0.6 + this.#airBlend * 0.4 - lookDrop;
     this.#lookAt.lerp(_look, dt > 0 ? 1 - Math.exp(-dt * 10) : 1);
 
     this.#shakeAmp = Math.max(0, this.#shakeAmp - dt * 3.5);
@@ -169,31 +240,52 @@ export class ChaseCamera {
     camera.position.copy(this.#pos).add(_shake);
     camera.lookAt(this.#lookAt);
 
-    const targetFov = baseFov + Math.min(18, speed * 0.22) + this.#airBlend * 4;
+    const targetFov = Math.min(baseFov, SNAP_FOV + 4) + Math.min(14, speed * 0.18) + this.#airBlend * 3;
     this.#fov = dt > 0 ? THREE.MathUtils.damp(this.#fov, targetFov, 6, dt) : targetFov;
     camera.fov = this.#fov;
+    camera.near = CAM_NEAR;
+    camera.far = CAM_FAR;
     camera.updateProjectionMatrix();
   }
 
-  /** Hard-place behind/above rider looking downhill along velocity/yaw. */
-  snap(rider: RiderState, physics: PhysicsWorld, camera?: THREE.PerspectiveCamera): void {
+  /**
+   * Hard-place behind the rider for `run:start` / course load.
+   * Rider sits lower-third; look follows board forward / optional path aim onto terrain.
+   */
+  snap(
+    rider: RiderState,
+    physics: PhysicsWorld,
+    camera?: THREE.PerspectiveCamera,
+    pathAim?: THREE.Vector3 | null
+  ): void {
     this.#resolveHeading(rider, physics, _heading);
     this.#airBlend = rider.airborne ? 1 : 0;
+    this.#fov = SNAP_FOV;
 
-    const back = 9;
-    const height = 4;
-    const lookAhead = 22;
-    const lookDrop = lookAhead * 0.28;
+    this.#pos.copy(rider.position).addScaledVector(_heading, -SNAP_BACK);
+    this.#pos.y += SNAP_HEIGHT;
 
-    this.#pos.copy(rider.position).addScaledVector(_heading, -back);
-    this.#pos.y += height;
-    this.#lookAt.copy(rider.position).addScaledVector(_heading, lookAhead);
-    this.#lookAt.y += 0.5 - lookDrop;
+    this.#frameLookAlongTerrain(
+      rider,
+      physics,
+      _heading,
+      SNAP_LOOK_AHEAD,
+      RUN_LOOK_DROP,
+      pathAim ?? null,
+      this.#lookAt
+    );
 
     if (camera) {
-      camera.position.copy(this.#pos);
-      camera.lookAt(this.#lookAt);
-      camera.updateProjectionMatrix();
+      this.#apply(camera);
     }
+  }
+
+  #apply(camera: THREE.PerspectiveCamera): void {
+    camera.position.copy(this.#pos);
+    camera.near = CAM_NEAR;
+    camera.far = CAM_FAR;
+    camera.fov = this.#fov;
+    camera.lookAt(this.#lookAt);
+    camera.updateProjectionMatrix();
   }
 }

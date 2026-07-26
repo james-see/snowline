@@ -1,7 +1,14 @@
+import * as THREE from 'three';
 import type { EngineContext, GameModule } from '@/types/engine.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
+import type { CourseModule } from '@/course/CourseModule.ts';
 import type { GameFlowModule } from '@/modes/GameFlowModule.ts';
 import { ChaseCamera } from './ChaseCamera.ts';
+
+const _pathAim = new THREE.Vector3();
+
+/** Metres along the spline used as the start-frame course-line look target. */
+const SNAP_PATH_LOOK_AHEAD_M = 70;
 
 export class CameraModule implements GameModule {
   readonly name = 'camera';
@@ -19,8 +26,14 @@ export class CameraModule implements GameModule {
     // Snap as soon as a run begins so capture/warmup never inherit title-origin framing.
     ctx.events.on('run:start', () => {
       this.#pendingSnap = true;
-      const rider = ctx.getModule<RiderModule>('rider');
-      if (rider) this.chase.snap(rider.state, ctx.physics, ctx.camera);
+      this.#snapNow(ctx);
+    });
+    // Course reload mid-session (retry) — re-frame on the new spawn line.
+    ctx.events.on('course:loaded', () => {
+      const flow = ctx.getModule<GameFlowModule>('flow');
+      if (flow && flow.screen !== 'playing' && flow.screen !== 'paused') return;
+      this.#pendingSnap = true;
+      this.#snapNow(ctx);
     });
   }
 
@@ -34,7 +47,7 @@ export class CameraModule implements GameModule {
     if (flow && flow.screen !== 'playing' && flow.screen !== 'paused') return;
 
     if (this.#pendingSnap) {
-      this.chase.snap(rider.state, ctx.physics, ctx.camera);
+      this.#snapNow(ctx);
       this.#pendingSnap = false;
     }
 
@@ -47,5 +60,20 @@ export class CameraModule implements GameModule {
       ctx.settings.cameraShakeScale * (ctx.settings.reducedMotion ? 0.2 : 1),
       ctx.input.look
     );
+  }
+
+  #snapNow(ctx: EngineContext): void {
+    const rider = ctx.getModule<RiderModule>('rider');
+    if (!rider) return;
+    this.chase.snap(rider.state, ctx.physics, ctx.camera, this.#pathAim(ctx, rider));
+  }
+
+  /** Sample the course spline ahead of the rider for mountain-line framing. */
+  #pathAim(ctx: EngineContext, rider: RiderModule): THREE.Vector3 | null {
+    const path = ctx.getModule<CourseModule>('course')?.getPath();
+    if (!path || path.totalLength < 1) return null;
+    const { t } = path.closestPoint(rider.state.position);
+    const aheadT = Math.min(1, t + SNAP_PATH_LOOK_AHEAD_M / path.totalLength);
+    return path.sample(aheadT, _pathAim);
   }
 }
