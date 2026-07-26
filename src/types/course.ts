@@ -79,6 +79,17 @@ export interface TerrainProfile {
   halfpipe?: { startT: number; endT: number; depth: number; width: number };
   /** Optional canyon pinch for dramatic finishes. */
   canyon?: { startT: number; endT: number; depth: number };
+  /**
+   * Soft side channels for viable alternate lines.
+   * `lateral` is metres from centerline (+ = rider's right).
+   */
+  altLines?: ReadonlyArray<{
+    startT: number;
+    endT: number;
+    lateral: number;
+    width: number;
+    depth: number;
+  }>;
 }
 
 export interface CourseDef {
