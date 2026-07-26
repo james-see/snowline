@@ -1,22 +1,46 @@
 /**
- * Blank-sky / near-uniform frame detector.
+ * Blank-sky / washed-frame detector.
  *
- * Gameplay captures that wash out to flat sky fail the capture smoke gate.
+ * Fails fast when a capture is unusable for critic review:
+ *   - mean luminance too high (blown-out / sky wash), OR
+ *   - luminance variance too low (flat gradient / near-uniform)
+ *
  * Uses sharp for luminance stats — no GPU required at analysis time.
+ *
+ * CLI:
+ *   node tools/critic/blank-frame.mjs <png> [<png>...]
+ *   npm run smoke -- --file captures/latest/course_start.png
  */
 
 import sharp from 'sharp';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
-/** Default thresholds tuned against washed-out Alpine sky vs real mountain frames. */
+/** Default thresholds tuned against washed alpine sky vs readable mountain frames. */
 export const BLANK_THRESHOLDS = {
-  /** Max luminance stddev (0–255) before a frame is considered near-uniform. */
+  /**
+   * Max luminance stddev (0–255). At or below → low-variance / flat gradient.
+   * Independent fail path (does not require high mean).
+   */
   maxStddev: 14,
-  /** Max luminance range (max − min) for near-uniform classification. */
+  /**
+   * Max luminance variance (stddev²). At or below → low-variance fail.
+   * Kept in sync with maxStddev (14² = 196); either trip fails.
+   */
+  maxVariance: 196,
+  /**
+   * Absolute mean luminance (0–255). At or above → blown-out wash.
+   * Independent fail path (does not require low variance).
+   */
+  maxMean: 210,
+  /**
+   * Soft bright-wash band: mean ≥ brightMean AND stddev ≤ brightMaxStddev.
+   * Catches sky-dominated frames that are bright but not fully white.
+   */
+  brightMean: 155,
+  brightMaxStddev: 22,
+  /** Diagnostic: max − min range often collapses with flat gradients. */
   maxRange: 40,
-  /** Min mean luminance for the "bright wash" path (sky-dominated blanks). */
-  brightMean: 160,
-  /** Stricter stddev when the frame is mostly bright. */
-  brightMaxStddev: 18,
 };
 
 /**
@@ -36,6 +60,7 @@ export async function analyzeFrame(input) {
       width: info.width,
       height: info.height,
       mean: 0,
+      variance: 0,
       stddev: 0,
       min: 0,
       max: 0,
@@ -67,6 +92,7 @@ export async function analyzeFrame(input) {
     width: info.width,
     height: info.height,
     mean: +mean.toFixed(3),
+    variance: +variance.toFixed(3),
     stddev: +stddev.toFixed(3),
     min: +min.toFixed(3),
     max: +max.toFixed(3),
@@ -77,7 +103,9 @@ export async function analyzeFrame(input) {
 }
 
 /**
- * True when the frame looks like blank / washed sky.
+ * True when the frame looks blank / washed (unusable gameplay capture).
+ * Fail paths are independent ORs: high mean OR low variance (plus soft wash).
+ *
  * @param {Awaited<ReturnType<typeof analyzeFrame>>} stats
  * @param {Partial<typeof BLANK_THRESHOLDS>} [thresholds]
  */
@@ -87,18 +115,34 @@ export function isNearUniform(stats, thresholds = {}) {
   }
 
   const t = { ...BLANK_THRESHOLDS, ...thresholds };
+  const variance =
+    typeof stats.variance === 'number' ? stats.variance : stats.stddev * stats.stddev;
 
-  if (stats.stddev <= t.maxStddev && stats.range <= t.maxRange) {
+  // OR path 1: variance / stddev too low (flat gradient, old blank sky plates).
+  if (stats.stddev <= t.maxStddev || variance <= t.maxVariance) {
     return {
       blank: true,
-      reason: `near-uniform (stddev ${stats.stddev} ≤ ${t.maxStddev}, range ${stats.range} ≤ ${t.maxRange})`,
+      reason:
+        `low variance (stddev ${stats.stddev} ≤ ${t.maxStddev} or ` +
+        `variance ${variance.toFixed(3)} ≤ ${t.maxVariance})`,
     };
   }
 
+  // OR path 2: mean luma too high (blown-out wash).
+  if (stats.mean >= t.maxMean) {
+    return {
+      blank: true,
+      reason: `mean luma too high (mean ${stats.mean} ≥ ${t.maxMean})`,
+    };
+  }
+
+  // Soft bright-wash: bright + relatively flat (sky-dominated blanks).
   if (stats.mean >= t.brightMean && stats.stddev <= t.brightMaxStddev) {
     return {
       blank: true,
-      reason: `bright wash (mean ${stats.mean} ≥ ${t.brightMean}, stddev ${stats.stddev} ≤ ${t.brightMaxStddev})`,
+      reason:
+        `bright wash (mean ${stats.mean} ≥ ${t.brightMean}, ` +
+        `stddev ${stats.stddev} ≤ ${t.brightMaxStddev})`,
     };
   }
 
@@ -106,7 +150,7 @@ export function isNearUniform(stats, thresholds = {}) {
 }
 
 /**
- * Analyse a PNG and return whether it fails the blank-sky smoke check.
+ * Analyse a PNG and return whether it fails the blank / washed-frame check.
  * @param {string | Buffer} input
  * @param {Partial<typeof BLANK_THRESHOLDS>} [thresholds]
  */
@@ -114,4 +158,52 @@ export async function detectBlankFrame(input, thresholds) {
   const stats = await analyzeFrame(input);
   const verdict = isNearUniform(stats, thresholds);
   return { ...stats, ...verdict };
+}
+
+function printHelp() {
+  process.stdout.write(`blank-frame — detect washed / near-uniform capture PNGs
+
+Usage:
+  node tools/critic/blank-frame.mjs <png> [<png>...]
+  npm run smoke                              # capture course_start + blank-check
+  npm run smoke -- --shot forest             # blank-check a specific shot
+  npm run smoke -- --file path/to/shot.png   # analyse existing PNG
+  npm run capture -- --shot course_start     # capture (blank-check on by default)
+
+Exit 0 = all frames pass; exit 1 = at least one blank/washed frame.
+`);
+}
+
+async function main(argv) {
+  if (argv.includes('--help') || argv.includes('-h') || argv.length <= 2) {
+    printHelp();
+    process.exit(argv.length <= 2 ? 2 : 0);
+  }
+
+  let failed = 0;
+  for (let i = 2; i < argv.length; i++) {
+    const file = path.resolve(argv[i]);
+    if (!existsSync(file)) {
+      process.stderr.write(`blank-frame FAIL: not found ${file}\n`);
+      failed++;
+      continue;
+    }
+    const result = await detectBlankFrame(file);
+    const tag = result.blank ? 'FAIL' : 'PASS';
+    process.stdout.write(
+      `${tag} ${path.basename(file)}  mean=${result.mean}  stddev=${result.stddev}  ` +
+        `variance=${result.variance}  range=${result.range}` +
+        (result.reason ? `  — ${result.reason}` : '') +
+        '\n'
+    );
+    if (result.blank) failed++;
+  }
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main(process.argv).catch((err) => {
+    console.error(`blank-frame failed: ${err.message}`);
+    process.exit(1);
+  });
 }

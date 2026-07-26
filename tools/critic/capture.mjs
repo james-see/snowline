@@ -4,11 +4,21 @@
  *
  * Boots the game in real Chrome (not bundled Chromium headless shell),
  * drives it through `window.__snowline`, and writes one PNG per scenario.
+ * After each PNG, blank/washed-frame detection fails fast (mean luma too high
+ * OR luminance variance too low) unless --no-blank-check.
  *
  * Usage:
+ *   npm run capture -- --shot course_start
+ *   npm run capture -- --shot carve
+ *   npm run capture -- --shot forest
+ *   npm run capture                              # full suite
+ *   npm run smoke                                # course_start + blank-check
+ *   node tools/critic/capture.mjs --help
+ *
  *   node tools/critic/capture.mjs [--out <dir>] [--shot <id>] [--width 2560]
  *                                 [--height 1440] [--seed 24189] [--hud]
  *                                 [--build] [--label <name>] [--query k=v]
+ *                                 [--no-blank-check] [--no-actions] [--no-verify]
  */
 
 import { chromium } from 'playwright';
@@ -19,85 +29,108 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
+import { detectBlankFrame } from './blank-frame.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 /**
  * Macro → perform() action sequences for gameplay scenarios.
  * Keys are shot IDs; values map to CaptureBridge `#mapMacroActions` macros.
+ * `base` is the scene preset loaded before perform() (default course_start).
  */
 export const ACTION_MACROS = {
   carve: {
-    intent: 'gentle carve: edge spray, body lean, readable line',
+    base: 'course_start',
+    intent: 'gentle carve: edge spray, body lean, readable terrain + rider line',
     actions: ['carve'],
-    frames: 36,
-    settle: 8,
+    // Match CaptureBridge carve preset duration so shots are not idle start-gate plates.
+    frames: 90,
+    settle: 20,
   },
   hard_carve: {
+    base: 'course_start',
     intent: 'aggressive carve: deep edge, rooster tail spray, high g-force lean',
     actions: ['hard_carve'],
-    frames: 40,
-    settle: 6,
+    frames: 100,
+    settle: 10,
   },
   max_speed: {
+    base: 'course_start',
     intent: 'top speed tuck: minimal drag, motion blur cues, stable cam',
     actions: ['boost', 'tuck'],
     frames: 60,
     settle: 10,
   },
   jump_takeoff: {
+    base: 'course_start',
     intent: 'kicker takeoff: compression, pop, board leaving snow',
     actions: ['jump'],
     frames: 24,
     settle: 0,
   },
   midair_spin: {
+    base: 'course_start',
     intent: '360 spin mid-air: clean rotation, readable board',
     actions: ['jump', 'spin_360'],
     frames: 48,
     settle: 0,
   },
   midair_flip: {
+    base: 'course_start',
     intent: 'backflip mid-air: inverted pose, extension on recovery',
     actions: ['jump', 'flip_back'],
     frames: 52,
     settle: 0,
   },
   grab: {
+    base: 'course_start',
     intent: 'indy/method grab: hand to board, stylish tuck',
     actions: ['jump', 'grab_indy'],
     frames: 44,
     settle: 0,
   },
   grind: {
+    base: 'course_start',
     intent: 'rail/box grind: sparks or snow scrape, balanced slide',
     actions: ['grind'],
     frames: 50,
     settle: 4,
   },
   perfect_landing: {
+    base: 'course_start',
     intent: 'clean landing: compression, spray, no tumble',
     actions: ['jump', 'spin_180', 'land_clean'],
     frames: 56,
     settle: 8,
   },
   failed_landing: {
+    base: 'course_start',
     intent: 'sketchy landing: back seat, wobble, near-fall',
     actions: ['jump', 'land_sketchy'],
     frames: 48,
     settle: 6,
   },
   crash: {
+    base: 'course_start',
     intent: 'wipeout: tumble, snow plume, board separation',
     actions: ['crash'],
     frames: 40,
     settle: 4,
   },
   boost: {
+    base: 'course_start',
     intent: 'boost pad activation: speed lines, rider stretch',
     actions: ['boost_pad'],
     frames: 36,
     settle: 6,
+  },
+  /** Timberline gameplay probe — not a static forest start-gate plate. */
+  forest_run: {
+    base: 'forest',
+    intent: 'forest section in motion: trees, narrow line, readable depth',
+    actions: ['carve'],
+    frames: 80,
+    settle: 16,
   },
 };
 
@@ -113,10 +146,16 @@ export const SCENE_SHOT_IDS = [
   'settings',
 ];
 
+/**
+ * Critic / gate-required shots that must exist and pass blank-frame detect.
+ * title + course_start + carve + forest cover brand, spawn, edge, and timberline.
+ */
+export const GATE_SHOT_IDS = ['title', 'course_start', 'carve', 'forest'];
+
 /** Scenarios driven through perform() rather than static preset setup. */
 export const ACTION_SHOTS = Object.entries(ACTION_MACROS).map(([id, macro]) => ({
   id,
-  base: 'course_start',
+  base: macro.base ?? 'course_start',
   intent: macro.intent,
   actions: macro.actions,
   frames: macro.frames,
@@ -138,6 +177,41 @@ export const DEFAULTS = {
 
 const DEFAULT_OUT = path.join(ROOT, 'captures', `run-${process.pid}`);
 
+function printHelp() {
+  process.stdout.write(`capture — deterministic Snowline screenshot suite
+
+Commands:
+  npm run capture -- --shot course_start
+  npm run capture -- --shot carve
+  npm run capture -- --shot forest
+  npm run capture -- --shot title
+  npm run capture                              # full REQUIRED_SHOT_IDS suite
+  npm run smoke                                # course_start + blank-frame gate
+  npm run smoke -- --shot forest
+  npm run flicker -- --shot forest
+  node tools/critic/blank-frame.mjs <png>
+
+Gate shots (must be usable, blank-check enforced): ${GATE_SHOT_IDS.join(', ')}
+Scene shots: ${SCENE_SHOT_IDS.join(', ')}
+Action macros: ${Object.keys(ACTION_MACROS).join(', ')}
+
+Flags:
+  --out <dir>          output directory
+  --shot <id>          capture a single scene or action shot
+  --width / --height   resolution (default ${DEFAULTS.width}x${DEFAULTS.height})
+  --seed <n>           deterministic seed (default ${DEFAULTS.seed})
+  --hud                show HUD in captures
+  --build              vite build + preview instead of snapshot dev
+  --label <name>       label written into meta.json
+  --query k=v          extra URL query params
+  --no-actions         skip ACTION_MACROS (scene presets only)
+  --no-blank-check     do not fail on washed / low-variance frames
+  --no-verify          skip snapshot typecheck
+  --keep-open          leave the page open (debug)
+  --help               this message
+`);
+}
+
 function parseArgs(argv) {
   const args = {
     out: DEFAULT_OUT,
@@ -150,8 +224,10 @@ function parseArgs(argv) {
     label: null,
     keepOpen: false,
     verify: true,
+    blankCheck: true,
     query: [],
     actions: true,
+    help: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -166,6 +242,8 @@ function parseArgs(argv) {
     else if (a === '--keep-open') args.keepOpen = true;
     else if (a === '--no-verify') args.verify = false;
     else if (a === '--no-actions') args.actions = false;
+    else if (a === '--no-blank-check') args.blankCheck = false;
+    else if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--query') {
       for (const pair of new URLSearchParams(String(argv[++i]))) {
         args.query.push(pair);
@@ -440,9 +518,18 @@ export async function capture(options = {}) {
         throw new Error(`required scene shot "${id}" missing from window.__snowline.presets()`);
       }
     }
-    for (const id of ACTION_SHOT_IDS) {
-      if (!presetIds.has(id) && !presetIds.has('course_start')) {
-        throw new Error(`action shot "${id}" needs course_start base preset`);
+    for (const shot of ACTION_SHOTS) {
+      if (!presetIds.has(shot.base)) {
+        throw new Error(
+          `action shot "${shot.id}" needs base preset "${shot.base}" from window.__snowline.presets()`
+        );
+      }
+    }
+    for (const id of GATE_SHOT_IDS) {
+      const covered =
+        presetIds.has(id) || ACTION_SHOT_IDS.has(id) || SCENE_SHOT_IDS.includes(id);
+      if (!covered) {
+        throw new Error(`gate-required shot "${id}" is not in the capture catalogue`);
       }
     }
 
@@ -490,6 +577,11 @@ export async function capture(options = {}) {
           };
         }),
     ];
+
+    // Gate shots requested via --shot must resolve to a job.
+    if (opts.shot && GATE_SHOT_IDS.includes(opts.shot) && jobs.length === 0) {
+      throw new Error(`gate shot "${opts.shot}" produced no capture jobs`);
+    }
 
     if (jobs.length === 0) {
       throw new Error(`no capture jobs for shot "${opts.shot}"`);
@@ -551,12 +643,30 @@ export async function capture(options = {}) {
         30_000,
         `screenshot "${preset.id}"`
       );
-      await writeFile(file, Buffer.from(data, 'base64'));
+      const png = Buffer.from(data, 'base64');
+      await writeFile(file, png);
 
-      results.push({ ...preset, file, stats });
+      let blank = null;
+      if (opts.blankCheck !== false) {
+        blank = await detectBlankFrame(png);
+        if (blank.blank) {
+          throw new Error(
+            `blank/washed frame for "${preset.id}": ${blank.reason} ` +
+              `(mean=${blank.mean} stddev=${blank.stddev} variance=${blank.variance}). ` +
+              `Wrote ${path.relative(ROOT, file)} for inspection. ` +
+              `Re-run with --no-blank-check to keep going.`
+          );
+        }
+      }
+
+      results.push({ ...preset, file, stats, blank });
       process.stdout.write(
         `  captured ${preset.id.padEnd(20)} ${stats.mean.toFixed(2)}ms  ` +
-          `${stats.calls} calls  ${(stats.triangles / 1000).toFixed(0)}k tris\n`
+          `${stats.calls} calls  ${(stats.triangles / 1000).toFixed(0)}k tris` +
+          (blank
+            ? `  luma μ=${blank.mean} σ=${blank.stddev}`
+            : '') +
+          `\n`
       );
     }
 
@@ -566,6 +676,10 @@ export async function capture(options = {}) {
       if (missing.length > 0) {
         throw new Error(`capture suite missing required shot(s): ${missing.join(', ')}`);
       }
+      const missingGate = GATE_SHOT_IDS.filter((id) => !got.has(id));
+      if (missingGate.length > 0) {
+        throw new Error(`capture suite missing gate shot(s): ${missingGate.join(', ')}`);
+      }
     }
 
     const meta = {
@@ -574,15 +688,31 @@ export async function capture(options = {}) {
       seed: opts.seed,
       resolution: { width: opts.width, height: opts.height },
       requiredShotIds: REQUIRED_SHOT_IDS,
+      gateShotIds: GATE_SHOT_IDS,
+      blankCheck: opts.blankCheck !== false,
       actionMacros: Object.fromEntries(
-        Object.entries(ACTION_MACROS).map(([id, m]) => [id, m.actions])
+        Object.entries(ACTION_MACROS).map(([id, m]) => [
+          id,
+          { base: m.base ?? 'course_start', actions: m.actions, frames: m.frames },
+        ])
       ),
       gpu: await page.evaluate(() => {
         const gl = document.createElement('canvas').getContext('webgl2');
         const dbg = gl?.getExtension('WEBGL_debug_renderer_info');
         return dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'unknown';
       }),
-      shots: results.map(({ file, ...rest }) => ({ ...rest, file: path.basename(file) })),
+      shots: results.map(({ file, blank, ...rest }) => ({
+        ...rest,
+        file: path.basename(file),
+        blank: blank
+          ? {
+              mean: blank.mean,
+              stddev: blank.stddev,
+              variance: blank.variance,
+              blank: blank.blank,
+            }
+          : null,
+      })),
       consoleErrors,
     };
     await writeFile(path.join(outDir, 'meta.json'), JSON.stringify(meta, null, 2));
@@ -608,6 +738,10 @@ export async function capture(options = {}) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = parseArgs(process.argv);
+  if (args.help) {
+    printHelp();
+    process.exit(0);
+  }
   if (!existsSync(path.join(ROOT, 'node_modules'))) {
     console.error('run npm install first');
     process.exit(1);
