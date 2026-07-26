@@ -80,7 +80,8 @@ export class CourseModule implements GameModule {
     const props = buildCourseProps(def.props, path, def.checkpoints, budgets);
 
     // Snap trees/rocks/rails/etc. onto the visual mesh; sync placement Y for physics.
-    snapPropsToTerrain(props, terrain, path, def.terrain.width, def.props);
+    // Must use meshWidth (corridor + apron), not race corridor width — wrong U → floating Y.
+    snapPropsToTerrain(props, terrain, path, terrain.meshWidth, def.props);
     // Snap gates/finish onto the visual mesh before physics registration.
     this.#snapMarkersToTerrain(def, path, terrain, props);
 
