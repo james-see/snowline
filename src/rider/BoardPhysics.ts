@@ -25,6 +25,7 @@ import {
   LANDING,
   SPEED,
   SURFACE,
+  VOID,
 } from './tuning.ts';
 
 export interface BoardTransform {
@@ -43,7 +44,7 @@ export interface RiderPhysicsFrameResult {
   jumpImpulse: number;
   landed: LandingResult | null;
   crashed: boolean;
-  crashReason: 'impact' | 'edge-catch' | 'alignment' | null;
+  crashReason: 'impact' | 'edge-catch' | 'alignment' | 'void' | null;
   recovered: boolean;
   spray: SpraySignal | null;
   grindStarted: boolean;
@@ -134,6 +135,13 @@ export class BoardPhysics {
   #probeCount = 0;
   #nearHitCount = 0;
   #bestContactGap = Number(JUMP.rayLength);
+  /** Last stable grounded pose for void / kill-plane recovery. */
+  #lastGroundedPos = new THREE.Vector3();
+  #lastGroundedYaw = 0;
+  /** Seconds airborne with zero terrain ray hits. */
+  #noHitAirTime = 0;
+  /** Remaining soft powder wallow while recovering from void, s. */
+  #voidWallow = 0;
   #samples: GroundSample[] = Array.from({ length: rayStationCount() }, () => ({
     hit: false,
     distance: JUMP.rayLength,
@@ -168,6 +176,10 @@ export class BoardPhysics {
     this.#probeCount = 0;
     this.#nearHitCount = 0;
     this.#bestContactGap = 0;
+    this.#lastGroundedPos.copy(spawn.position);
+    this.#lastGroundedYaw = spawn.yaw;
+    this.#noHitAirTime = 0;
+    this.#voidWallow = 0;
     this.#groundNormal.set(0, 1, 0);
     this.#groundPoint.copy(spawn.position);
     this.#composeQuaternion();
@@ -215,17 +227,26 @@ export class BoardPhysics {
 
     if (this.crashed) {
       this.#recovery = Math.max(0, this.#recovery - dt);
-      this.velocity.multiplyScalar(Math.max(0, 1 - dt * 3.5));
-      this.position.addScaledVector(this.velocity, dt);
+      if (this.#voidWallow > 0) {
+        this.#integrateVoidWallow(dt);
+      } else {
+        this.velocity.multiplyScalar(Math.max(0, 1 - dt * 3.5));
+        this.position.addScaledVector(this.velocity, dt);
+      }
       this.speed = horizontalSpeed(this.velocity);
       if (this.#recovery <= 0) {
         this.crashed = false;
+        this.#voidWallow = 0;
         this.velocity.set(0, 0, 0);
         this.speed = CRASH.recoverySpeed;
         this.boardPitch = 0;
         this.boardRoll = 0;
+        this.grounded = true;
+        this.airborne = false;
+        this.#noHitAirTime = 0;
         result.recovered = true;
       }
+      this.#composeQuaternion();
       this.#writeBody(physics);
       result.boostMeter = this.boostMeter;
       return result;
@@ -244,6 +265,12 @@ export class BoardPhysics {
     this.grounded = this.#resolveGrounded();
     this.airborne = !this.grounded;
 
+    if (this.airborne && this.#probeCount === 0) {
+      this.#noHitAirTime += dt;
+    } else {
+      this.#noHitAirTime = 0;
+    }
+
     if (wasGrounded) {
       this.#coyote = JUMP.coyote;
       if (input.jump || input.jumpPressed) this.#anticipation = Math.min(0.18, this.#anticipation + dt);
@@ -257,10 +284,11 @@ export class BoardPhysics {
     if (this.grounded && !wasGrounded && this.#wasAirborne) {
       result.landed = this.#resolveLanding();
       if (result.landed.grade === 'bail') {
-        this.crashed = true;
-        this.#recovery = CRASH.recoveryTime;
-        result.crashed = true;
-        result.crashReason = result.landed.impactSpeed >= LANDING.hardImpact ? 'impact' : 'alignment';
+        this.#beginCrash(
+          result,
+          result.landed.impactSpeed >= LANDING.hardImpact ? 'impact' : 'alignment',
+          CRASH.recoveryTime,
+        );
         this.#writeBody(physics);
         result.boostMeter = this.boostMeter;
         return result;
@@ -286,6 +314,19 @@ export class BoardPhysics {
       this.#wasAirborne = true;
     }
 
+    if (this.grounded && !this.crashed) {
+      this.#lastGroundedPos.copy(this.position);
+      this.#lastGroundedYaw = this.boardYaw;
+    }
+
+    if (!this.crashed && this.#shouldRecoverFromVoid()) {
+      this.#beginVoidRecovery(result);
+      this.#composeQuaternion();
+      this.#writeBody(physics);
+      result.boostMeter = this.boostMeter;
+      return result;
+    }
+
     if (this.grinding && !this.#wasGrinding) {
       result.grindStarted = true;
     }
@@ -300,6 +341,67 @@ export class BoardPhysics {
     this.speed = horizontalSpeed(this.velocity);
     result.boostMeter = this.boostMeter;
     return result;
+  }
+
+  #shouldRecoverFromVoid(): boolean {
+    if (this.position.y <= VOID.killPlaneY) return true;
+    if (this.position.y <= this.#lastGroundedPos.y - VOID.maxDrop) return true;
+    if (this.airborne && this.#probeCount === 0 && this.#noHitAirTime >= VOID.freefallTime) {
+      return true;
+    }
+    return false;
+  }
+
+  #beginVoidRecovery(result: RiderPhysicsFrameResult): void {
+    this.grinding = false;
+    this.surfaceKind = 'powder';
+    this.#voidWallow = VOID.wallowTime;
+    this.#beginCrash(result, 'void', VOID.wallowTime + VOID.recoverStun);
+  }
+
+  #beginCrash(
+    result: RiderPhysicsFrameResult,
+    reason: NonNullable<RiderPhysicsFrameResult['crashReason']>,
+    recoveryTime: number,
+  ): void {
+    this.crashed = true;
+    this.#recovery = recoveryTime;
+    result.crashed = true;
+    result.crashReason = reason;
+  }
+
+  /** Arcade deep-powder wallow: drag hard and ease back toward last snow. */
+  #integrateVoidWallow(dt: number): void {
+    this.#voidWallow = Math.max(0, this.#voidWallow - dt);
+    this.surfaceKind = 'powder';
+
+    this.velocity.multiplyScalar(Math.max(0, 1 - VOID.powderDrag * dt));
+    // Early wallow sinks a little, then the pull lifts back onto snow.
+    if (this.#voidWallow > VOID.wallowTime * 0.45) {
+      this.velocity.y -= VOID.sinkRate * dt;
+    }
+
+    const alpha = 1 - Math.exp(-VOID.pullRate * dt);
+    this.position.lerp(this.#lastGroundedPos, alpha);
+    this.boardYaw = approachAngle(this.boardYaw, this.#lastGroundedYaw, 5 * dt);
+    this.boardPitch = approach(this.boardPitch, 0, 7 * dt);
+    this.boardRoll = approach(this.boardRoll, 0, 7 * dt);
+    this.lean = approach(this.lean, 0, 8 * dt);
+    this.edgeAngle = this.lean * CARVE.edgePerLean;
+
+    if (this.#voidWallow <= 0) {
+      this.position.copy(this.#lastGroundedPos);
+      this.boardYaw = this.#lastGroundedYaw;
+      this.velocity.set(0, 0, 0);
+      this.boardPitch = 0;
+      this.boardRoll = 0;
+      this.grounded = true;
+      this.airborne = false;
+      this.#noHitAirTime = 0;
+      this.#wasAirborne = false;
+    } else {
+      this.position.addScaledVector(this.velocity, dt * 0.35);
+    }
   }
 
   #resolveGrounded(): boolean {
