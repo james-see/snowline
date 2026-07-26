@@ -1,0 +1,241 @@
+import type { CourseDef } from '@/types/course.ts';
+
+const alpineCheckpoints = [
+  { id: 'cp1', name: 'Meadow Gate', t: 0.18, width: 18 },
+  { id: 'cp2', name: 'Ridge Line', t: 0.38, lateral: -8, width: 16 },
+  { id: 'cp3', name: 'Sun Bowl', t: 0.58, lateral: 12, width: 20 },
+  { id: 'cp4', name: 'Rail District', t: 0.76, lateral: -14, width: 16 },
+] as const;
+
+export const ALPINE_FLOW: CourseDef = {
+  id: 'alpine',
+  name: 'Alpine Flow',
+  description:
+    'A wide blue run with a forgiving groomed center, powder stashes on the left, ' +
+    'and a rail line on the right. Multiple lines reunite at broad recovery gates.',
+  seed: 0xa1f1_0e01,
+  length: 2200,
+  difficulty: 'blue',
+  spawn: { position: [0, 422, -20], yaw: 0, pitch: -8 },
+  checkpoints: [...alpineCheckpoints],
+  finish: { id: 'finish', name: 'Village Arch', t: 0.98, width: 22 },
+  controlPoints: [
+    [0, 420, 0],
+    [-120, 385, 280],
+    [80, 345, 560],
+    [-40, 305, 900],
+    [100, 255, 1200],
+    [-60, 205, 1500],
+    [40, 155, 1800],
+    [0, 105, 2100],
+  ],
+  terrain: {
+    width: 92,
+    drop: 320,
+    pathSegmentsPer100m: 14,
+    lateralSegments: 28,
+    pitchDeg: 14,
+    roughness: 0.42,
+  },
+  surfaceRegions: [
+    { center: [-55, 350, 420], radius: 85, kind: 'powder' },
+    { center: [48, 240, 1280], radius: 55, kind: 'ice' },
+  ],
+  props: [
+    { id: 'flag-start', kind: 'flag', position: [-12, 421, -8], rotationY: 0.4 },
+    { id: 'flag-start-r', kind: 'flag', position: [12, 421, -8], rotationY: -0.4 },
+    { id: 'rock-landmark', kind: 'rock', position: [-70, 360, 320], variant: 2, scale: 2.4 },
+    { id: 'rail-main', kind: 'rail', position: [38, 330, 720], rotationY: -0.35, length: 22, grindable: true },
+    { id: 'rail-alt', kind: 'rail', position: [52, 280, 1180], rotationY: 0.2, length: 18, grindable: true },
+    { id: 'ramp-line', kind: 'ramp', position: [-18, 298, 940], rotationY: 0.1, lip: 2.8, scale: 1.2 },
+    { id: 'ramp-recovery', kind: 'ramp', position: [24, 248, 1320], rotationY: -0.15, lip: 1.6, recovery: true },
+    { id: 'tree-edge-a', kind: 'tree', position: [-48, 370, 180], variant: 0 },
+    { id: 'tree-edge-b', kind: 'tree', position: [-52, 365, 220], variant: 1 },
+    { id: 'tree-edge-c', kind: 'tree', position: [58, 360, 200], variant: 2 },
+    { id: 'tree-powder-1', kind: 'tree', position: [-78, 340, 480], variant: 1, recovery: true },
+    { id: 'tree-powder-2', kind: 'tree', position: [-82, 335, 520], variant: 0, recovery: true },
+    { id: 'gate-cp1', kind: 'checkpoint_gate', position: [-8, 350, 390], rotationY: -0.3 },
+    { id: 'gate-cp2', kind: 'checkpoint_gate', position: [-24, 310, 830], rotationY: 0.15 },
+    { id: 'gate-cp3', kind: 'checkpoint_gate', position: [28, 260, 1240], rotationY: -0.1 },
+    { id: 'gate-cp4', kind: 'checkpoint_gate', position: [-18, 215, 1660], rotationY: 0.25 },
+    { id: 'finish', kind: 'finish_arch', position: [0, 108, 2085], rotationY: 0 },
+  ],
+  medals: {
+    bronzeTime: 165,
+    silverTime: 132,
+    goldTime: 108,
+    platinumTime: 94,
+    bronzeScore: 4000,
+    silverScore: 7000,
+    goldScore: 10000,
+    platinumScore: 14000,
+  },
+};
+
+export const TIMBERLINE: CourseDef = {
+  id: 'timberline',
+  name: 'Timberline',
+  description:
+    'A narrow black run through old-growth forest. Thread tree gaps, duck a tunnel, ' +
+    'and choose between the main chute or a tight glade shortcut with rocks to hop.',
+  seed: 0x71ab_e1ae,
+  length: 1850,
+  difficulty: 'black',
+  spawn: { position: [200, 402, -120], yaw: 0.15, pitch: -10 },
+  checkpoints: [
+    { id: 'cp1', name: 'Glade Entry', t: 0.2, width: 12 },
+    { id: 'cp2', name: 'Tunnel Mouth', t: 0.42, width: 10 },
+    { id: 'cp3', name: 'Rock Garden', t: 0.62, lateral: -6, width: 14 },
+    { id: 'cp4', name: 'Shortcut Merge', t: 0.82, width: 16 },
+  ],
+  finish: { id: 'finish', name: 'Forest Exit', t: 0.99, width: 18 },
+  controlPoints: [
+    [200, 400, -100],
+    [185, 375, 120],
+    [150, 345, 360],
+    [115, 310, 620],
+    [75, 275, 880],
+    [35, 240, 1140],
+    [-5, 205, 1380],
+    [-35, 170, 1620],
+    [-45, 135, 1780],
+  ],
+  terrain: {
+    width: 48,
+    drop: 270,
+    pathSegmentsPer100m: 16,
+    lateralSegments: 18,
+    pitchDeg: 16,
+    roughness: 0.68,
+  },
+  surfaceRegions: [
+    { center: [130, 330, 400], radius: 40, kind: 'packed' },
+    { center: [20, 220, 1200], radius: 35, kind: 'powder' },
+  ],
+  props: [
+    { id: 'tree-01', kind: 'tree', position: [168, 388, 40], variant: 0 },
+    { id: 'tree-02', kind: 'tree', position: [176, 382, 80], variant: 1 },
+    { id: 'tree-03', kind: 'tree', position: [158, 378, 95], variant: 2 },
+    { id: 'tree-04', kind: 'tree', position: [142, 360, 210], variant: 0 },
+    { id: 'tree-05', kind: 'tree', position: [128, 352, 250], variant: 1 },
+    { id: 'tree-06', kind: 'tree', position: [118, 345, 290], variant: 2 },
+    { id: 'tree-07', kind: 'tree', position: [102, 330, 410], variant: 0 },
+    { id: 'tree-08', kind: 'tree', position: [88, 322, 450], variant: 1 },
+    { id: 'tree-09', kind: 'tree', position: [72, 310, 520], variant: 2 },
+    { id: 'tree-10', kind: 'tree', position: [58, 298, 580], variant: 0 },
+    { id: 'tree-11', kind: 'tree', position: [44, 285, 660], variant: 1 },
+    { id: 'tree-12', kind: 'tree', position: [28, 272, 740], variant: 2 },
+    { id: 'tree-13', kind: 'tree', position: [12, 258, 820], variant: 0 },
+    { id: 'tree-14', kind: 'tree', position: [-4, 245, 900], variant: 1 },
+    { id: 'tree-15', kind: 'tree', position: [-18, 232, 980], variant: 2 },
+    { id: 'tree-sc-1', kind: 'tree', position: [95, 300, 700], variant: 0, recovery: true },
+    { id: 'tree-sc-2', kind: 'tree', position: [102, 295, 730], variant: 1, recovery: true },
+    { id: 'tree-sc-3', kind: 'tree', position: [88, 292, 755], variant: 2, recovery: true },
+    { id: 'tunnel', kind: 'tunnel', position: [108, 302, 680], rotationY: 0.35, scale: 1.1 },
+    { id: 'rock-1', kind: 'rock', position: [62, 268, 940], variant: 0, scale: 1.4 },
+    { id: 'rock-2', kind: 'rock', position: [48, 262, 980], variant: 1, scale: 1.1 },
+    { id: 'rock-3', kind: 'rock', position: [34, 256, 1020], variant: 2, scale: 1.6 },
+    { id: 'rail-stub', kind: 'rail', position: [-12, 228, 1280], rotationY: -0.5, length: 10, grindable: true },
+    { id: 'ramp-stub', kind: 'ramp', position: [8, 220, 1320], rotationY: 0.2, lip: 2.2 },
+    { id: 'flag-tl', kind: 'flag', position: [188, 401, -105], rotationY: 0.2 },
+    { id: 'gate-cp1', kind: 'checkpoint_gate', position: [162, 355, 280], rotationY: 0.1 },
+    { id: 'gate-cp2', kind: 'checkpoint_gate', position: [100, 305, 640], rotationY: 0.35 },
+    { id: 'gate-cp3', kind: 'checkpoint_gate', position: [38, 255, 1000], rotationY: -0.2 },
+    { id: 'gate-cp4', kind: 'checkpoint_gate', position: [-8, 210, 1420], rotationY: 0.05 },
+    { id: 'finish', kind: 'finish_arch', position: [-44, 138, 1765], rotationY: 0.1 },
+  ],
+  medals: {
+    bronzeTime: 148,
+    silverTime: 118,
+    goldTime: 96,
+    platinumTime: 82,
+    bronzeScore: 5000,
+    silverScore: 8500,
+    goldScore: 12000,
+    platinumScore: 16500,
+  },
+};
+
+export const SUMMIT_DROP: CourseDef = {
+  id: 'summit',
+  name: 'Summit Drop',
+  description:
+    'Double-black hero run from the summit lip. Cliffs on either side, mandatory airs, ' +
+    'a halfpipe section, then a canyon finish — stay center for the fair line.',
+  seed: 0x5b01_17d0,
+  length: 2450,
+  difficulty: 'double-black',
+  spawn: { position: [-300, 522, -220], yaw: 0.05, pitch: -12 },
+  checkpoints: [
+    { id: 'cp1', name: 'Summit Ledge', t: 0.12, width: 14 },
+    { id: 'cp2', name: 'Cliff Bypass', t: 0.32, width: 12 },
+    { id: 'cp3', name: 'Halfpipe Entry', t: 0.52, width: 20 },
+    { id: 'cp4', name: 'Canyon Lip', t: 0.78, width: 14 },
+  ],
+  finish: { id: 'finish', name: 'Base Camp', t: 0.995, width: 24 },
+  controlPoints: [
+    [-300, 520, -200],
+    [-285, 475, 80],
+    [-230, 420, 380],
+    [-165, 360, 680],
+    [-95, 295, 980],
+    [-25, 230, 1280],
+    [35, 165, 1580],
+    [45, 105, 1880],
+    [30, 75, 2150],
+  ],
+  terrain: {
+    width: 72,
+    drop: 450,
+    pathSegmentsPer100m: 15,
+    lateralSegments: 24,
+    pitchDeg: 18,
+    roughness: 0.78,
+    halfpipe: { startT: 0.48, endT: 0.66, depth: 5.5, width: 38 },
+    canyon: { startT: 0.74, endT: 0.98, depth: 12 },
+  },
+  surfaceRegions: [
+    { center: [-250, 450, 200], radius: 50, kind: 'ice' },
+    { center: [10, 180, 1650], radius: 60, kind: 'packed' },
+  ],
+  props: [
+    { id: 'flag-summit', kind: 'flag', position: [-312, 521, -210], rotationY: 0.3 },
+    { id: 'rock-cliff-l', kind: 'rock', position: [-360, 440, 120], variant: 3, scale: 3.2 },
+    { id: 'rock-cliff-r', kind: 'rock', position: [-220, 430, 160], variant: 2, scale: 2.8 },
+    { id: 'ramp-kicker-1', kind: 'ramp', position: [-248, 400, 420], rotationY: 0.08, lip: 4.2, scale: 1.4 },
+    { id: 'ramp-kicker-2', kind: 'ramp', position: [-175, 340, 760], rotationY: -0.05, lip: 5.0, scale: 1.6 },
+    { id: 'ramp-kicker-3', kind: 'ramp', position: [-90, 275, 1080], rotationY: 0.12, lip: 4.6, scale: 1.5 },
+    { id: 'rail-summit', kind: 'rail', position: [-130, 310, 900], rotationY: 0.4, length: 16, grindable: true },
+    { id: 'rock-guard-1', kind: 'rock', position: [-200, 350, 820], variant: 1, scale: 1.8, recovery: true },
+    { id: 'rock-guard-2', kind: 'rock', position: [20, 210, 1500], variant: 0, scale: 1.5, recovery: true },
+    { id: 'gate-cp1', kind: 'checkpoint_gate', position: [-292, 490, 40], rotationY: 0.05 },
+    { id: 'gate-cp2', kind: 'checkpoint_gate', position: [-210, 385, 580], rotationY: 0.15 },
+    { id: 'gate-cp3', kind: 'checkpoint_gate', position: [-40, 240, 1320], rotationY: -0.08 },
+    { id: 'gate-cp4', kind: 'checkpoint_gate', position: [28, 150, 1720], rotationY: 0.02 },
+    { id: 'finish', kind: 'finish_arch', position: [32, 78, 2120], rotationY: 0 },
+  ],
+  medals: {
+    bronzeTime: 132,
+    silverTime: 104,
+    goldTime: 86,
+    platinumTime: 74,
+    bronzeScore: 6500,
+    silverScore: 10500,
+    goldScore: 15000,
+    platinumScore: 21000,
+  },
+};
+
+export const COURSE_CATALOG: Record<CourseDef['id'], CourseDef> = {
+  alpine: ALPINE_FLOW,
+  timberline: TIMBERLINE,
+  summit: SUMMIT_DROP,
+};
+
+export const COURSE_LIST: readonly CourseDef[] = [ALPINE_FLOW, TIMBERLINE, SUMMIT_DROP];
+
+export function getCourseDef(id: CourseDef['id']): CourseDef {
+  const def = COURSE_CATALOG[id];
+  if (!def) throw new Error(`Unknown course id: ${id}`);
+  return def;
+}

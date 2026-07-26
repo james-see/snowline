@@ -1,0 +1,35 @@
+{
+  "name": "snowline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An original arcade snowboarding game in the browser, built on Three.js and Rapier.",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/**/*.test.ts",
+    "assets:fetch": "node tools/assets/fetch.mjs",
+    "assets:pack": "node tools/assets/pack.mjs",
+    "assets:all": "npm run assets:fetch && npm run assets:pack",
+    "capture": "node tools/critic/capture.mjs",
+    "critic": "node tools/critic/run.mjs",
+    "gate": "node tools/critic/gate.mjs",
+    "determinism": "node tools/critic/determinism-check.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.19.3",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/three": "^0.185.1",
+    "playwright": "^1.62.0",
+    "sharp": "^0.35.3",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3",
+    "vite": "^6.3.5"
+  }
+}
