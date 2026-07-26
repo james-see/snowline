@@ -17,6 +17,8 @@ export interface ProceduralRig {
   rightArm: THREE.Object3D;
   leftLeg: THREE.Object3D;
   rightLeg: THREE.Object3D;
+  leftShin: THREE.Object3D;
+  rightShin: THREE.Object3D;
   tints: ProceduralTintTargets;
   dispose: () => void;
 }
@@ -69,7 +71,8 @@ function capsule(
 
 /**
  * High-quality procedural rider + board when no glTF is available.
- * Pivot is board center; body stands in a crouched carve stance.
+ * Pivot is board center; body stands in a crouched carve-ready stance.
+ * Gear defaults are dark/contrasting so the silhouette reads on snow.
  */
 export function buildProceduralRig(): ProceduralRig {
   const root = new THREE.Group();
@@ -81,31 +84,38 @@ export function buildProceduralRig(): ProceduralRig {
     roughness: 0.38,
   });
   const baseMat = new THREE.MeshStandardMaterial({
-    color: 0x1c2430,
+    color: 0x14181e,
     metalness: 0.55,
     roughness: 0.5,
   });
+  // Dark slate shell — readable on packed/powder white.
   const suitMat = new THREE.MeshStandardMaterial({
-    color: 0xe8e4dc,
-    roughness: 0.78,
-    metalness: 0.05,
+    color: 0x2a3344,
+    roughness: 0.72,
+    metalness: 0.12,
   });
   const accentMat = new THREE.MeshStandardMaterial({
-    color: 0x1a1a1a,
-    roughness: 0.72,
-    metalness: 0.08,
+    color: 0x1a1f28,
+    roughness: 0.68,
+    metalness: 0.1,
   });
   const bootMat = new THREE.MeshStandardMaterial({
-    color: 0x22262c,
-    roughness: 0.55,
-    metalness: 0.2,
+    color: 0x12151a,
+    roughness: 0.5,
+    metalness: 0.22,
   });
   const lensMat = new THREE.MeshStandardMaterial({
-    color: 0x1a3048,
+    color: 0x0e2438,
     metalness: 0.85,
     roughness: 0.18,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.88,
+  });
+  // Warm stripe accent for edge read without washing to snow.
+  const stripeMat = new THREE.MeshStandardMaterial({
+    color: 0xc45c26,
+    roughness: 0.55,
+    metalness: 0.15,
   });
 
   const board = new THREE.Group();
@@ -120,7 +130,6 @@ export function buildProceduralRig(): ProceduralRig {
   base.castShadow = true;
   board.add(base);
 
-  // Bindings
   for (const z of [-0.18, 0.16] as const) {
     const binding = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.22), accentMat);
     binding.position.set(0, 0.04, z);
@@ -131,10 +140,11 @@ export function buildProceduralRig(): ProceduralRig {
 
   const body = new THREE.Group();
   body.name = 'body';
-  body.position.set(0, 0.05, -0.02);
+  // Lowered + forward for crouch; lean animation offsets from here.
+  body.position.set(0, 0.02, -0.04);
 
   const hips = new THREE.Group();
-  hips.position.set(0, 0.22, 0);
+  hips.position.set(0, 0.18, 0.02);
   const hipMesh = capsule(0.09, 0.06, accentMat);
   hipMesh.rotation.z = Math.PI / 2;
   hipMesh.scale.set(1, 1, 0.85);
@@ -142,19 +152,23 @@ export function buildProceduralRig(): ProceduralRig {
   body.add(hips);
 
   const torso = new THREE.Group();
-  torso.position.set(0, 0.42, -0.04);
-  const torsoMesh = capsule(0.12, 0.22, suitMat);
+  torso.position.set(0, 0.36, -0.02);
+  const torsoMesh = capsule(0.12, 0.2, suitMat);
   torsoMesh.scale.set(1.05, 1, 0.72);
   torso.add(torsoMesh);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.02), stripeMat);
+  stripe.position.set(0.09, 0.02, 0.08);
+  stripe.castShadow = true;
+  torso.add(stripe);
   const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.025, 6, 14), accentMat);
   collar.rotation.x = Math.PI / 2;
-  collar.position.y = 0.16;
+  collar.position.y = 0.14;
   collar.castShadow = true;
   torso.add(collar);
   body.add(torso);
 
   const head = new THREE.Group();
-  head.position.set(0, 0.72, -0.05);
+  head.position.set(0, 0.62, -0.04);
   const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 12), accentMat);
   helmet.scale.set(1, 0.95, 1.05);
   helmet.castShadow = true;
@@ -164,33 +178,52 @@ export function buildProceduralRig(): ProceduralRig {
   head.add(goggles);
   body.add(head);
 
+  // Duck stance: lead (left) foot forward, trail flexed — carve-ready crouch.
   const leftLeg = new THREE.Group();
-  leftLeg.position.set(-0.09, 0.2, 0.02);
-  leftLeg.rotation.set(0.42, 0.08, 0.12);
-  const leftThigh = capsule(0.055, 0.16, accentMat);
-  leftThigh.position.y = -0.12;
+  leftLeg.name = 'leftLeg';
+  leftLeg.position.set(-0.09, 0.16, -0.04);
+  leftLeg.rotation.set(0.72, 0.1, 0.14);
+  const leftThigh = capsule(0.052, 0.13, accentMat);
+  leftThigh.position.y = -0.1;
   leftLeg.add(leftThigh);
+  const leftShin = new THREE.Group();
+  leftShin.name = 'leftShin';
+  leftShin.position.set(0, -0.2, 0.01);
+  leftShin.rotation.x = -0.95;
+  const leftShinMesh = capsule(0.045, 0.12, suitMat);
+  leftShinMesh.position.y = -0.09;
+  leftShin.add(leftShinMesh);
   const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.18), bootMat);
-  leftBoot.position.set(0, -0.28, 0.04);
+  leftBoot.position.set(0, -0.2, 0.05);
   leftBoot.castShadow = true;
-  leftLeg.add(leftBoot);
+  leftShin.add(leftBoot);
+  leftLeg.add(leftShin);
   body.add(leftLeg);
 
   const rightLeg = new THREE.Group();
-  rightLeg.position.set(0.09, 0.2, 0.08);
-  rightLeg.rotation.set(-0.18, -0.06, -0.1);
-  const rightThigh = capsule(0.055, 0.16, accentMat);
-  rightThigh.position.y = -0.12;
+  rightLeg.name = 'rightLeg';
+  rightLeg.position.set(0.09, 0.16, 0.1);
+  rightLeg.rotation.set(0.55, -0.08, -0.12);
+  const rightThigh = capsule(0.052, 0.13, accentMat);
+  rightThigh.position.y = -0.1;
   rightLeg.add(rightThigh);
+  const rightShin = new THREE.Group();
+  rightShin.name = 'rightShin';
+  rightShin.position.set(0, -0.2, 0.01);
+  rightShin.rotation.x = -0.85;
+  const rightShinMesh = capsule(0.045, 0.12, suitMat);
+  rightShinMesh.position.y = -0.09;
+  rightShin.add(rightShinMesh);
   const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.18), bootMat);
-  rightBoot.position.set(0, -0.28, 0.02);
+  rightBoot.position.set(0, -0.2, 0.03);
   rightBoot.castShadow = true;
-  rightLeg.add(rightBoot);
+  rightShin.add(rightBoot);
+  rightLeg.add(rightShin);
   body.add(rightLeg);
 
   const leftArm = new THREE.Group();
-  leftArm.position.set(-0.2, 0.52, -0.02);
-  leftArm.rotation.set(0.25, 0, 0.55);
+  leftArm.position.set(-0.2, 0.44, -0.02);
+  leftArm.rotation.set(0.35, 0, 0.62);
   const leftUpper = capsule(0.04, 0.14, suitMat);
   leftUpper.position.y = -0.1;
   leftArm.add(leftUpper);
@@ -200,8 +233,8 @@ export function buildProceduralRig(): ProceduralRig {
   body.add(leftArm);
 
   const rightArm = new THREE.Group();
-  rightArm.position.set(0.2, 0.5, 0.02);
-  rightArm.rotation.set(0.15, 0, -0.45);
+  rightArm.position.set(0.2, 0.42, 0.02);
+  rightArm.rotation.set(0.28, 0, -0.52);
   const rightUpper = capsule(0.04, 0.14, suitMat);
   rightUpper.position.y = -0.1;
   rightArm.add(rightUpper);
@@ -213,7 +246,7 @@ export function buildProceduralRig(): ProceduralRig {
   root.add(body);
 
   const geos: THREE.BufferGeometry[] = [];
-  const mats = [boardMat, baseMat, suitMat, accentMat, bootMat, lensMat];
+  const mats = [boardMat, baseMat, suitMat, accentMat, bootMat, lensMat, stripeMat];
   root.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
       geos.push(obj.geometry);
@@ -231,6 +264,8 @@ export function buildProceduralRig(): ProceduralRig {
     rightArm,
     leftLeg,
     rightLeg,
+    leftShin,
+    rightShin,
     tints: {
       boardMaterials: [boardMat],
       suitMaterials: [suitMat],
