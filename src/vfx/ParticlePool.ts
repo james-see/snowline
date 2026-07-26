@@ -116,6 +116,11 @@ export class ParticlePool {
     this.#mat.uniforms.uPixelRatio!.value = Math.min(2, dpr);
   }
 
+  /** Screen-space multiplier for gl_PointSize (capture / readability boosts). */
+  setSizeScale(scale: number): void {
+    this.#mat.uniforms.uSizeScale!.value = Math.max(0.05, scale);
+  }
+
   /** Spawn into the next free slot within the active budget. Returns index or -1. */
   spawn(
     x: number,

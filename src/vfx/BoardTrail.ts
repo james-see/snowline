@@ -35,12 +35,13 @@ export class BoardTrail {
       new THREE.LineBasicMaterial({
         vertexColors: true,
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.72,
         depthWrite: false,
         blending: THREE.NormalBlending,
       })
     );
     this.object.frustumCulled = false;
+    this.object.renderOrder = 1;
   }
 
   push(

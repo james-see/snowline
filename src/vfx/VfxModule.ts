@@ -76,8 +76,8 @@ export class VfxModule implements GameModule {
     this.#spray = new ParticlePool({
       capacity: CAP_SPRAY,
       color: SPRAY_COLOR,
-      size: 0.2,
-      opacity: 0.9,
+      size: 0.85,
+      opacity: 0.95,
     });
     this.#burst = new ParticlePool({
       capacity: CAP_BURST,
@@ -97,6 +97,11 @@ export class VfxModule implements GameModule {
 
     this.#boostLight = new THREE.PointLight(BOOST_COLOR, 0, 14, 2);
     this.#boostHalo = new THREE.PointLight(0xb8dcff, 0, 6, 2);
+
+    // Draw spray after snowfall so edge plumes stay readable against terrain fill.
+    this.#spray.points.renderOrder = 2;
+    this.#burst.points.renderOrder = 2;
+    this.#trail.object.renderOrder = 1;
 
     this.#root.add(
       this.#snow.points,
@@ -154,13 +159,16 @@ export class VfxModule implements GameModule {
     this.#speedLines.setBudget(budgets.speed);
 
     this.#updateSnowfall(dt, ctx, budgets.snow);
-    this.#spray.update(dt, 9.5, 0.8);
+    this.#spray.update(dt, 7.5, 0.55);
     this.#burst.update(dt, 11, 0.55);
     this.#boostParts.update(dt, 2.5, 1.2);
     this.#speedLines.update(dt);
 
     const snowOpacity = ctx.capture ? 0.3 : ctx.settings.reducedMotion ? 0.35 : 0.55;
     this.#snow.setOpacity(snowOpacity);
+    // Larger points in capture so carve stills show edge spray without raising Lod caps.
+    this.#spray.setSizeScale(ctx.capture ? 1.55 : 1.15);
+    this.#spray.setOpacity(ctx.capture ? 1 : ctx.settings.reducedMotion ? 0.7 : 0.95);
     this.#speedLines.setOpacity(ctx.capture ? 0.15 : this.#boosting ? 0.45 : 0.28);
 
     if (rider) {
@@ -249,11 +257,18 @@ export class VfxModule implements GameModule {
     surface: string,
     ctx: EngineContext
   ): void {
-    if (ctx.settings.reducedMotion && intensity < 0.35) return;
+    if (intensity <= 0) return;
+    if (ctx.settings.reducedMotion && intensity < 0.2) return;
+    if (!rider.state.grounded) return;
 
     const surfaceMul =
-      surface === 'powder' ? 1.45 : surface === 'packed' ? 1 : surface === 'ice' ? 0.45 : 0.7;
-    const count = Math.floor((6 + intensity * 34) * surfaceMul);
+      surface === 'powder' ? 1.55 : surface === 'packed' ? 1.15 : surface === 'ice' ? 0.55 : 0.8;
+    const captureMul = ctx.capture ? 1.4 : 1;
+    // Floor density so weak pack-snow carves still read; cap vs Lod spray budget.
+    const budget = this.#spray.budget;
+    const maxPerEmit = Math.max(10, Math.floor(budget * 0.14));
+    const desired = Math.floor((12 + intensity * 52) * surfaceMul * captureMul);
+    const count = Math.min(maxPerEmit, Math.max(10, desired));
     const origin = rider.state.position;
     const vel = rider.state.velocity;
     const yaw = rider.state.boardYaw;
@@ -262,23 +277,45 @@ export class VfxModule implements GameModule {
     this.#forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     this.#lateral.set(this.#forward.z, 0, -this.#forward.x).multiplyScalar(Math.sign(edge || 1));
 
-    const sizeBase = surface === 'powder' ? 0.26 : surface === 'ice' ? 0.12 : 0.18;
+    const sizeBase = surface === 'powder' ? 1.15 : surface === 'ice' ? 0.7 : 0.95;
+    const kick = 3.2 + intensity * 5.5;
 
     for (let n = 0; n < count; n++) {
-      const side = this.#lateral.x * (0.15 + Math.random() * 0.35);
-      const sideZ = this.#lateral.z * (0.15 + Math.random() * 0.35);
-      const vx = -vel.x * 0.12 + this.#lateral.x * (2 + intensity * 4) + (Math.random() - 0.5) * 2;
-      const vy = 1.2 + Math.random() * 3.5 * intensity * surfaceMul;
-      const vz = -vel.z * 0.12 + this.#lateral.z * (2 + intensity * 4) + (Math.random() - 0.5) * 2;
+      // Fan along the edged rail: lateral throw + slight aft so spray clears the board.
+      const along = (Math.random() - 0.5) * 0.55;
+      const out = 0.28 + Math.random() * 0.55;
+      const px =
+        origin.x +
+        this.#lateral.x * out +
+        this.#forward.x * along +
+        (Math.random() - 0.5) * 0.12;
+      const pz =
+        origin.z +
+        this.#lateral.z * out +
+        this.#forward.z * along +
+        (Math.random() - 0.5) * 0.12;
+      // Lift above snow mesh so depthTest doesn't bury soft points.
+      const py = origin.y + 0.14 + Math.random() * 0.22;
+      const vx =
+        -vel.x * 0.1 +
+        this.#lateral.x * kick +
+        this.#forward.x * (Math.random() - 0.55) * 1.8 +
+        (Math.random() - 0.5) * 1.4;
+      const vy = 1.8 + Math.random() * (2.8 + intensity * 3.2) * surfaceMul;
+      const vz =
+        -vel.z * 0.1 +
+        this.#lateral.z * kick +
+        this.#forward.z * (Math.random() - 0.55) * 1.8 +
+        (Math.random() - 0.5) * 1.4;
       this.#spray.spawn(
-        origin.x + side + (Math.random() - 0.5) * 0.3,
-        origin.y + 0.04 + Math.random() * 0.08,
-        origin.z + sideZ + (Math.random() - 0.5) * 0.3,
+        px,
+        py,
+        pz,
         vx,
         vy,
         vz,
-        0.3 + Math.random() * 0.45 * (0.6 + intensity),
-        sizeBase * (0.7 + Math.random() * 0.8)
+        0.45 + Math.random() * 0.55 * (0.75 + intensity),
+        sizeBase * (0.75 + Math.random() * 0.9)
       );
     }
   }
