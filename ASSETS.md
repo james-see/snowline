@@ -1,13 +1,20 @@
 # Assets
 
-All shipped third-party assets must be CC0 or similarly permissive. Provenance is recorded by `tools/assets/sources.mjs` and written into `public/assets/manifest.json` after `npm run assets:all`.
+CC0 / similarly permissive only. Provenance: `tools/assets/sources.mjs` → `public/assets/manifest.json` after:
 
-Procedural fallbacks (noise textures, synth audio, authored primitive props) keep the game playable without network fetches.
+```bash
+npm run assets:fetch
+npm run assets:pack
+# or
+npm run assets:all
+```
 
-| Kind | Source strategy |
-|------|-----------------|
-| Snow/rock/ice PBR | Poly Haven CC0 via fetch/pack |
+Procedural fallbacks (noise, synth audio, primitive props) keep the game offline-playable.
+
+| Kind | Strategy |
+|------|----------|
+| Snow/rock/ice PBR | Poly Haven CC0 |
 | HDRI | Poly Haven CC0 |
 | Rider/board | Procedural meshes (original) |
 | Audio | Procedural Web Audio (original) |
-| Fonts | Google Fonts Syne / DM Sans (OFL) |
+| Fonts | Syne / DM Sans (OFL) |

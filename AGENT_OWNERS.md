@@ -18,12 +18,27 @@ Each plan system owns an isolated git branch / worktree. Main agent integrates o
 | `agent/score` | `src/score/**`, `src/modes/**` | modes + persistence |
 | `agent/perf` | LOD/instancing/loading hooks | 60fps @1080p |
 | `agent/capture` | `tools/critic/**`, tests | all shots green |
-| `agent/docs` | root `*.md`, LICENSE | docs complete |
+| `agent/critic` | critic rubric / gate tuning | gate thresholds honest |
+| `agent/docs` | root `*.md`, `LICENSE`, this file | docs complete |
 
 ## Critical defect (all agents)
 
-Gameplay captures were blank washed-out sky. Title is OK. Fix spawn-on-terrain, chase framing, and post fog/exposure so `npm run capture -- --shot course_start` shows mountain + rider.
+**Blank-sky / whiteout gameplay captures** — title OK; course shots wash to empty sky. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) and [PROGRESS.md](PROGRESS.md).
+
+Owners for the fix triad:
+
+1. `agent/course` — spawn rider on terrain mesh
+2. `agent/camera` — chase framing shows mountain + rider
+3. `agent/lighting` — post fog/exposure must not white-out (`fix/lighting-post-whiteout` WIP)
+
+Smoke: `npm run capture -- --shot course_start` must show mountain + rider.
 
 ## Integration rule
 
-Do not merge overlapping files across agents. Main agent merges branches after typecheck + capture smoke.
+Do not merge overlapping files across agents. Main agent merges after:
+
+```bash
+npm run typecheck
+npm run build
+npm run capture -- --shot course_start
+```

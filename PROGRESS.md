@@ -2,45 +2,58 @@
 
 ## Current milestone
 
-Milestone B/C — full game systems integrated; polishing toward gate.
+Milestone B/C — full game scaffold on `main`; parallel agents polishing toward critic gate.
 
-## Active ownership
+## Critical defect
 
-| Area | Path |
-|------|------|
-| Engine | `src/engine/` |
-| Rider / tricks | `src/rider/` |
-| Course | `src/course/` |
-| Camera | `src/camera/` |
-| Render / post | `src/render/` |
-| VFX | `src/vfx/` |
-| Audio | `src/audio/` |
-| Score / save | `src/score/` |
-| UI / flow | `src/ui/`, `src/modes/` |
-| Critic | `tools/critic/` |
-| Assets | `tools/assets/` |
+**Blank-sky gameplay captures** — status: **open / in progress** (2026-07-26).
 
-## Completed
+| Layer | Branch | Status |
+|-------|--------|--------|
+| Spawn on terrain | `agent/course` | in progress |
+| Chase framing | `agent/camera` | in progress |
+| Post fog/exposure whiteout | `agent/lighting` / `fix/lighting-post-whiteout` | WIP (`PostStack` exposure/fog) |
+| Blank-frame detect | `agent/capture` | in progress |
 
-- Vite + TS + Three + Rapier scaffold
-- Fixed 120 Hz engine, input (keyboard/gamepad), settings, capture bridge
-- Board-aware arcade physics, air tricks, landings, crash recovery
-- Three course defs + terrain generator + props
-- Chase camera, score/combos/save, modes flow
-- Forward HDR + tonemap/bloom post, VFX, procedural audio
-- Title / course / mode / HUD / pause / settings / results
-- Critic rubric, capture, gate, assets tools
-- `npm run typecheck` and `npm run build` green
+Title capture OK. Gameplay shots fail until smoke is green:
 
-## Under review
+```bash
+npm run capture -- --shot course_start
+```
 
-- Visual polish vs rubric (snow materials, authored props density)
-- Capture determinism on GPU Chrome
-- Perf at 1080p during forest sections
+## Parallel agent branches
 
-## Next actions
+| Branch | Focus |
+|--------|-------|
+| `agent/physics` | Board physics / surfaces |
+| `agent/tricks` | Air tricks / grind / landings (`tricks/air-recognition`) |
+| `agent/camera` | Chase camera, blank-sky framing |
+| `agent/rider-art` | Rider/board visuals |
+| `agent/course` | Terrain, spawn, course defs |
+| `agent/props` | Rails, ramps, trees |
+| `agent/materials` | Snow/rock/ice materials |
+| `agent/vfx` | Spray/trails/weather (`vfx/carve-spray-trails-snowfall-boost`) |
+| `agent/lighting` | HDR/post, anti-whiteout |
+| `agent/audio` | Board/wind/UI audio |
+| `agent/ui` | Title/HUD/pause/settings/results |
+| `agent/score` | Modes + save |
+| `agent/perf` | 60 FPS @ 1080p |
+| `agent/capture` | Playwright capture / probes |
+| `agent/critic` | Rubric / gate |
+| `agent/docs` | Living docs (this tree) |
 
-1. Run capture suite + critic gate
-2. Fix failing categories
-3. Acceptance pass from clean checkout
-4. Commit stable milestone
+See [AGENT_OWNERS.md](AGENT_OWNERS.md).
+
+## Completed (scaffold)
+
+- Vite + TS + Three + Rapier; 120 Hz engine; keyboard/gamepad; capture bridge
+- Arcade board physics, air tricks, three course defs, chase cam, score/modes
+- Forward HDR + tonemap/bloom, VFX, procedural audio, full UI shell
+- Critic tools scaffold; `npm run typecheck` / `npm run build` green on scaffold
+
+## Next
+
+1. Land blank-sky fix triad; green `course_start` capture
+2. Full `npm run critic` + `npm run gate`
+3. Merge agent branches (no overlapping files)
+4. Acceptance from clean checkout
