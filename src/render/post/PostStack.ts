@@ -15,8 +15,6 @@ uniform sampler2D tDiffuse;
 uniform sampler2D tBloom;
 uniform float bloomStrength;
 uniform float exposure;
-uniform float fogDensity;
-uniform vec3 fogColor;
 uniform float vignette;
 varying vec2 vUv;
 
@@ -37,9 +35,6 @@ void main() {
   float luma = dot(bloom, vec3(0.2126, 0.7152, 0.0722));
   col += bloom * bloomStrength * smoothstep(0.72, 1.15, luma);
   col = agxTonemap(col);
-  // Mild horizon grade only — not a screen-space fog wash.
-  float grade = clamp((1.0 - vUv.y) * fogDensity * 0.06, 0.0, 0.08);
-  col = mix(col, fogColor, grade);
   vec2 d = vUv - 0.5;
   col *= 1.0 - vignette * dot(d, d) * 1.8;
   gl_FragColor = vec4(col, 1.0);
@@ -80,11 +75,9 @@ export class PostStack {
       uniforms: {
         tDiffuse: { value: null },
         tBloom: { value: null },
-        fogDensity: { value: 0.04 },
-        fogColor: { value: new THREE.Color(0x8ab4d4) },
         vignette: { value: 0.2 },
-        exposure: { value: 0.9 },
-        bloomStrength: { value: 0.12 },
+        exposure: { value: 0.88 },
+        bloomStrength: { value: 0.1 },
       },
     });
     this.#fxaaMat = new THREE.ShaderMaterial({
@@ -116,8 +109,8 @@ export class PostStack {
   apply(
     hdrColor: THREE.Texture,
     settings: QualitySettings,
-    fogColor: THREE.Color,
-    fogDensity: number
+    _fogColor: THREE.Color,
+    _fogDensity: number
   ): void {
     let bloomTex = hdrColor;
     if (settings.bloomEnabled) {
@@ -128,7 +121,6 @@ export class PostStack {
       this.#tonemapMat.uniforms.tBloom!.value = hdrColor;
       this.#tonemapMat.uniforms.bloomStrength!.value = 0;
       this.#tonemapMat.uniforms.exposure!.value = 0.95;
-      this.#tonemapMat.uniforms.fogDensity!.value = 0;
       this.#tonemapMat.uniforms.vignette!.value = 0;
       this.quad.material = this.#tonemapMat;
       this.renderer.render(this.scene, this.camera);
@@ -139,12 +131,10 @@ export class PostStack {
     this.#tonemapMat.uniforms.tBloom!.value = bloomTex;
     // Cap bloom so quality presets cannot re-whitewash alpine snow.
     this.#tonemapMat.uniforms.bloomStrength!.value = settings.bloomEnabled
-      ? Math.min(settings.bloomIntensity, 0.45) * 0.28
+      ? Math.min(settings.bloomIntensity, 0.4) * 0.22
       : 0;
-    this.#tonemapMat.uniforms.exposure!.value = 0.9;
-    this.#tonemapMat.uniforms.fogColor!.value = fogColor;
-    this.#tonemapMat.uniforms.fogDensity!.value = fogDensity;
-    this.#tonemapMat.uniforms.vignette!.value = settings.vignetteEnabled ? 0.22 : 0;
+    this.#tonemapMat.uniforms.exposure!.value = 0.88;
+    this.#tonemapMat.uniforms.vignette!.value = settings.vignetteEnabled ? 0.2 : 0;
 
     this.quad.material = this.#tonemapMat;
 
