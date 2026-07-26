@@ -5,45 +5,43 @@ import { CollisionGroup } from '@/types/physics.ts';
 
 const _desired = new THREE.Vector3();
 const _look = new THREE.Vector3();
-const _velDir = new THREE.Vector3();
+const _heading = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _shake = new THREE.Vector3();
 const _rayOrigin = new THREE.Vector3();
 const _rayDir = new THREE.Vector3();
+const _probe = new THREE.Vector3();
+const _down = new THREE.Vector3(0, -1, 0);
 
-/** Match BoardPhysics `forwardFromYaw` — +Z at yaw 0. */
-function facingFromYaw(yaw: number, out: THREE.Vector3): THREE.Vector3 {
+/** Match BoardPhysics forwardFromYaw: (sin(yaw), 0, cos(yaw)). */
+function headingFromYaw(yaw: number, out: THREE.Vector3): THREE.Vector3 {
   return out.set(Math.sin(yaw), 0, Math.cos(yaw));
 }
 
-/** Placeholder spawn before a run — do not chase this aggressively. */
-function isIdleSpawn(rider: RiderState): boolean {
-  const p = rider.position;
-  const dx = p.x;
-  const dy = p.y - 2;
-  const dz = p.z;
-  return dx * dx + dy * dy + dz * dz < 36;
+function terrainHeight(
+  physics: PhysicsWorld,
+  x: number,
+  z: number,
+  fromY: number
+): number | null {
+  _probe.set(x, fromY + 80, z);
+  const hit = physics.raycast({
+    origin: _probe,
+    direction: _down,
+    maxDistance: 400,
+    groups: CollisionGroup.Terrain,
+  });
+  return hit ? hit.point.y : null;
 }
 
-/** Mountain-scale clip planes (spawn ~y=100–400, runs span hundreds of meters). */
-const CAM_NEAR = 0.45;
-const CAM_FAR = 8000;
-const MIN_CHASE_DIST = 3.2;
-
 export class ChaseCamera {
-  #pos = new THREE.Vector3(0, 5, -7);
-  #lookAt = new THREE.Vector3(0, 2, 6);
+  #pos = new THREE.Vector3(0, 4, -8);
+  #lookAt = new THREE.Vector3();
   #fov = 62;
   #shakeAmp = 0;
   #landPulse = 0;
   #airBlend = 0;
-  /** False until `run:start` snap — avoids chasing the origin placeholder. */
-  #active = false;
-
-  get active(): boolean {
-    return this.#active;
-  }
 
   impulse(amount: number): void {
     this.#shakeAmp = Math.min(1.2, this.#shakeAmp + amount);
@@ -55,40 +53,37 @@ export class ChaseCamera {
   }
 
   /**
-   * Static title / menu framing. Does not arm chase follow.
-   * Call once before a run so the boot camera is not left at the origin.
+   * Horizontal chase heading: travel velocity when moving, otherwise board yaw
+   * flipped to the fall line so we always look downhill on the mountain.
    */
-  frameIdle(camera: THREE.PerspectiveCamera): void {
-    this.#pos.set(0, 5, -7);
-    this.#lookAt.set(0, 2, 6);
-    this.#active = false;
-    camera.position.copy(this.#pos);
-    camera.near = CAM_NEAR;
-    camera.far = CAM_FAR;
-    camera.fov = this.#fov;
-    camera.lookAt(this.#lookAt);
-    camera.updateProjectionMatrix();
-  }
-
-  /** Hard-place the rig behind the rider looking along facing / travel. */
-  snap(rider: RiderState, camera?: THREE.PerspectiveCamera): void {
-    if (isIdleSpawn(rider)) {
-      this.#active = false;
+  #resolveHeading(rider: RiderState, physics: PhysicsWorld, out: THREE.Vector3): void {
+    out.copy(rider.velocity);
+    out.y = 0;
+    if (out.lengthSq() >= 0.25) {
+      out.normalize();
       return;
     }
 
-    this.#resolveFacing(rider);
-    this.#pos.copy(rider.position).addScaledVector(_velDir, -7);
-    this.#pos.y += 3.2;
-    this.#lookAt.copy(rider.position).addScaledVector(_velDir, 8);
-    // Nose-down pitch / fall line — keep look on terrain, not empty sky.
-    this.#lookAt.y += 0.55 + Math.sin(rider.boardPitch) * 8;
-    this.#airBlend = rider.airborne ? 1 : 0;
-    this.#fov = 62;
-    this.#active = true;
-
-    if (camera) {
-      this.#apply(camera);
+    headingFromYaw(rider.boardYaw, out);
+    const fromY = rider.position.y;
+    const ahead = terrainHeight(
+      physics,
+      rider.position.x + out.x * 40,
+      rider.position.z + out.z * 40,
+      fromY
+    );
+    const behind = terrainHeight(
+      physics,
+      rider.position.x - out.x * 40,
+      rider.position.z - out.z * 40,
+      fromY
+    );
+    // If board forward climbs, chase the opposite way (downhill).
+    if (ahead != null && behind != null && ahead > behind + 1.5) {
+      out.negate();
+    } else if (ahead != null && behind == null) {
+      // Only ahead hit and it's above us → likely uphill; prefer opposite.
+      if (ahead > fromY + 1) out.negate();
     }
   }
 
@@ -101,16 +96,15 @@ export class ChaseCamera {
     shakeScale: number,
     look: { x: number; y: number }
   ): void {
-    if (!this.#active || isIdleSpawn(rider)) {
-      return;
-    }
-
     const speed = rider.speed;
-    this.#resolveFacing(rider);
+    this.#resolveHeading(rider, physics, _heading);
 
-    const back = 5.5 + Math.min(6, speed * 0.08);
-    const height = 2.4 + Math.min(2.5, speed * 0.03);
-    const lookAhead = 5 + Math.min(10, speed * 0.12);
+    // Mountain-scale chase: further back/above so the fall line reads in-frame.
+    const back = 8 + Math.min(10, speed * 0.1);
+    const height = 3.2 + Math.min(3.5, speed * 0.035);
+    const lookAhead = 14 + Math.min(22, speed * 0.18);
+    // Bias look down the slope so framing isn't blank sky above the crest.
+    const lookDrop = lookAhead * 0.28;
 
     this.#airBlend = THREE.MathUtils.damp(
       this.#airBlend,
@@ -120,19 +114,16 @@ export class ChaseCamera {
     );
 
     _desired.copy(rider.position);
-    _desired.addScaledVector(_velDir, -back);
-    _desired.y += height + this.#airBlend * 1.4;
+    _desired.addScaledVector(_heading, -back);
+    _desired.y += height + this.#airBlend * 1.6;
 
-    // Manual look offset
-    _right.crossVectors(_up, _velDir);
+    _right.crossVectors(_up, _heading);
     if (_right.lengthSq() > 1e-6) {
       _right.normalize();
       _desired.addScaledVector(_right, look.x * 40);
     }
     _desired.y += look.y * 20;
 
-    // Terrain collision — pull camera in if occluded, but keep a min chase distance
-    // so the near plane does not turn the board into a clipped crescent.
     _rayOrigin.copy(rider.position);
     _rayOrigin.y += 1.2;
     _rayDir.subVectors(_desired, _rayOrigin);
@@ -147,24 +138,21 @@ export class ChaseCamera {
         exclude: ['rider'],
       });
       if (hit && hit.distance < dist - 0.4) {
-        const useDist = Math.max(MIN_CHASE_DIST, hit.distance - 0.45);
-        _desired.copy(_rayOrigin).addScaledVector(_rayDir, useDist);
+        _desired.copy(hit.point).addScaledVector(hit.normal, 0.45);
       }
     }
 
-    // dt=0 (capture converge): hard-sync so the rig settles immediately after snap.
+    // dt==0 (capture converge): hard-follow so frozen frames stay correct after snap.
     const follow = dt > 0 ? 1 - Math.exp(-dt * 8) : 1;
-    const lookFollow = dt > 0 ? 1 - Math.exp(-dt * 10) : 1;
     this.#pos.lerp(_desired, follow);
 
     _look.copy(rider.position);
-    _look.addScaledVector(_velDir, lookAhead);
-    // Bias look down the board pitch / fall line so the frame holds terrain.
-    _look.y += 0.55 + this.#airBlend * 0.5 + Math.sin(rider.boardPitch) * lookAhead;
-    if (rider.velocity.y < -0.5) {
-      _look.y += rider.velocity.y * 0.08;
+    _look.addScaledVector(_heading, lookAhead);
+    if (rider.velocity.y * rider.velocity.y > 0.25) {
+      _look.y += rider.velocity.y * Math.min(0.35, lookAhead * 0.02);
     }
-    this.#lookAt.lerp(_look, lookFollow);
+    _look.y += 0.6 + this.#airBlend * 0.4 - lookDrop;
+    this.#lookAt.lerp(_look, dt > 0 ? 1 - Math.exp(-dt * 10) : 1);
 
     this.#shakeAmp = Math.max(0, this.#shakeAmp - dt * 3.5);
     this.#landPulse = Math.max(0, this.#landPulse - dt * 4);
@@ -184,27 +172,28 @@ export class ChaseCamera {
     const targetFov = baseFov + Math.min(18, speed * 0.22) + this.#airBlend * 4;
     this.#fov = dt > 0 ? THREE.MathUtils.damp(this.#fov, targetFov, 6, dt) : targetFov;
     camera.fov = this.#fov;
-    camera.near = CAM_NEAR;
-    camera.far = CAM_FAR;
     camera.updateProjectionMatrix();
   }
 
-  #resolveFacing(rider: RiderState): void {
-    _velDir.copy(rider.velocity);
-    _velDir.y = 0;
-    if (_velDir.lengthSq() < 0.25) {
-      facingFromYaw(rider.boardYaw, _velDir);
-    } else {
-      _velDir.normalize();
+  /** Hard-place behind/above rider looking downhill along velocity/yaw. */
+  snap(rider: RiderState, physics: PhysicsWorld, camera?: THREE.PerspectiveCamera): void {
+    this.#resolveHeading(rider, physics, _heading);
+    this.#airBlend = rider.airborne ? 1 : 0;
+
+    const back = 9;
+    const height = 4;
+    const lookAhead = 22;
+    const lookDrop = lookAhead * 0.28;
+
+    this.#pos.copy(rider.position).addScaledVector(_heading, -back);
+    this.#pos.y += height;
+    this.#lookAt.copy(rider.position).addScaledVector(_heading, lookAhead);
+    this.#lookAt.y += 0.5 - lookDrop;
+
+    if (camera) {
+      camera.position.copy(this.#pos);
+      camera.lookAt(this.#lookAt);
+      camera.updateProjectionMatrix();
     }
-  }
-
-  #apply(camera: THREE.PerspectiveCamera): void {
-    camera.position.copy(this.#pos);
-    camera.near = CAM_NEAR;
-    camera.far = CAM_FAR;
-    camera.fov = this.#fov;
-    camera.lookAt(this.#lookAt);
-    camera.updateProjectionMatrix();
   }
 }
