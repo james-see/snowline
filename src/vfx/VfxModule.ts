@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import type { EngineContext, GameModule } from '@/types/engine.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
+import { LOD_BUFFER_CAPS, resolveLodBudgets } from '@/engine/Lod.ts';
 import { ParticlePool } from './ParticlePool.ts';
 import { BoardTrail } from './BoardTrail.ts';
 import { SpeedLines } from './SpeedLines.ts';
 
-/** Hardware caps (ultra); live counts clamped by settings.maxParticles. */
-const CAP_SNOW = 6000;
-const CAP_SPRAY = 2800;
+/** Hardware buffer ceilings; live counts clamped by Lod + settings.maxParticles. */
+const CAP_SNOW = LOD_BUFFER_CAPS.snow;
+const CAP_SPRAY = LOD_BUFFER_CAPS.spray;
 const CAP_BURST = 900;
 const CAP_BOOST = 700;
 const CAP_SPEED = 80;
@@ -24,14 +25,18 @@ interface ParticleBudgets {
   speed: number;
 }
 
-function allocateBudgets(maxParticles: number, reducedMotion: boolean): ParticleBudgets {
-  const total = Math.max(64, Math.floor(maxParticles * (reducedMotion ? 0.35 : 1)));
+function allocateBudgets(
+  settings: EngineContext['settings'],
+  reducedMotion: boolean
+): ParticleBudgets {
+  const lod = resolveLodBudgets(settings);
+  const scale = reducedMotion ? 0.35 : 1;
   return {
-    snow: Math.min(CAP_SNOW, Math.floor(total * 0.5)),
-    spray: Math.min(CAP_SPRAY, Math.floor(total * 0.28)),
-    burst: Math.min(CAP_BURST, Math.floor(total * 0.1)),
-    boost: Math.min(CAP_BOOST, Math.floor(total * 0.08)),
-    speed: Math.min(CAP_SPEED, Math.floor(total * 0.04)),
+    snow: Math.max(64, Math.floor(lod.maxSnowParticles * scale)),
+    spray: Math.max(32, Math.floor(lod.maxSprayParticles * scale)),
+    burst: Math.min(CAP_BURST, Math.floor(settings.maxParticles * 0.1 * scale)),
+    boost: Math.min(CAP_BOOST, Math.floor(settings.maxParticles * 0.08 * scale)),
+    speed: Math.min(CAP_SPEED, Math.floor(settings.maxParticles * 0.04 * scale)),
   };
 }
 
@@ -139,7 +144,7 @@ export class VfxModule implements GameModule {
 
   update(dt: number, ctx: EngineContext): void {
     const rider = ctx.getModule<RiderModule>('rider');
-    const budgets = allocateBudgets(ctx.settings.maxParticles, ctx.settings.reducedMotion);
+    const budgets = allocateBudgets(ctx.settings, ctx.settings.reducedMotion);
 
     // Keep budgets hot if settings mutated without event.
     this.#snow.setBudget(budgets.snow);
@@ -180,7 +185,7 @@ export class VfxModule implements GameModule {
   }
 
   #applyBudgets(ctx: EngineContext): void {
-    const b = allocateBudgets(ctx.settings.maxParticles, ctx.settings.reducedMotion);
+    const b = allocateBudgets(ctx.settings, ctx.settings.reducedMotion);
     this.#snow.setBudget(b.snow);
     this.#spray.setBudget(b.spray);
     this.#burst.setBudget(b.burst);

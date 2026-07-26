@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CheckpointDef, PropKind, PropPlacement } from '@/types/course.ts';
 import type { SplinePath } from '@/course/SplinePath.ts';
+import { presetBudgets, type LodBudgets } from '@/engine/Lod.ts';
 import {
   buildCheckpointGate,
   buildFinishArch,
@@ -112,7 +113,8 @@ function buildPropObject(placement: PropPlacement): THREE.Object3D | null {
 export function buildCourseProps(
   placements: readonly PropPlacement[],
   path: SplinePath,
-  checkpointDefs: readonly CheckpointDef[]
+  checkpointDefs: readonly CheckpointDef[],
+  budgets: LodBudgets = presetBudgets('high')
 ): PropsBuildResult {
   const root = new THREE.Group();
   root.name = 'course-props';
@@ -120,9 +122,11 @@ export function buildCourseProps(
   const treeTransforms: { matrix: THREE.Matrix4; variant: number }[] = [];
   const disposables: THREE.BufferGeometry[] = [];
   const extraMats: THREE.Material[] = [];
+  let rockCount = 0;
 
   for (const placement of placements) {
     if (placement.kind === 'tree') {
+      if (treeTransforms.length >= budgets.maxTreeInstances) continue;
       const scale =
         typeof placement.scale === 'number'
           ? new THREE.Vector3(placement.scale, placement.scale, placement.scale)
@@ -138,6 +142,11 @@ export function buildCourseProps(
         variant: placement.variant ?? 0,
       });
       continue;
+    }
+
+    if (placement.kind === 'rock') {
+      if (rockCount >= budgets.maxRockInstances) continue;
+      rockCount++;
     }
 
     const object = buildPropObject(placement);
@@ -191,6 +200,7 @@ export function buildCourseProps(
     list.push(t.matrix);
   }
 
+  let treeShadowLeft = budgets.maxTreeShadowCasters;
   for (const [variant, matrices] of byVariant) {
     const proto = buildTree(variant);
     proto.updateMatrixWorld(true);
@@ -204,7 +214,9 @@ export function buildCourseProps(
         mesh.material as THREE.Material,
         matrices.length
       );
-      inst.castShadow = true;
+      const cast = treeShadowLeft > 0;
+      if (cast) treeShadowLeft = Math.max(0, treeShadowLeft - matrices.length);
+      inst.castShadow = cast;
       inst.receiveShadow = true;
       inst.name = `trees-v${variant}-${mesh.uuid.slice(0, 6)}`;
       const composed = new THREE.Matrix4();

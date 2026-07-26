@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LoadProgress, ResourceManager } from '@/types/assets.ts';
+import { presetBudgets, type LodBudgets } from '@/engine/Lod.ts';
 import {
   configureColorMap,
   configureDataMap,
@@ -12,6 +13,10 @@ import {
   type PbrSetId,
 } from '@/render/materials/index.ts';
 
+export interface ResourcesPreloadOptions {
+  budgets?: Pick<LodBudgets, 'textureSize' | 'anisotropy'>;
+}
+
 /** Procedural / lightweight resources; CC0 packs augment via manifest when present. */
 export class Resources implements ResourceManager {
   #textures = new Map<string, THREE.Texture>();
@@ -19,18 +24,29 @@ export class Resources implements ResourceManager {
   #materials: MaterialLibrary;
   #env: THREE.Texture | null = null;
   #renderer: THREE.WebGLRenderer;
+  #anisotropy = 8;
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.#renderer = renderer;
     this.#materials = createMaterialLibrary(this);
   }
 
-  async preload(onProgress?: (p: LoadProgress) => void): Promise<void> {
+  async preload(
+    onProgress?: (p: LoadProgress) => void,
+    options?: ResourcesPreloadOptions
+  ): Promise<void> {
+    const budgets = options?.budgets ?? presetBudgets('high');
+    this.#anisotropy = Math.min(
+      budgets.anisotropy,
+      this.#renderer.capabilities.getMaxAnisotropy()
+    );
+    const texSize = budgets.textureSize;
+
     const ids = ['snow', 'rock', 'ice', 'wood', 'metal'];
     let loaded = 0;
     for (const id of ids) {
       onProgress?.({ loaded, total: ids.length, current: id });
-      this.#textures.set(id, this.#makeNoiseTexture(id));
+      this.#textures.set(id, this.#makeNoiseTexture(id, texSize));
       loaded++;
     }
     this.#env = this.#makeSkyEnv();
@@ -46,7 +62,7 @@ export class Resources implements ResourceManager {
           env?: string;
         };
 
-        const anisotropy = this.#renderer.capabilities.getMaxAnisotropy();
+        const anisotropy = this.#anisotropy;
         const loader = new THREE.TextureLoader();
 
         if (manifest.materials?.length) {
@@ -77,7 +93,7 @@ export class Resources implements ResourceManager {
       } else {
         await this.#loadDefaultPbrSets(
           new THREE.TextureLoader(),
-          this.#renderer.capabilities.getMaxAnisotropy(),
+          this.#anisotropy,
           onProgress
         );
       }
@@ -86,7 +102,7 @@ export class Resources implements ResourceManager {
       try {
         await this.#loadDefaultPbrSets(
           new THREE.TextureLoader(),
-          this.#renderer.capabilities.getMaxAnisotropy(),
+          this.#anisotropy,
           onProgress
         );
       } catch {
@@ -176,8 +192,7 @@ export class Resources implements ResourceManager {
     }
   }
 
-  #makeNoiseTexture(kind: string): THREE.DataTexture {
-    const size = 256;
+  #makeNoiseTexture(kind: string, size = 256): THREE.DataTexture {
     const data = new Uint8Array(size * size * 4);
     let seed = kind.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const rand = (): number => {

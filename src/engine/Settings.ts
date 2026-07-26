@@ -26,7 +26,7 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     shadowMapSize: 1024,
     shadowCascades: 2,
     softShadows: false,
-    shadowDistance: 80,
+    shadowDistance: 70,
     ssaoEnabled: false,
     antialias: 'fxaa',
     motionBlurEnabled: false,
@@ -38,8 +38,8 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     vignetteEnabled: true,
     sharpenAmount: 0.2,
     lodBias: 0.6,
-    maxParticles: 1500,
-    anisotropy: 4,
+    maxParticles: 700,
+    anisotropy: 2,
   },
   medium: {
     renderScale: 0.9,
@@ -48,7 +48,7 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     shadowMapSize: 1536,
     shadowCascades: 3,
     softShadows: false,
-    shadowDistance: 120,
+    shadowDistance: 110,
     ssaoEnabled: false,
     antialias: 'smaa',
     motionBlurEnabled: true,
@@ -60,8 +60,8 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     vignetteEnabled: true,
     sharpenAmount: 0.25,
     lodBias: 0.85,
-    maxParticles: 4000,
-    anisotropy: 8,
+    maxParticles: 1600,
+    anisotropy: 4,
   },
   high: {
     renderScale: 1,
@@ -70,7 +70,7 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     shadowMapSize: 2048,
     shadowCascades: 3,
     softShadows: true,
-    shadowDistance: 160,
+    shadowDistance: 140,
     ssaoEnabled: true,
     antialias: 'taa',
     motionBlurEnabled: true,
@@ -82,8 +82,8 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     vignetteEnabled: true,
     sharpenAmount: 0.3,
     lodBias: 1,
-    maxParticles: 8000,
-    anisotropy: 16,
+    maxParticles: 2200,
+    anisotropy: 8,
   },
   ultra: {
     renderScale: 1,
@@ -92,7 +92,7 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     shadowMapSize: 4096,
     shadowCascades: 4,
     softShadows: true,
-    shadowDistance: 220,
+    shadowDistance: 200,
     ssaoEnabled: true,
     antialias: 'taa',
     motionBlurEnabled: true,
@@ -104,7 +104,7 @@ const PRESETS: Record<QualityPreset, PresetFields> = {
     vignetteEnabled: true,
     sharpenAmount: 0.35,
     lodBias: 1,
-    maxParticles: 12000,
+    maxParticles: 4000,
     anisotropy: 16,
   },
 };
@@ -117,7 +117,7 @@ export class Settings implements QualitySettings {
   shadowMapSize = 2048;
   shadowCascades = 3;
   softShadows = true;
-  shadowDistance = 160;
+  shadowDistance = 140;
   ssaoEnabled = true;
   antialias: AntialiasMode = 'taa';
   motionBlurEnabled = true;
@@ -129,8 +129,8 @@ export class Settings implements QualitySettings {
   vignetteEnabled = true;
   sharpenAmount = 0.3;
   lodBias = 1;
-  maxParticles = 8000;
-  anisotropy = 16;
+  maxParticles = 2200;
+  anisotropy = 8;
   fov = 62;
   cameraShakeScale = 1;
   landingAssist = true;

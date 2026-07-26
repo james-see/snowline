@@ -3,6 +3,7 @@ import type { EngineContext, GameModule } from '@/types/engine.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
 import type { CourseModule } from '@/course/CourseModule.ts';
 import type { MaterialLibrary } from '@/render/materials/index.ts';
+import { resolveLodBudgets } from '@/engine/Lod.ts';
 
 const SUN_COLOR = 0xfff4d6;
 const SKY_HORIZON = 0x6a9ec4;
@@ -32,16 +33,18 @@ export class RenderModule implements GameModule {
     this.#hemi = new THREE.HemisphereLight(0x7aa8c8, 0xd8e2ec, 0.38);
     scene.add(this.#hemi);
 
+    const budgets = resolveLodBudgets(settings);
     this.#sun = new THREE.DirectionalLight(SUN_COLOR, 1.55);
     this.#sun.position.set(140, 220, 90);
     this.#sun.castShadow = settings.shadowsEnabled;
     this.#sun.shadow.mapSize.set(settings.shadowMapSize, settings.shadowMapSize);
     this.#sun.shadow.camera.near = 2;
-    this.#sun.shadow.camera.far = settings.shadowDistance;
-    this.#sun.shadow.camera.left = -80;
-    this.#sun.shadow.camera.right = 80;
-    this.#sun.shadow.camera.top = 80;
-    this.#sun.shadow.camera.bottom = -80;
+    this.#sun.shadow.camera.far = budgets.shadowDistance;
+    const half = budgets.shadowFrustum;
+    this.#sun.shadow.camera.left = -half;
+    this.#sun.shadow.camera.right = half;
+    this.#sun.shadow.camera.top = half;
+    this.#sun.shadow.camera.bottom = -half;
     this.#sun.shadow.bias = -0.0004;
     scene.add(this.#sun);
     scene.add(this.#sun.target);
@@ -75,9 +78,16 @@ export class RenderModule implements GameModule {
 
   #applyQuality(ctx: EngineContext): void {
     const s = ctx.settings;
+    const budgets = resolveLodBudgets(s);
     this.#sun.castShadow = s.shadowsEnabled;
     this.#sun.shadow.mapSize.set(s.shadowMapSize, s.shadowMapSize);
-    this.#sun.shadow.camera.far = s.shadowDistance;
+    this.#sun.shadow.camera.far = budgets.shadowDistance;
+    const half = budgets.shadowFrustum;
+    this.#sun.shadow.camera.left = -half;
+    this.#sun.shadow.camera.right = half;
+    this.#sun.shadow.camera.top = half;
+    this.#sun.shadow.camera.bottom = -half;
+    this.#sun.shadow.camera.updateProjectionMatrix();
     ctx.renderer.shadowMap.type = s.softShadows
       ? THREE.PCFSoftShadowMap
       : THREE.BasicShadowMap;
