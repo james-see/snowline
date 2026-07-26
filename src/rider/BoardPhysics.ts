@@ -53,7 +53,10 @@ export interface RiderPhysicsFrameResult {
 
 interface GroundSample {
   hit: boolean;
+  /** Raw ray TOI from lifted origin. */
   distance: number;
+  /** Signed gap from board origin to surface (`distance - rayLift`). */
+  contactGap: number;
   normal: THREE.Vector3;
   surface: SurfaceKind;
   point: THREE.Vector3;
@@ -78,7 +81,10 @@ const _surfaceCounts: Record<SurfaceKind, number> = {
   rock: 0,
 };
 
-const RAY_OFFSETS = [-0.85, -0.42, 0, 0.42, 0.85] as const;
+/** Longitudinal probe stations along the board. */
+const RAY_LONG = [-0.85, -0.42, 0, 0.42, 0.85] as const;
+/** Lateral offsets help trimesh edges where the centerline misses. */
+const RAY_LAT = [-0.55, 0, 0.55] as const;
 
 const SURFACE_KINDS: readonly SurfaceKind[] = [
   'powder',
@@ -88,6 +94,10 @@ const SURFACE_KINDS: readonly SurfaceKind[] = [
   'wood',
   'rock',
 ];
+
+function rayStationCount(): number {
+  return RAY_LONG.length * RAY_LAT.length;
+}
 
 export class BoardPhysics {
   readonly position = new THREE.Vector3();
@@ -121,9 +131,13 @@ export class BoardPhysics {
   #railAxis = new THREE.Vector3(1, 0, 0);
   #quaternion = new THREE.Quaternion();
   #boardUp = new THREE.Vector3(0, 1, 0);
-  #samples: GroundSample[] = RAY_OFFSETS.map(() => ({
+  #probeCount = 0;
+  #nearHitCount = 0;
+  #bestContactGap = Number(JUMP.rayLength);
+  #samples: GroundSample[] = Array.from({ length: rayStationCount() }, () => ({
     hit: false,
     distance: JUMP.rayLength,
+    contactGap: JUMP.rayLength,
     normal: new THREE.Vector3(0, 1, 0),
     surface: 'packed' as SurfaceKind,
     point: new THREE.Vector3(),
@@ -151,6 +165,9 @@ export class BoardPhysics {
     this.#wasAirborne = false;
     this.#wasGrinding = false;
     this.#grindTime = 0;
+    this.#probeCount = 0;
+    this.#nearHitCount = 0;
+    this.#bestContactGap = 0;
     this.#groundNormal.set(0, 1, 0);
     this.#groundPoint.copy(spawn.position);
     this.#composeQuaternion();
@@ -170,6 +187,11 @@ export class BoardPhysics {
 
   get recoveryRemaining(): number {
     return this.#recovery;
+  }
+
+  /** Test/debug: remaining jump-buffer seconds. */
+  get jumpBufferRemaining(): number {
+    return this.#jumpBuffer;
   }
 
   getTransform(outPosition = this.position, outQuaternion = this.#quaternion): BoardTransform {
@@ -194,6 +216,7 @@ export class BoardPhysics {
     if (this.crashed) {
       this.#recovery = Math.max(0, this.#recovery - dt);
       this.velocity.multiplyScalar(Math.max(0, 1 - dt * 3.5));
+      this.position.addScaledVector(this.velocity, dt);
       this.speed = horizontalSpeed(this.velocity);
       if (this.#recovery <= 0) {
         this.crashed = false;
@@ -211,14 +234,14 @@ export class BoardPhysics {
     if (input.jumpPressed) this.#jumpBuffer = JUMP.buffer;
     else this.#jumpBuffer = Math.max(0, this.#jumpBuffer - dt);
 
-    this.#targetLean = input.lean > 0.5 ? input.steer >= 0 ? 1 : -1 : input.steer * CARVE.maxLean;
+    this.#targetLean = input.lean > 0.5 ? (input.steer >= 0 ? 1 : -1) : input.steer * CARVE.maxLean;
     this.lean = approach(this.lean, this.#targetLean, CARVE.leanRate * dt);
     this.edgeAngle = this.lean * CARVE.edgePerLean;
 
     this.#sampleGround(physics);
 
     const wasGrounded = this.grounded;
-    this.grounded = this.#samples[2]?.hit === true && (this.#samples[2]?.distance ?? 999) <= JUMP.groundEpsilon;
+    this.grounded = this.#resolveGrounded();
     this.airborne = !this.grounded;
 
     if (wasGrounded) {
@@ -227,6 +250,27 @@ export class BoardPhysics {
       else this.#anticipation = Math.max(0, this.#anticipation - dt * 4);
     } else {
       this.#coyote = Math.max(0, this.#coyote - dt);
+    }
+
+    // Grade the landing on first contact using the airborne pose/impact, before
+    // ground integrate blends pitch or consumes a buffered jump.
+    if (this.grounded && !wasGrounded && this.#wasAirborne) {
+      result.landed = this.#resolveLanding();
+      if (result.landed.grade === 'bail') {
+        this.crashed = true;
+        this.#recovery = CRASH.recoveryTime;
+        result.crashed = true;
+        result.crashReason = result.landed.impactSpeed >= LANDING.hardImpact ? 'impact' : 'alignment';
+        this.#writeBody(physics);
+        result.boostMeter = this.boostMeter;
+        return result;
+      }
+    }
+
+    if (this.crashed) {
+      this.#writeBody(physics);
+      result.boostMeter = this.boostMeter;
+      return result;
     }
 
     if (this.grinding) {
@@ -238,21 +282,7 @@ export class BoardPhysics {
       this.#integrateAir(dt, input);
     }
 
-    if (this.grounded && !wasGrounded && this.#wasAirborne) {
-      result.landed = this.#resolveLanding();
-      if (result.landed.grade === 'bail') {
-        this.crashed = true;
-        this.#recovery = CRASH.recoveryTime;
-        result.crashed = true;
-        result.crashReason = result.landed.impactSpeed >= LANDING.hardImpact ? 'impact' : 'alignment';
-      }
-    }
-
-    if (!wasGrounded && this.grounded && (this.#jumpBuffer > 0 || this.#coyote > 0)) {
-      // Buffered jump on lip — only when we were already airborne from a prior hop.
-    }
-
-    if (wasGrounded && !this.grounded && this.velocity.y > 0.5) {
+    if (wasGrounded && !this.grounded) {
       this.#wasAirborne = true;
     }
 
@@ -272,6 +302,14 @@ export class BoardPhysics {
     return result;
   }
 
+  #resolveGrounded(): boolean {
+    if (this.#nearHitCount <= 0) return false;
+    // Centerline (long=0, lat=0) is index 1 * RAY_LAT.length + 1 = middle of the grid.
+    const center = this.#samples[centerSampleIndex()];
+    if (center?.hit && isNearGround(center.contactGap)) return true;
+    return this.#nearHitCount >= JUMP.groundMinHits;
+  }
+
   #integrateGround(dt: number, input: RiderInput, result: RiderPhysicsFrameResult): void {
     const surface = SURFACE[this.surfaceKind] ?? SURFACE.packed;
     const downhill = projectOnPlane(_v0.copy(WORLD_DOWN).multiplyScalar(GRAVITY), this.#groundNormal);
@@ -285,26 +323,29 @@ export class BoardPhysics {
     const lateralSpeed = this.velocity.dot(right);
 
     const boosting =
-      input.boost && this.boostMeter >= BOOST.minToUse && forwardSpeed > 2;
+      input.boost && this.boostMeter >= BOOST.minToUse && forwardSpeed > 1.5;
     if (boosting) {
       this.velocity.addScaledVector(slopeForward, ACCEL.boost * dt);
       this.boostMeter = Math.max(0, this.boostMeter - BOOST.drainRate * dt);
-    } else if (this.grounded) {
+    } else {
       this.boostMeter = Math.min(BOOST.maxMeter, this.boostMeter + BOOST.rechargeRate * dt);
     }
 
     const steerAuthority = Math.max(0.25, Math.min(1, this.speed / SPEED.minSteer));
+    const edgeWeight = clamp(Math.abs(this.edgeAngle) / Math.max(1e-4, CARVE.edgePerLean), 0, 1);
     const steerRate =
-      (this.edgeAngle * CARVE.steerRate * this.speed + input.steer * CARVE.steerInputRate) *
+      (this.edgeAngle * CARVE.steerRate * this.speed * (0.55 + edgeWeight * 0.7) +
+        input.steer * CARVE.steerInputRate) *
       steerAuthority;
     this.boardYaw += steerRate * dt;
 
-    const grip = CARVE.baseGrip * surface.grip * (0.35 + Math.abs(this.edgeAngle) * 1.4);
+    const grip =
+      surface.grip *
+      (CARVE.flatSlideGrip + (CARVE.baseGrip - CARVE.flatSlideGrip) * Math.pow(edgeWeight, 0.85));
     const lateralDecay = Math.exp(-grip * dt);
     const newLateral = lateralSpeed * lateralDecay;
     this.velocity.addScaledVector(right, newLateral - lateralSpeed);
 
-    const drag = surface.drag * (input.brake ? SPEED.brakeDecel : ACCEL.coast * 0.15);
     const fwd = this.velocity.dot(slopeForward);
     const fwdSign = Math.sign(fwd) || 1;
     let newFwd = fwd;
@@ -313,7 +354,8 @@ export class BoardPhysics {
       if (fwdSign > 0 && newFwd < 0) newFwd = 0;
       if (fwdSign < 0 && newFwd > 0) newFwd = 0;
     } else {
-      newFwd = fwd - fwdSign * drag * dt * 0.35;
+      const drag = surface.drag * ACCEL.coast * 0.12;
+      newFwd = fwd - fwdSign * drag * dt;
     }
     this.velocity.addScaledVector(slopeForward, newFwd - fwd);
 
@@ -323,13 +365,11 @@ export class BoardPhysics {
     this.velocity.addScaledVector(this.#groundNormal, -this.velocity.dot(this.#groundNormal));
     this.velocity.addScaledVector(WORLD_DOWN, -JUMP.groundStick * dt);
 
-    const heightError = (this.#samples[2]?.distance ?? 0) - JUMP.groundEpsilon * 0.5;
-    if (heightError > 0) {
-      this.position.y -= heightError;
-    }
+    this.position.addScaledVector(this.velocity, dt);
+    this.#snapToGround();
 
     if ((this.#jumpBuffer > 0 || input.jump) && (this.#coyote > 0 || this.grounded)) {
-      let impulse = JUMP.impulse + this.#anticipation * JUMP.anticipationBonus * 5;
+      const impulse = JUMP.impulse + this.#anticipation * JUMP.anticipationBonus * 5;
       this.velocity.addScaledVector(this.#groundNormal, impulse);
       this.#jumpBuffer = 0;
       this.#coyote = 0;
@@ -347,6 +387,19 @@ export class BoardPhysics {
         surface: this.surfaceKind,
         speed: this.speed,
       };
+    }
+
+    this.boardRoll = approach(this.boardRoll, this.edgeAngle * 0.9, 10 * dt);
+    const slopePitch = pitchFromNormal(this.#groundNormal, this.boardYaw);
+    this.boardPitch = approach(this.boardPitch, slopePitch * 0.65, 8 * dt);
+  }
+
+  #snapToGround(): void {
+    if (this.#nearHitCount <= 0 || !Number.isFinite(this.#bestContactGap)) return;
+    const error = this.#bestContactGap - JUMP.rideHeight;
+    // Pull along world down to match the sensing ray; keeps trimesh TOI consistent.
+    if (Math.abs(error) > 1e-4) {
+      this.position.y -= error;
     }
   }
 
@@ -382,9 +435,9 @@ export class BoardPhysics {
 
   #tryStartGrind(): void {
     if (this.surfaceKind !== 'rail') return;
-    const center = this.#samples[2];
+    const center = this.#samples[centerSampleIndex()];
     if (!center?.hit) return;
-    if (center.distance > GRIND.latchDistance) return;
+    if (center.contactGap > GRIND.latchDistance) return;
 
     this.grinding = true;
     this.#grindTime = 0;
@@ -448,46 +501,79 @@ export class BoardPhysics {
     const right = _v4.crossVectors(WORLD_UP, forward).normalize();
     const normalSum = _v0.set(0, 0, 0);
     let hitCount = 0;
+    let nearHits = 0;
+    let bestGap = Infinity;
+    let bestPointSet = false;
     for (let i = 0; i < SURFACE_KINDS.length; i++) {
       _surfaceCounts[SURFACE_KINDS[i]!] = 0;
     }
 
-    for (let i = 0; i < RAY_OFFSETS.length; i++) {
-      const sample = this.#samples[i]!;
-      const offset = RAY_OFFSETS[i]!;
-      _v1
-        .copy(this.position)
-        .addScaledVector(forward, offset * JUMP.boardHalfLength)
-        .addScaledVector(WORLD_UP, 0.35);
+    let sampleIndex = 0;
+    for (let li = 0; li < RAY_LONG.length; li++) {
+      const long = RAY_LONG[li]!;
+      for (let wi = 0; wi < RAY_LAT.length; wi++) {
+        const lat = RAY_LAT[wi]!;
+        const sample = this.#samples[sampleIndex]!;
+        sampleIndex++;
 
-      const hit = physics.raycast({
-        origin: _v1,
-        direction: WORLD_DOWN,
-        maxDistance: JUMP.rayLength,
-        groups: CollisionGroup.Terrain | CollisionGroup.Trigger | CollisionGroup.Rail,
-      });
+        _v1
+          .copy(this.position)
+          .addScaledVector(forward, long * JUMP.boardHalfLength)
+          .addScaledVector(right, lat * JUMP.boardHalfWidth)
+          .addScaledVector(WORLD_UP, JUMP.rayLift);
 
-      if (hit) {
-        sample.hit = true;
-        sample.distance = hit.distance;
-        sample.normal.copy(hit.normal);
-        sample.surface = hit.surface;
-        sample.point.copy(hit.point);
-        normalSum.add(hit.normal);
-        hitCount++;
-        _surfaceCounts[hit.surface] += 1;
-      } else {
-        sample.hit = false;
-        sample.distance = JUMP.rayLength;
-        sample.normal.set(0, 1, 0);
-        sample.surface = 'packed';
+        const hit = physics.raycast({
+          origin: _v1,
+          direction: WORLD_DOWN,
+          maxDistance: JUMP.rayLength,
+          groups: CollisionGroup.Terrain | CollisionGroup.Trigger | CollisionGroup.Rail,
+          exclude: ['rider'],
+        });
+
+        if (hit) {
+          const contactGap = hit.distance - JUMP.rayLift;
+          sample.hit = true;
+          sample.distance = hit.distance;
+          sample.contactGap = contactGap;
+          sample.normal.copy(hit.normal);
+          // Guard against inverted / degenerate trimesh normals.
+          if (sample.normal.y < 0) sample.normal.multiplyScalar(-1);
+          if (sample.normal.lengthSq() < 1e-6) sample.normal.set(0, 1, 0);
+          else sample.normal.normalize();
+          sample.surface = hit.surface;
+          sample.point.copy(hit.point);
+          normalSum.add(sample.normal);
+          hitCount++;
+          _surfaceCounts[hit.surface] += 1;
+          if (isNearGround(contactGap)) {
+            nearHits++;
+            if (contactGap < bestGap) {
+              bestGap = contactGap;
+              this.#groundPoint.copy(hit.point);
+              bestPointSet = true;
+            }
+          }
+        } else {
+          sample.hit = false;
+          sample.distance = JUMP.rayLength;
+          sample.contactGap = JUMP.rayLength;
+          sample.normal.set(0, 1, 0);
+          sample.surface = 'packed';
+        }
       }
     }
 
+    this.#probeCount = hitCount;
+    this.#nearHitCount = nearHits;
+    this.#bestContactGap = bestGap === Infinity ? JUMP.rayLength : bestGap;
+
     if (hitCount > 0) {
       this.#groundNormal.copy(normalSum).normalize();
-      this.#groundPoint.copy(this.#samples[2]?.point ?? this.position);
-      this.surfaceKind = majoritySurface(_surfaceCounts, this.#samples[2]?.surface ?? 'packed');
+      if (!bestPointSet) {
+        const center = this.#samples[centerSampleIndex()];
+        this.#groundPoint.copy(center?.point ?? this.position);
+      }
+      this.surfaceKind = majoritySurface(_surfaceCounts, this.#samples[centerSampleIndex()]?.surface ?? 'packed');
     } else {
       this.#groundNormal.set(0, 1, 0);
       this.surfaceKind = 'packed';
@@ -496,7 +582,6 @@ export class BoardPhysics {
     if (this.grinding && this.surfaceKind !== 'rail') {
       this.grinding = false;
     }
-
   }
 
   #composeBoardUp(out: THREE.Vector3): THREE.Vector3 {
@@ -513,6 +598,25 @@ export class BoardPhysics {
     if (!this.#body) return;
     physics.setNextKinematicTransform(this.#body, this.position, this.#quaternion);
   }
+}
+
+function centerSampleIndex(): number {
+  const longMid = (RAY_LONG.length - 1) >> 1;
+  const latMid = (RAY_LAT.length - 1) >> 1;
+  return longMid * RAY_LAT.length + latMid;
+}
+
+function isNearGround(contactGap: number): boolean {
+  // Allow slight penetration (negative gap) from trimesh numeric noise.
+  return contactGap <= JUMP.groundEpsilon && contactGap >= -JUMP.groundEpsilon * 1.5;
+}
+
+function pitchFromNormal(normal: THREE.Vector3, yaw: number): number {
+  const forward = forwardFromYaw(yaw, _v1);
+  const slopeForward = projectOnPlane(forward, normal);
+  if (slopeForward.lengthSq() < 1e-6) return 0;
+  slopeForward.normalize();
+  return Math.asin(clamp(slopeForward.y, -1, 1));
 }
 
 function forwardFromYaw(yaw: number, out: THREE.Vector3): THREE.Vector3 {
