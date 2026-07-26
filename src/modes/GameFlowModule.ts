@@ -1,35 +1,50 @@
 import * as THREE from 'three';
 import type { EngineContext, GameModule } from '@/types/engine.ts';
-import type { CourseId, GameModeId } from '@/types/gameplay.ts';
+import type { CourseId, GameModeId, Medal } from '@/types/gameplay.ts';
 import type { CourseModule } from '@/course/CourseModule.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
-import { loadSave, writeSave } from '@/score/SaveData.ts';
+import { loadSave, markTutorialDone as persistTutorialDone, normalizeMode } from '@/score/SaveData.ts';
+import { ModeController, type FlowScreen } from './ModeController.ts';
 
-export type ScreenId =
-  | 'title'
-  | 'course'
-  | 'mode'
-  | 'playing'
-  | 'paused'
-  | 'results'
-  | 'settings';
+export type ScreenId = FlowScreen;
 
 export class GameFlowModule implements GameModule {
   readonly name = 'flow';
   readonly order = 5;
 
-  screen: ScreenId = 'title';
-  courseId: CourseId = 'alpine';
-  mode: GameModeId = 'freeride';
+  readonly controller = new ModeController();
   #ctx: EngineContext | null = null;
-  #paused = false;
+  /** True until UI consumes the one-time alpine tip. */
+  #tutorialPending = false;
+
   lastResults: {
     time: number;
     score: number;
-    medal: string;
+    medal: Medal | string;
     courseId: CourseId;
     mode: GameModeId;
   } | null = null;
+
+  get screen(): ScreenId {
+    return this.controller.screen;
+  }
+  set screen(s: ScreenId) {
+    this.controller.screen = s;
+  }
+
+  get courseId(): CourseId {
+    return this.controller.courseId;
+  }
+  set courseId(id: CourseId) {
+    this.controller.courseId = id;
+  }
+
+  get mode(): GameModeId {
+    return this.controller.mode;
+  }
+  set mode(m: GameModeId) {
+    this.controller.mode = m;
+  }
 
   init(ctx: EngineContext): void {
     this.#ctx = ctx;
@@ -37,7 +52,7 @@ export class GameFlowModule implements GameModule {
 
     ctx.events.on('run:finish', (payload) => {
       this.lastResults = payload;
-      this.screen = 'results';
+      this.controller.finishRun();
       ctx.input.setLockout(true);
       ctx.input.exitPointerLock();
       ctx.events.emit('ui:navigate', { screen: 'results' });
@@ -45,39 +60,40 @@ export class GameFlowModule implements GameModule {
   }
 
   update(_dt: number, ctx: EngineContext): void {
-    if (this.screen === 'playing' && ctx.input.wasPressed('pause')) {
-      this.togglePause();
-    } else if (this.screen === 'paused' && ctx.input.wasPressed('pause')) {
+    const s = this.controller.screen;
+    if ((s === 'playing' || s === 'paused') && ctx.input.wasPressed('pause')) {
       this.togglePause();
     }
   }
 
   goTitle(): void {
-    this.screen = 'title';
+    this.controller.backToTitle();
     this.#ctx?.input.setLockout(true);
+    this.#ctx?.input.exitPointerLock();
+    this.#ctx?.setTimeScale(0);
     this.#ctx?.events.emit('ui:navigate', { screen: 'title' });
   }
 
   goCourseSelect(): void {
-    this.screen = 'course';
+    this.controller.navigate('course');
     this.#ctx?.events.emit('ui:navigate', { screen: 'course' });
   }
 
   goModeSelect(courseId: CourseId): void {
-    this.courseId = courseId;
-    this.screen = 'mode';
+    this.controller.selectCourse(courseId);
     this.#ctx?.events.emit('ui:navigate', { screen: 'mode' });
   }
 
   goSettings(): void {
-    this.screen = 'settings';
+    this.controller.goSettings();
     this.#ctx?.events.emit('ui:navigate', { screen: 'settings' });
   }
 
+  /** title → course → mode → run */
   startRun(mode?: GameModeId): void {
     const ctx = this.#ctx;
     if (!ctx) return;
-    if (mode) this.mode = mode;
+    if (mode) this.controller.mode = normalizeMode(mode);
 
     const course = ctx.getModule<CourseModule>('course');
     const rider = ctx.getModule<RiderModule>('rider');
@@ -90,16 +106,13 @@ export class GameFlowModule implements GameModule {
     }
     course?.resetRun();
 
-    this.screen = 'playing';
-    this.#paused = false;
+    this.controller.selectMode(this.mode);
     ctx.setTimeScale(1);
     ctx.input.setLockout(false);
     if (!ctx.capture) ctx.input.requestPointerLock();
 
     const save = loadSave();
-    if (!save.tutorialDone && this.courseId === 'alpine') {
-      // first-run tip handled by UI
-    }
+    this.#tutorialPending = !save.tutorialDone && this.courseId === 'alpine';
 
     ctx.events.emit('run:start', { courseId: this.courseId, mode: this.mode });
     ctx.events.emit('ui:navigate', { screen: 'playing' });
@@ -107,25 +120,41 @@ export class GameFlowModule implements GameModule {
 
   togglePause(): void {
     const ctx = this.#ctx;
-    if (!ctx || (this.screen !== 'playing' && this.screen !== 'paused')) return;
-    this.#paused = !this.#paused;
-    this.screen = this.#paused ? 'paused' : 'playing';
-    ctx.setTimeScale(this.#paused ? 0 : 1);
-    ctx.input.setLockout(this.#paused);
-    if (this.#paused) ctx.input.exitPointerLock();
+    const s = this.controller.screen;
+    if (!ctx || (s !== 'playing' && s !== 'paused')) return;
+    const next = s !== 'paused';
+    this.controller.setPaused(next);
+    ctx.setTimeScale(next ? 0 : 1);
+    ctx.input.setLockout(next);
+    if (next) ctx.input.exitPointerLock();
     else if (!ctx.capture) ctx.input.requestPointerLock();
-    ctx.events.emit('run:pause', { paused: this.#paused });
-    ctx.events.emit('ui:navigate', { screen: this.screen });
+    ctx.events.emit('run:pause', { paused: next });
+    ctx.events.emit('ui:navigate', { screen: this.controller.screen });
   }
 
+  /** results → restart same course/mode */
   restart(): void {
+    this.controller.restartRun();
     this.startRun(this.mode);
   }
 
+  /** One-time alpine tip — true only for first alpine run. */
+  shouldShowTutorialTip(): boolean {
+    return this.#tutorialPending;
+  }
+
+  /** UI calls after showing tip; persists tutorialDone. */
+  consumeTutorialTip(): boolean {
+    if (!this.#tutorialPending) return false;
+    this.#tutorialPending = false;
+    this.markTutorialDone();
+    return true;
+  }
+
   markTutorialDone(): void {
-    const save = loadSave();
-    save.tutorialDone = true;
-    writeSave(save);
+    // Persist only for alpine (or after consumeTutorialTip cleared the pending flag).
+    if (this.courseId !== 'alpine') return;
+    this.#tutorialPending = false;
+    persistTutorialDone();
   }
 }
-
