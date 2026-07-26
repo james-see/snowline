@@ -10,7 +10,8 @@ export class RenderPipelineImpl implements RenderPipeline {
   #width = 1;
   #height = 1;
   #fogColor = new THREE.Color(0x9ec4e8);
-  #fogDensity = 0.28;
+  // Post-stack grade density (not scene FogExp2). Keep tiny to avoid white-wash.
+  #fogDensity = 0.04;
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {
     this.post = new PostStack(renderer);

@@ -22,13 +22,14 @@ export class RenderModule implements GameModule {
   init(ctx: EngineContext): void {
     const { scene, renderer, settings, resources } = ctx;
 
-    scene.background = new THREE.Color().setHSL(0.58, 0.35, 0.72);
-    scene.fog = this.#fog = new THREE.FogExp2(SKY_HORIZON, 0.00085);
+    scene.background = new THREE.Color().setHSL(0.58, 0.38, 0.62);
+    scene.fog = this.#fog = new THREE.FogExp2(SKY_HORIZON, 0.0007);
 
-    this.#hemi = new THREE.HemisphereLight(SKY_HORIZON, 0xdde8f0, 0.55);
+    // Cool sky + snow bounce fill so form reads without blowing whites.
+    this.#hemi = new THREE.HemisphereLight(0x8eb8d8, 0xe8eef4, 0.62);
     scene.add(this.#hemi);
 
-    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 1.35);
+    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 1.28);
     this.#sun.position.set(120, 180, 80);
     this.#sun.castShadow = settings.shadowsEnabled;
     this.#sun.shadow.mapSize.set(settings.shadowMapSize, settings.shadowMapSize);
@@ -71,8 +72,8 @@ export class RenderModule implements GameModule {
       : THREE.BasicShadowMap;
 
     const pipeline = ctx.pipeline as { setFog?: (c: THREE.Color, d: number) => void };
-    // Post-stack "fog" is a mild vertical grade, not distance fog — keep it low.
-    pipeline.setFog?.(new THREE.Color(SKY_HORIZON), 0.08);
+    // Post-stack grade only — never feed scene FogExp2 densities into UV wash.
+    pipeline.setFog?.(new THREE.Color(SKY_HORIZON), 0.04);
   }
 
   #upgradeSnowMaterials(scene: THREE.Scene): void {
@@ -81,15 +82,15 @@ export class RenderModule implements GameModule {
       if (!obj.name.startsWith('terrain-')) return;
       const old = obj.material as THREE.MeshStandardMaterial;
       const phys = new THREE.MeshPhysicalMaterial({
-        color: 0xf2f8ff,
+        color: 0xe6eef6,
         vertexColors: old.vertexColors,
-        roughness: 0.78,
+        roughness: 0.84,
         metalness: 0.02,
-        clearcoat: 0.35,
-        clearcoatRoughness: 0.22,
-        sheen: 0.4,
+        clearcoat: 0.18,
+        clearcoatRoughness: 0.35,
+        sheen: 0.28,
         sheenColor: new THREE.Color(0xc8e8ff),
-        sheenRoughness: 0.5,
+        sheenRoughness: 0.55,
       });
       old.dispose();
       obj.material = phys;
