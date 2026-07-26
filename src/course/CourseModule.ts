@@ -51,6 +51,11 @@ export class CourseModule implements GameModule {
     this.#root.visible = false;
     ctx.scene.add(this.#root);
     // Defer heavy course build until a run starts — title stays clean.
+    ctx.events.on('ui:navigate', ({ screen }) => {
+      if (screen === 'title' || screen === 'course' || screen === 'mode' || screen === 'settings') {
+        this.#root.visible = false;
+      }
+    });
   }
 
   loadCourse(id: CourseId, physics?: PhysicsWorld): CourseDef {
@@ -59,7 +64,11 @@ export class CourseModule implements GameModule {
     this.#clearVisual();
     world?.clearWorld();
 
-    const def = getCourseDef(id);
+    const base = getCourseDef(id);
+    const def: CourseDef = {
+      ...base,
+      spawn: { ...base.spawn, position: [...base.spawn.position] },
+    };
     const path = new SplinePath(def.controlPoints);
     const rng = new SeededRng(def.seed);
     const terrain = buildTerrain({ course: def, path, rng });
@@ -94,18 +103,23 @@ export class CourseModule implements GameModule {
     this.#terrain = terrain;
     this.#props = props;
     this.#triggers = props.triggers;
-    this.#root.visible = true;
     this.resetRun();
 
-    // Snap authored spawn onto the spline bed so the rider never starts off-mesh.
-    if (this.#path) {
-      const bed = this.#path.sample(0.02);
-      def.spawn = {
-        ...def.spawn,
-        position: [bed.x, bed.y + 1.2, bed.z],
-        yaw: Math.atan2(-this.#path.tangent(0.02).x, -this.#path.tangent(0.02).z),
-      };
-    }
+    // Snap spawn onto the generated mesh centerline (all courses).
+    const SPAWN_T = 0.02;
+    const { nrows, ncols } = terrain.heightfield;
+    const row = Math.round(SPAWN_T * (nrows - 1));
+    const col = (ncols - 1) >> 1;
+    const posAttr = terrain.mesh.geometry.getAttribute('position');
+    const vi = row * ncols + col;
+    const tan = path.tangent(SPAWN_T, new THREE.Vector3());
+    def.spawn = {
+      ...def.spawn,
+      position: [posAttr.getX(vi), posAttr.getY(vi) + 1.2, posAttr.getZ(vi)],
+      yaw: Math.atan2(tan.x, tan.z),
+    };
+
+    this.#root.visible = true;
 
     ctx?.events.emit('course:loaded', {
       courseId: def.id,
@@ -210,6 +224,7 @@ export class CourseModule implements GameModule {
   }
 
   #clearVisual(): void {
+    this.#root.visible = false;
     this.#terrain?.mesh.geometry.dispose();
     const mat = this.#terrain?.mesh.material;
     if (Array.isArray(mat)) mat.forEach((m) => m.dispose());

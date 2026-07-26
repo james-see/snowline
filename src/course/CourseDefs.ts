@@ -16,7 +16,7 @@ export const ALPINE_FLOW: CourseDef = {
   seed: 0xa1f1_0e01,
   length: 2200,
   difficulty: 'blue',
-  spawn: { position: [0, 422, -20], yaw: 0, pitch: -8 },
+  spawn: { position: [0, 421, 0], yaw: 0, pitch: -8 },
   checkpoints: [...alpineCheckpoints],
   finish: { id: 'finish', name: 'Village Arch', t: 0.98, width: 22 },
   controlPoints: [
@@ -81,7 +81,7 @@ export const TIMBERLINE: CourseDef = {
   seed: 0x71ab_e1ae,
   length: 1850,
   difficulty: 'black',
-  spawn: { position: [200, 402, -120], yaw: 0.15, pitch: -10 },
+  spawn: { position: [200, 401, -100], yaw: 0.15, pitch: -10 },
   checkpoints: [
     { id: 'cp1', name: 'Glade Entry', t: 0.2, width: 12 },
     { id: 'cp2', name: 'Tunnel Mouth', t: 0.42, width: 10 },
@@ -165,7 +165,7 @@ export const SUMMIT_DROP: CourseDef = {
   seed: 0x5b01_17d0,
   length: 2450,
   difficulty: 'double-black',
-  spawn: { position: [-300, 522, -220], yaw: 0.05, pitch: -12 },
+  spawn: { position: [-300, 521, -200], yaw: 0.05, pitch: -12 },
   checkpoints: [
     { id: 'cp1', name: 'Summit Ledge', t: 0.12, width: 14 },
     { id: 'cp2', name: 'Cliff Bypass', t: 0.32, width: 12 },

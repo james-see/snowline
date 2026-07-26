@@ -2,45 +2,39 @@
 
 ## Current milestone
 
-Milestone B/C — full game systems integrated; polishing toward gate.
+Parallel agent fan-out on isolated `agent/*` branches / worktrees (see [AGENT_OWNERS.md](AGENT_OWNERS.md)).
 
-## Active ownership
+## Active subagents (worktree branches)
 
-| Area | Path |
-|------|------|
-| Engine | `src/engine/` |
-| Rider / tricks | `src/rider/` |
-| Course | `src/course/` |
-| Camera | `src/camera/` |
-| Render / post | `src/render/` |
-| VFX | `src/vfx/` |
-| Audio | `src/audio/` |
-| Score / save | `src/score/` |
-| UI / flow | `src/ui/`, `src/modes/` |
-| Critic | `tools/critic/` |
-| Assets | `tools/assets/` |
+| Branch | Focus |
+|--------|-------|
+| `agent/physics` | Board sensing / carve |
+| `agent/tricks` | Air tricks / landings |
+| `agent/camera` | Chase framing (blank-sky fix) |
+| `agent/course` | Terrain + on-mesh spawn |
+| `agent/props` | Rails/trees/gates |
+| `agent/materials` | Snow/rock/ice PBR |
+| `agent/vfx` | Spray/trails/snow |
+| `agent/lighting` | Post fog white-out fix |
+| `agent/audio` | Surface audio |
+| `agent/ui` | Menus/HUD |
+| `agent/score` | Modes/persistence |
+| `agent/capture` | Critic harness |
+| `agent/rider-art` | Rider visual |
+| `agent/perf` | LOD/budgets |
+| `agent/docs` | Living docs |
+| `agent/critic` | Harsh gate (no prod code) |
 
-## Completed
+Named worktrees: `/Users/jc/p/snowline-worktrees/<name>`  
+Best-of-n runner worktrees also under `~/.cursor/worktrees/`.
 
-- Vite + TS + Three + Rapier scaffold
-- Fixed 120 Hz engine, input (keyboard/gamepad), settings, capture bridge
-- Board-aware arcade physics, air tricks, landings, crash recovery
-- Three course defs + terrain generator + props
-- Chase camera, score/combos/save, modes flow
-- Forward HDR + tonemap/bloom post, VFX, procedural audio
-- Title / course / mode / HUD / pause / settings / results
-- Critic rubric, capture, gate, assets tools
-- `npm run typecheck` and `npm run build` green
+## Critical defect
 
-## Under review
+Gameplay captures washed to blank sky. Title OK. Lighting fog + camera framing + spawn-on-mesh are the fix owners.
 
-- Visual polish vs rubric (snow materials, authored props density)
-- Capture determinism on GPU Chrome
-- Perf at 1080p during forest sections
+## Next
 
-## Next actions
-
-1. Run capture suite + critic gate
-2. Fix failing categories
-3. Acceptance pass from clean checkout
-4. Commit stable milestone
+1. Collect agent branch commits as they finish
+2. Integrate non-overlapping merges onto `main`
+3. Re-run capture + critic gate
+4. Loop failing categories back to owning agents

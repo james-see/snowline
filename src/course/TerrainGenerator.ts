@@ -185,10 +185,10 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
   const cellSizeZ = (maxZ - minZ) / Math.max(1, nrows - 1);
   const cellSize = Math.max(cellSizeX, cellSizeZ);
 
+  // Heightfield stores relative heights with origin.y = baseY.
+  // Keep mesh positions in world space so path/spawn/props line up with the trimesh.
   for (let i = 0; i < heights.length; i++) {
     heights[i] -= baseY;
-    const vi = i * 3 + 1;
-    positions[vi] = heights[i];
   }
 
   // Indices & normals.
