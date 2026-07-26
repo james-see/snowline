@@ -25,3 +25,14 @@ Must exist and pass blank-frame detect: `title`, `course_start`, `carve`, `fores
 ## Blank / washed-frame detect
 
 Fails when **mean luma is too high** (`≥ 210`) **or** **variance/stddev is too low** (`σ ≤ 14`), plus a soft bright-wash band (`mean ≥ 155` and `σ ≤ 22`). Capture runs this after every PNG by default; disable with `--no-blank-check`.
+
+## Reference images (critic bar)
+
+```bash
+npm run refs:fetch   # download into refs/snowboard/images/ (gitignored)
+```
+
+Manifest: `refs/snowboard/manifest.json` (SSX-style game stills + CC real-world powder/air/slopestyle photos).  
+`npm run critic` embeds every present ref path + `lookFor` notes into `CRITIC_BRIEF.txt`. Critic agents must open those files and score Snowline vs the refs, not vs prior Snowline captures alone.
+
+Drop extra press/gameplay stills into `refs/snowboard/images/` anytime; optional rows in the manifest document intent.

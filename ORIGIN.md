@@ -10,7 +10,7 @@ AAA-quality arcade snowboarding in-browser: TypeScript, Three.js, WebGL2, Rapier
 
 “Loop until objectively better than a modern AAA console title” is not a reachable exit. Target: top-tier **browser** snowboarder with a bounded rubric (no critical category < 8/10, visual mean ≥ 8.5, gameplay feel ≥ 9, 60 FPS, no critical bugs).
 
-Third-party reference screenshots are not committed. Subagent “done” claims require build/test/capture evidence.
+Third-party **game** screenshots are not committed. Fetch local critic refs with `npm run refs:fetch` (see `refs/snowboard/`). Subagent “done” claims require build/test/capture evidence.
 
 ## Decisions
 

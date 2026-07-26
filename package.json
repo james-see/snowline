@@ -20,7 +20,8 @@
     "determinism": "node tools/critic/determinism-check.mjs",
     "flicker": "node tools/critic/flicker-probe.mjs",
     "smoke": "node tools/critic/smoke.mjs",
-    "blank-frame": "node tools/critic/blank-frame.mjs"
+    "blank-frame": "node tools/critic/blank-frame.mjs",
+    "refs:fetch": "node tools/critic/fetch-refs.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",

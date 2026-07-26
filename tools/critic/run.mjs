@@ -6,7 +6,7 @@
  *   node tools/critic/run.mjs [--label overall] [--shot carve] [--iteration 2]
  */
 
-import { writeFile, readFile, mkdir } from 'node:fs/promises';
+import { writeFile, readFile, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,53 @@ import { buildCriticPrompt, GATE } from './rubric.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const HISTORY = path.join(ROOT, 'captures', 'history.json');
+const REFS_DIR = path.join(ROOT, 'refs/snowboard');
+const REFS_MANIFEST = path.join(REFS_DIR, 'manifest.json');
+const REFS_IMAGES = path.join(REFS_DIR, 'images');
+
+async function loadReferences() {
+  /** @type {Array<{ path: string, title: string, kind: string, compare?: string[], lookFor?: string }>} */
+  const refs = [];
+  let manifestRefs = [];
+  if (existsSync(REFS_MANIFEST)) {
+    try {
+      const man = JSON.parse(await readFile(REFS_MANIFEST, 'utf8'));
+      manifestRefs = Array.isArray(man.refs) ? man.refs : [];
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const byFile = new Map();
+  for (const r of manifestRefs) {
+    const abs = path.join(REFS_DIR, r.file);
+    if (!existsSync(abs)) continue;
+    byFile.set(path.basename(r.file), r);
+    refs.push({
+      path: abs,
+      title: r.title ?? r.id,
+      kind: r.kind ?? 'ref',
+      compare: r.compare,
+      lookFor: r.lookFor,
+    });
+  }
+
+  if (existsSync(REFS_IMAGES)) {
+    const files = await readdir(REFS_IMAGES);
+    for (const name of files) {
+      if (!/\.(png|jpe?g|webp)$/i.test(name)) continue;
+      if (byFile.has(name)) continue;
+      refs.push({
+        path: path.join(REFS_IMAGES, name),
+        title: name,
+        kind: 'extra',
+        lookFor: 'professional snowboard / mountain bar',
+      });
+    }
+  }
+
+  return refs;
+}
 
 function parseArgs(argv) {
   const args = {
@@ -79,18 +126,19 @@ async function main() {
   const worstFrameTime = frameTimes.length > 0 ? Math.max(...frameTimes) : 0;
   const fps = worstFrameTime > 0 ? 1000 / worstFrameTime : 0;
 
-  let brief = buildCriticPrompt({ shotIds, iteration });
+  const references = await loadReferences();
+  let brief = buildCriticPrompt({ shotIds, iteration, references });
 
   if (prior.length > 0) {
     const last = prior[prior.length - 1];
     brief +=
       `\n\nFor context, the previous iteration scored a mean of ${last.mean.toFixed(2)} ` +
       `and its worst problem was: ${last.worstProblem}\n` +
-      'Do not let that anchor your scoring. Judge these frames on their own merits.';
+      'Do not let that anchor your scoring. Judge these frames on their own merits against the reference images.';
   }
 
   brief +=
-    `\n\nImages to review (read each one):\n` +
+    `\n\nSnowline images to review (read each one):\n` +
     meta.shots.map((s) => `  ${path.join(outDir, s.file)}  — ${s.intent}`).join('\n');
 
   const briefPath = path.join(outDir, 'CRITIC_BRIEF.txt');
@@ -98,6 +146,7 @@ async function main() {
   await writeFile(briefPath, brief);
 
   console.log(`\n  shots:      ${shotIds.join(', ')}`);
+  console.log(`  refs:       ${references.length} under refs/snowboard/images/`);
   console.log(`  worst frame: ${worstFrameTime.toFixed(2)}ms (${fps.toFixed(0)} fps)`);
   if (meta.consoleErrors.length > 0) {
     console.log(`  console errors: ${meta.consoleErrors.length}`);

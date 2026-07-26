@@ -178,8 +178,8 @@ export const VERDICT_SCHEMA = {
   verdict: 'string, one of: pass | fail',
 };
 
-export function buildCriticPrompt({ shotIds, iteration }) {
-  return `You are a HARSH senior art director reviewing frames from a real-time browser snowboarding game. You have shipped AAA winter-sports titles. Your standard of comparison is SSX, Riders Republic, or a modern Ubisoft mountain screenshot.
+export function buildCriticPrompt({ shotIds, iteration, references = [] }) {
+  let prompt = `You are a HARSH senior art director reviewing frames from a real-time browser snowboarding game. You have shipped AAA winter-sports titles.
 
 Be genuinely critical. Inflated scores are worse than useless here: they end the improvement loop early and ship a mediocre product. A score of 8 means "would survive review at a AAA studio". Most first drafts deserve 3-5. Do not be encouraging. Do not grade on effort or on the constraints of the platform.
 
@@ -203,6 +203,25 @@ Return ONLY valid JSON, no prose outside it:
 }
 
 The gate is: every category >= ${GATE.minCategoryScore}, gameplay categories (${GAMEPLAY_CATEGORIES.join(', ')}) >= ${GATE.minGameplayScore}, mean >= ${GATE.minMeanScore}, zero disqualifiers. Set "verdict" accordingly.`;
+
+  if (references.length > 0) {
+    prompt += `\n\n## Reference images (MUST open and compare)
+
+Your standard of comparison is these reference stills — not "better than last Snowline capture". Snowline is a browser arcade title: judge **readability, mountain density, snow substance, camera framing, and marketing-screenshot worthiness**. Do not demand console polycounts; do demand the same *clarity of line and mountain* the refs show.
+
+${references
+  .map(
+    (r) =>
+      `- ${r.path}\n    ${r.title} [${r.kind}] — compare for: ${(r.compare || []).join(', ') || 'overall'}\n    Look for: ${r.lookFor || 'professional mountain/snowboard bar'}`
+  )
+  .join('\n')}
+
+When a Snowline frame is emptier, flatter, or less readable than the matching refs, score that category ≤5 and call it out in worstProblem/fixes.`;
+  } else {
+    prompt += `\n\nNo local reference images found under refs/snowboard/images/. Run \`npm run refs:fetch\` before criticizing. Fall back to mental bar: SSX / Riders Republic / modern Ubisoft mountain screenshot.`;
+  }
+
+  return prompt;
 }
 
 /** Validates and normalises a critic response. Throws on malformed input. */

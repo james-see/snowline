@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "note": "Images under images/ are fetched locally for critic QA and are gitignored. Do not redistribute commercial game screenshots.",
+  "refs": [
+    {
+      "id": "ssx3_race",
+      "kind": "game",
+      "title": "SSX 3 — race chase cam",
+      "compare": ["camera", "course_composition", "readability_at_speed", "overall_fun", "rider", "ui"],
+      "shots": ["course_start", "carve", "forest"],
+      "lookFor": "Readable downhill line, dense mountain features, rider lower-third, HUD present, snow with tonal range, trees planted on slope",
+      "source": "Wikipedia enwiki fair-use screenshot (local critic QA only)",
+      "url": "https://upload.wikimedia.org/wikipedia/en/b/b1/SSX_3_Race_gameplay.png",
+      "file": "images/ssx3_race.png",
+      "license": "fair-use-local-qa"
+    },
+    {
+      "id": "steep_gameplay",
+      "kind": "game",
+      "title": "Steep — open mountain freeride",
+      "compare": ["terrain", "atmosphere", "course_composition", "camera", "art_direction", "snow"],
+      "shots": ["course_start", "forest", "carve"],
+      "lookFor": "Vast continuous mountain, aerial depth, off-piste powder reading as terrain not void, strong sun/sky contrast",
+      "source": "Wikipedia enwiki fair-use screenshot (local critic QA only)",
+      "url": "https://upload.wikimedia.org/wikipedia/en/5/53/Steep_gameplay_screenshot.jpg",
+      "file": "images/steep_gameplay.jpg",
+      "license": "fair-use-local-qa"
+    },
+    {
+      "id": "riders_republic_gameplay",
+      "kind": "game",
+      "title": "Riders Republic — mountain playground",
+      "compare": ["course_composition", "atmosphere", "overall_fun", "readability_at_speed", "art_direction"],
+      "shots": ["course_start", "carve", "forest"],
+      "lookFor": "Busy readable course density, landmarks, mountain silhouette, marketing-screenshot energy",
+      "source": "Wikipedia enwiki fair-use screenshot (local critic QA only)",
+      "url": "",
+      "file": "images/riders_republic_gameplay.jpg",
+      "license": "fair-use-local-qa",
+      "optional": true,
+      "manualDrop": "Drop a Riders Republic gameplay still here if desired (Wikipedia filename varies)."
+    },
+    {
+      "id": "real_powder_trees",
+      "kind": "photo",
+      "title": "Real powder tree run",
+      "compare": ["snow", "terrain", "atmosphere", "materials"],
+      "shots": ["forest", "course_start"],
+      "lookFor": "Powder volume, trees rooted in snow, depth cues, non-flat albedo",
+      "source": "Wikimedia Commons — Snowboard powder day.jpg (Sawa-love)",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/6/67/Snowboard_powder_day.jpg",
+      "file": "images/real_powder_trees.jpg",
+      "license": "CC-BY-SA-4.0"
+    },
+    {
+      "id": "real_air_silhouette",
+      "kind": "photo",
+      "title": "Real snowboarder air silhouette",
+      "compare": ["rider", "animation", "readability_at_speed", "lighting"],
+      "shots": ["carve", "course_start"],
+      "lookFor": "Clear rider/board silhouette vs snow/sky, readable gear contrast, dynamic pose",
+      "source": "Wikimedia Commons — Snowboarder in flight (Tannheim, Austria).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/4/47/Snowboarder_in_flight_%28Tannheim%2C_Austria%29.jpg",
+      "file": "images/real_air_silhouette.jpg",
+      "license": "CC-BY-2.0"
+    },
+    {
+      "id": "real_slopestyle_line",
+      "kind": "photo",
+      "title": "Youth Olympics slopestyle — course line",
+      "compare": ["course_composition", "camera", "terrain", "readability_at_speed"],
+      "shots": ["carve", "course_start"],
+      "lookFor": "Intentional feature spacing, readable upcoming landing, mountain context behind course",
+      "source": "Wikimedia Commons — 2020 Winter Youth Olympics men's slopestyle (Martin Rulsch)",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/9/9b/2020-01-20_Snowboarding_at_the_2020_Winter_Youth_Olympics_%E2%80%93_Men%27s_Slopestyle_%E2%80%93_Final_%E2%80%93_1st_run_%28Martin_Rulsch%29_128.jpg",
+      "file": "images/real_slopestyle_line.jpg",
+      "license": "CC-BY-SA-4.0"
+    },
+    {
+      "id": "real_terrain_park",
+      "kind": "photo",
+      "title": "Terrain park after jump",
+      "compare": ["terrain", "vfx", "physics_believability"],
+      "shots": ["carve"],
+      "lookFor": "Groomed vs soft snow contrast, feature scale vs rider, contact with snow",
+      "source": "Wikimedia Commons — Thunder Ridge Ski Area Terrain Park 14.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/4/4c/Thunder_Ridge_Ski_Area_Terrain_Park_14.jpg",
+      "file": "images/real_terrain_park.jpg",
+      "license": "CC-BY-SA-4.0"
+    }
+  ]
+}
