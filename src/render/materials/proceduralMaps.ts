@@ -60,43 +60,43 @@ interface VariantPalette {
 
 const PALETTES: Record<PbrSetId, VariantPalette> = {
   snow_powder: {
-    base: [214, 224, 236],
-    dirt: [110, 96, 82],
-    ice: [170, 200, 220],
-    roughness: 0.9,
-    roughnessVar: 0.08,
-    dirtChance: 0.04,
-    iceChance: 0.02,
+    base: [168, 184, 200],
+    dirt: [92, 78, 64],
+    ice: [140, 172, 196],
+    roughness: 0.93,
+    roughnessVar: 0.12,
+    dirtChance: 0.1,
+    iceChance: 0.03,
     corduroy: 0,
   },
   snow_groom: {
-    base: [196, 208, 220],
-    dirt: [96, 86, 74],
-    ice: [160, 190, 210],
-    roughness: 0.68,
-    roughnessVar: 0.14,
-    dirtChance: 0.07,
-    iceChance: 0.05,
-    corduroy: 1,
+    base: [142, 162, 180],
+    dirt: [78, 68, 56],
+    ice: [128, 160, 184],
+    roughness: 0.55,
+    roughnessVar: 0.22,
+    dirtChance: 0.14,
+    iceChance: 0.08,
+    corduroy: 1.35,
   },
   ice_glass: {
-    base: [168, 198, 220],
-    dirt: [120, 130, 140],
-    ice: [140, 180, 210],
-    roughness: 0.18,
-    roughnessVar: 0.12,
-    dirtChance: 0.02,
-    iceChance: 0.55,
+    base: [110, 150, 178],
+    dirt: [96, 108, 118],
+    ice: [96, 148, 180],
+    roughness: 0.12,
+    roughnessVar: 0.16,
+    dirtChance: 0.03,
+    iceChance: 0.65,
     corduroy: 0,
   },
   ice_frost: {
-    base: [188, 210, 226],
-    dirt: [130, 128, 120],
-    ice: [150, 188, 214],
-    roughness: 0.32,
-    roughnessVar: 0.16,
-    dirtChance: 0.03,
-    iceChance: 0.35,
+    base: [132, 164, 188],
+    dirt: [108, 106, 98],
+    ice: [112, 158, 190],
+    roughness: 0.28,
+    roughnessVar: 0.2,
+    dirtChance: 0.05,
+    iceChance: 0.45,
     corduroy: 0,
   },
   rock_face: {
@@ -123,13 +123,15 @@ const PALETTES: Record<PbrSetId, VariantPalette> = {
 
 /**
  * Procedural albedo + tangent normal + ORM (ao/rough/metal) for a PBR set.
- * Intentionally high-contrast so critic frames never read as plastic fill
- * when vendored CC0 maps fail to load.
+ * High-contrast mid-grey snow so critic frames never read as plastic fill
+ * when vendored CC0 maps fail to load (or wash out under soft fill).
  */
-export function makeProceduralPbr(id: PbrSetId, size = 256): PbrMaps {
+export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
   const pal = PALETTES[id];
   const seed = id.split('').reduce((a, c) => a + c.charCodeAt(0), 17);
   const rand = makeRand(seed * 9973);
+  const isPowder = id === 'snow_powder';
+  const isGroom = id === 'snow_groom';
 
   const albedo = new Uint8Array(size * size * 4);
   const normal = new Uint8Array(size * size * 4);
@@ -140,49 +142,60 @@ export function makeProceduralPbr(id: PbrSetId, size = 256): PbrMaps {
     for (let x = 0; x < size; x++) {
       const u = x / size;
       const v = y / size;
-      const nMacro = fbm(u * 6, v * 6, seed, 4);
-      const nMicro = fbm(u * 28, v * 28, seed + 3, 3);
-      const nDetail = fbm(u * 64, v * 64, seed + 7, 2);
-      let h = nMacro * 0.55 + nMicro * 0.3 + nDetail * 0.15;
+      const nMacro = fbm(u * 5, v * 5, seed, 5);
+      const nMicro = fbm(u * 36, v * 36, seed + 3, 4);
+      const nDetail = fbm(u * 96, v * 96, seed + 7, 3);
+      const nCrumb = fbm(u * 180, v * 180, seed + 11, 2);
+      let h = nMacro * 0.42 + nMicro * 0.32 + nDetail * 0.18 + nCrumb * 0.08;
 
       if (pal.corduroy > 0) {
-        // Groomed corduroy ridges along V.
-        const cord = Math.sin(v * Math.PI * 48 + nMacro * 2) * 0.5 + 0.5;
-        h = h * 0.65 + cord * 0.35;
+        // Dense groomed corduroy ridges along V — packed signature.
+        const cord =
+          Math.sin(v * Math.PI * 64 + nMacro * 2.4) * 0.5 +
+          0.5 +
+          Math.sin(v * Math.PI * 128) * 0.12;
+        h = h * (1 - 0.45 * pal.corduroy) + cord * 0.45 * pal.corduroy;
+      }
+
+      if (isPowder) {
+        // Soft wind ripples — powder signature vs packed ridges.
+        const rip = Math.sin(u * Math.PI * 14 + nMacro * 3) * 0.5 + 0.5;
+        h = h * 0.78 + rip * 0.22;
       }
 
       height[y * size + x] = h;
 
       const dirtMask = nMacro * nMicro;
-      const isDirt = dirtMask < pal.dirtChance || rand() < pal.dirtChance * 0.35;
-      const isIcePatch = nDetail > 1 - pal.iceChance || rand() < pal.iceChance * 0.25;
+      const isDirt = dirtMask < pal.dirtChance || rand() < pal.dirtChance * 0.45;
+      const isIcePatch = nDetail > 1 - pal.iceChance || rand() < pal.iceChance * 0.3;
 
       let r = pal.base[0];
       let g = pal.base[1];
       let b = pal.base[2];
 
-      const shade = 0.82 + h * 0.28;
+      // Wider shade range — valleys dark enough to kill flat fill.
+      const shade = 0.68 + h * 0.48;
       r = Math.min(255, r * shade);
       g = Math.min(255, g * shade);
       b = Math.min(255, b * shade);
 
       if (isDirt) {
-        const mix = 0.35 + rand() * 0.45;
+        const mix = 0.4 + rand() * 0.5;
         r = r * (1 - mix) + pal.dirt[0] * mix;
         g = g * (1 - mix) + pal.dirt[1] * mix;
         b = b * (1 - mix) + pal.dirt[2] * mix;
       } else if (isIcePatch) {
-        const mix = 0.25 + rand() * 0.4;
+        const mix = 0.3 + rand() * 0.45;
         r = r * (1 - mix) + pal.ice[0] * mix;
         g = g * (1 - mix) + pal.ice[1] * mix;
         b = b * (1 - mix) + pal.ice[2] * mix;
       }
 
-      // Speckle grain — breaks uniform blue-white slabs.
-      const grain = (rand() - 0.5) * 18;
+      // Speckle grain — breaks uniform blue-grey slabs.
+      const grain = (rand() - 0.5) * (isGroom ? 28 : 32);
       r = Math.min(255, Math.max(0, r + grain));
-      g = Math.min(255, Math.max(0, g + grain * 0.9));
-      b = Math.min(255, Math.max(0, b + grain * 1.05));
+      g = Math.min(255, Math.max(0, g + grain * 0.88));
+      b = Math.min(255, Math.max(0, b + grain * 1.1));
 
       const i = (y * size + x) * 4;
       albedo[i] = r;
@@ -190,13 +203,20 @@ export function makeProceduralPbr(id: PbrSetId, size = 256): PbrMaps {
       albedo[i + 2] = b;
       albedo[i + 3] = 255;
 
-      let rough = pal.roughness + (h - 0.5) * pal.roughnessVar * 2;
-      if (isDirt) rough = Math.min(0.98, rough + 0.18);
-      if (isIcePatch) rough = Math.max(0.08, rough - 0.35);
-      rough = Math.min(0.98, Math.max(0.06, rough + (rand() - 0.5) * 0.06));
+      let rough = pal.roughness + (h - 0.5) * pal.roughnessVar * 2.4;
+      if (isDirt) rough = Math.min(0.98, rough + 0.22);
+      if (isIcePatch) rough = Math.max(0.06, rough - 0.42);
+      if (isGroom) {
+        // Ridges catch light (lower rough); troughs stay softer.
+        rough += (0.5 - h) * 0.18;
+      }
+      rough = Math.min(0.98, Math.max(0.05, rough + (rand() - 0.5) * 0.08));
 
-      const ao = Math.min(1, Math.max(0.35, 0.55 + h * 0.4 - (isDirt ? 0.12 : 0)));
-      const metal = isIcePatch && !isDirt ? 0.06 + rand() * 0.04 : rand() * 0.02;
+      const ao = Math.min(
+        1,
+        Math.max(0.28, 0.42 + h * 0.5 - (isDirt ? 0.16 : 0) - nCrumb * 0.12)
+      );
+      const metal = isIcePatch && !isDirt ? 0.08 + rand() * 0.05 : rand() * 0.02;
 
       orm[i] = Math.floor(ao * 255);
       orm[i + 1] = Math.floor(rough * 255);
@@ -205,8 +225,8 @@ export function makeProceduralPbr(id: PbrSetId, size = 256): PbrMaps {
     }
   }
 
-  // Sobel → tangent-space normal from height.
-  const strength = id.startsWith('ice_') ? 1.4 : id.startsWith('rock_') ? 2.4 : 2.0;
+  // Sobel → tangent-space normal from height (stronger micro for snow).
+  const strength = id.startsWith('ice_') ? 1.8 : id.startsWith('rock_') ? 2.4 : 2.85;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const xl = height[y * size + ((x - 1 + size) % size)]!;
@@ -255,7 +275,7 @@ export function speckledAlbedo(
   opts: { amount?: number; seed?: number; size?: number } = {}
 ): THREE.CanvasTexture {
   const size = opts.size ?? 512;
-  const amount = opts.amount ?? 0.12;
+  const amount = opts.amount ?? 0.2;
   const seed = opts.seed ?? 42;
   const rand = makeRand(seed);
 
@@ -273,7 +293,7 @@ export function speckledAlbedo(
   if (img && w > 0) {
     ctx.drawImage(img, 0, 0, size, size);
   } else {
-    ctx.fillStyle = '#c8d4e2';
+    ctx.fillStyle = '#8fa3b6';
     ctx.fillRect(0, 0, size, size);
   }
 
@@ -282,24 +302,26 @@ export function speckledAlbedo(
   for (let i = 0; i < size * size; i++) {
     const x = i % size;
     const y = (i / size) | 0;
-    const n = fbm(x / size * 10, y / size * 10, seed, 3);
+    const n = fbm((x / size) * 14, (y / size) * 14, seed, 4);
+    const nFine = fbm((x / size) * 48, (y / size) * 48, seed + 9, 2);
     const o = i * 4;
-    // Slight macro darkening for contrast vs rider.
-    d[o] = Math.floor(d[o]! * 0.92);
-    d[o + 1] = Math.floor(d[o + 1]! * 0.93);
-    d[o + 2] = Math.floor(d[o + 2]! * 0.95);
+    // Macro darkening — CC0 snow albedos tend pale; pull toward mid-grey alpine.
+    const shade = 0.78 + n * 0.12;
+    d[o] = Math.floor(d[o]! * shade * 0.9);
+    d[o + 1] = Math.floor(d[o + 1]! * shade * 0.92);
+    d[o + 2] = Math.floor(d[o + 2]! * shade * 0.96);
 
-    if (n < amount || rand() < amount * 0.15) {
-      const mix = 0.25 + rand() * 0.4;
-      d[o] = Math.floor(d[o]! * (1 - mix) + (72 + rand() * 40) * mix);
-      d[o + 1] = Math.floor(d[o + 1]! * (1 - mix) + (64 + rand() * 30) * mix);
-      d[o + 2] = Math.floor(d[o + 2]! * (1 - mix) + (54 + rand() * 28) * mix);
-    } else if (n > 0.88 && rand() < 0.08) {
-      // Wet ice flecks — cooler, slightly darker, will gloss via material clearcoat.
-      const mix = 0.2 + rand() * 0.25;
-      d[o] = Math.floor(d[o]! * (1 - mix) + 150 * mix);
-      d[o + 1] = Math.floor(d[o + 1]! * (1 - mix) + 185 * mix);
-      d[o + 2] = Math.floor(d[o + 2]! * (1 - mix) + 210 * mix);
+    if (n < amount || rand() < amount * 0.22 || nFine < amount * 0.35) {
+      const mix = 0.3 + rand() * 0.45;
+      d[o] = Math.floor(d[o]! * (1 - mix) + (58 + rand() * 36) * mix);
+      d[o + 1] = Math.floor(d[o + 1]! * (1 - mix) + (52 + rand() * 28) * mix);
+      d[o + 2] = Math.floor(d[o + 2]! * (1 - mix) + (44 + rand() * 24) * mix);
+    } else if (n > 0.84 && rand() < 0.12) {
+      // Wet ice flecks — cooler, darker; clearcoat carries the gloss.
+      const mix = 0.28 + rand() * 0.3;
+      d[o] = Math.floor(d[o]! * (1 - mix) + 118 * mix);
+      d[o + 1] = Math.floor(d[o + 1]! * (1 - mix) + 158 * mix);
+      d[o + 2] = Math.floor(d[o + 2]! * (1 - mix) + 188 * mix);
     }
   }
   ctx.putImageData(imageData, 0, 0);
