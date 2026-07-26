@@ -17,7 +17,9 @@
     "capture": "node tools/critic/capture.mjs",
     "critic": "node tools/critic/run.mjs",
     "gate": "node tools/critic/gate.mjs",
-    "determinism": "node tools/critic/determinism-check.mjs"
+    "determinism": "node tools/critic/determinism-check.mjs",
+    "flicker": "node tools/critic/flicker-probe.mjs",
+    "smoke": "node tools/critic/smoke.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",

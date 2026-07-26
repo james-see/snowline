@@ -22,105 +22,111 @@ import net from 'node:net';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-/** Scenarios driven through perform() rather than static presets. */
-const ACTION_SHOTS = [
-  {
-    id: 'carve',
-    base: 'course_start',
+/**
+ * Macro → perform() action sequences for gameplay scenarios.
+ * Keys are shot IDs; values map to CaptureBridge `#mapMacroActions` macros.
+ */
+export const ACTION_MACROS = {
+  carve: {
     intent: 'gentle carve: edge spray, body lean, readable line',
     actions: ['carve'],
     frames: 36,
     settle: 8,
   },
-  {
-    id: 'hard_carve',
-    base: 'course_start',
+  hard_carve: {
     intent: 'aggressive carve: deep edge, rooster tail spray, high g-force lean',
     actions: ['hard_carve'],
     frames: 40,
     settle: 6,
   },
-  {
-    id: 'max_speed',
-    base: 'course_start',
+  max_speed: {
     intent: 'top speed tuck: minimal drag, motion blur cues, stable cam',
     actions: ['boost', 'tuck'],
     frames: 60,
     settle: 10,
   },
-  {
-    id: 'jump_takeoff',
-    base: 'course_start',
+  jump_takeoff: {
     intent: 'kicker takeoff: compression, pop, board leaving snow',
     actions: ['jump'],
     frames: 24,
     settle: 0,
   },
-  {
-    id: 'midair_spin',
-    base: 'course_start',
+  midair_spin: {
     intent: '360 spin mid-air: clean rotation, readable board',
     actions: ['jump', 'spin_360'],
     frames: 48,
     settle: 0,
   },
-  {
-    id: 'midair_flip',
-    base: 'course_start',
+  midair_flip: {
     intent: 'backflip mid-air: inverted pose, extension on recovery',
     actions: ['jump', 'flip_back'],
     frames: 52,
     settle: 0,
   },
-  {
-    id: 'grab',
-    base: 'course_start',
+  grab: {
     intent: 'indy/method grab: hand to board, stylish tuck',
     actions: ['jump', 'grab_indy'],
     frames: 44,
     settle: 0,
   },
-  {
-    id: 'grind',
-    base: 'course_start',
+  grind: {
     intent: 'rail/box grind: sparks or snow scrape, balanced slide',
     actions: ['grind'],
     frames: 50,
     settle: 4,
   },
-  {
-    id: 'perfect_landing',
-    base: 'course_start',
+  perfect_landing: {
     intent: 'clean landing: compression, spray, no tumble',
     actions: ['jump', 'spin_180', 'land_clean'],
     frames: 56,
     settle: 8,
   },
-  {
-    id: 'failed_landing',
-    base: 'course_start',
-    intent: ' sketchy landing: back seat, wobble, near-fall',
+  failed_landing: {
+    intent: 'sketchy landing: back seat, wobble, near-fall',
     actions: ['jump', 'land_sketchy'],
     frames: 48,
     settle: 6,
   },
-  {
-    id: 'crash',
-    base: 'course_start',
+  crash: {
     intent: 'wipeout: tumble, snow plume, board separation',
     actions: ['crash'],
     frames: 40,
     settle: 4,
   },
-  {
-    id: 'boost',
-    base: 'course_start',
+  boost: {
     intent: 'boost pad activation: speed lines, rider stretch',
     actions: ['boost_pad'],
     frames: 36,
     settle: 6,
   },
+};
+
+/** Static scene / UI presets that are not driven by perform() macros. */
+export const SCENE_SHOT_IDS = [
+  'title',
+  'course_select',
+  'course_start',
+  'forest',
+  'summit',
+  'pause',
+  'results',
+  'settings',
 ];
+
+/** Scenarios driven through perform() rather than static preset setup. */
+export const ACTION_SHOTS = Object.entries(ACTION_MACROS).map(([id, macro]) => ({
+  id,
+  base: 'course_start',
+  intent: macro.intent,
+  actions: macro.actions,
+  frames: macro.frames,
+  settle: macro.settle,
+}));
+
+/** Full suite expected when capturing without --shot. */
+export const REQUIRED_SHOT_IDS = [...SCENE_SHOT_IDS, ...ACTION_SHOTS.map((s) => s.id)];
+
+const ACTION_SHOT_IDS = new Set(ACTION_SHOTS.map((s) => s.id));
 
 export const DEFAULTS = {
   width: 2560,
@@ -412,26 +418,67 @@ export async function capture(options = {}) {
     }
 
     step('reading presets');
-    const presets = await page.evaluate(() => window.__snowline.presets());
-    const selected = opts.shot ? presets.filter((p) => p.id === opts.shot) : presets;
-    if (selected.length === 0 && !opts.shot) {
-      throw new Error('no presets returned from window.__snowline.presets()');
+    const api = await page.evaluate(() => ({
+      ready: typeof window.__snowline?.ready,
+      presets: typeof window.__snowline?.presets,
+      setShot: typeof window.__snowline?.setShot,
+      perform: typeof window.__snowline?.perform,
+      converge: typeof window.__snowline?.converge,
+      hold: typeof window.__snowline?.hold,
+      stats: typeof window.__snowline?.stats,
+    }));
+    for (const [key, kind] of Object.entries(api)) {
+      if (kind !== 'function') {
+        throw new Error(`window.__snowline.${key} missing (got ${kind})`);
+      }
     }
-    if (opts.shot && selected.length === 0) {
-      const actionOnly = ACTION_SHOTS.find((a) => a.id === opts.shot);
-      if (!actionOnly) {
+
+    const presets = await page.evaluate(() => window.__snowline.presets());
+    const presetIds = new Set(presets.map((p) => p.id));
+    for (const id of SCENE_SHOT_IDS) {
+      if (!presetIds.has(id)) {
+        throw new Error(`required scene shot "${id}" missing from window.__snowline.presets()`);
+      }
+    }
+    for (const id of ACTION_SHOT_IDS) {
+      if (!presetIds.has(id) && !presetIds.has('course_start')) {
+        throw new Error(`action shot "${id}" needs course_start base preset`);
+      }
+    }
+
+    const actionShots =
+      opts.actions === false
+        ? []
+        : ACTION_SHOTS.filter((c) => !opts.shot || c.id === opts.shot);
+
+    // Prefer perform() macros over static presets when both share an id.
+    let selected = opts.shot
+      ? presets.filter((p) => p.id === opts.shot && !ACTION_SHOT_IDS.has(p.id))
+      : presets.filter((p) => !ACTION_SHOT_IDS.has(p.id) || opts.actions === false);
+
+    if (selected.length === 0 && actionShots.length === 0) {
+      if (opts.shot && ACTION_SHOT_IDS.has(opts.shot) && opts.actions === false) {
+        const fallback = presets.filter((p) => p.id === opts.shot);
+        if (fallback.length === 0) {
+          throw new Error(
+            `no matching shot "${opts.shot}"; available: ${presets.map((p) => p.id).join(', ')}`
+          );
+        }
+        selected.push(...fallback);
+      } else if (!opts.shot) {
+        throw new Error('no presets returned from window.__snowline.presets()');
+      } else {
         throw new Error(
-          `no matching shot preset "${opts.shot}"; available: ${presets.map((p) => p.id).join(', ')}`
+          `no matching shot "${opts.shot}"; available: ${[...presetIds].join(', ')}, ` +
+            `actions: ${[...ACTION_SHOT_IDS].join(', ')}`
         );
       }
     }
 
-    const actionShots = opts.actions === false ? [] : ACTION_SHOTS;
     const jobs = [
       ...selected.map((preset) => ({ preset, act: null })),
       ...actionShots
-        .filter((c) => !opts.shot || c.id === opts.shot)
-        .filter((c) => selected.some((p) => p.id === c.base) || opts.shot === c.id)
+        .filter((c) => presetIds.has(c.base) || opts.shot === c.id)
         .map((c) => {
           const basePreset = presets.find((p) => p.id === c.base) ?? {
             id: c.id,
@@ -513,11 +560,23 @@ export async function capture(options = {}) {
       );
     }
 
+    if (!opts.shot) {
+      const got = new Set(results.map((r) => r.id));
+      const missing = REQUIRED_SHOT_IDS.filter((id) => !got.has(id));
+      if (missing.length > 0) {
+        throw new Error(`capture suite missing required shot(s): ${missing.join(', ')}`);
+      }
+    }
+
     const meta = {
       capturedAt: new Date().toISOString(),
       label: opts.label,
       seed: opts.seed,
       resolution: { width: opts.width, height: opts.height },
+      requiredShotIds: REQUIRED_SHOT_IDS,
+      actionMacros: Object.fromEntries(
+        Object.entries(ACTION_MACROS).map(([id, m]) => [id, m.actions])
+      ),
       gpu: await page.evaluate(() => {
         const gl = document.createElement('canvas').getContext('webgl2');
         const dbg = gl?.getExtension('WEBGL_debug_renderer_info');
