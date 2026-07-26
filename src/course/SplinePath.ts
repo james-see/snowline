@@ -44,6 +44,22 @@ export class SplinePath {
     return this.#catmullPoint(segment, localT, out);
   }
 
+  /**
+   * Sample with linear extrapolation past the path ends.
+   * Used for mountain nose/tail aprons so the mesh continues beyond t∈[0,1].
+   */
+  sampleExtended(t: number, out = _out): THREE.Vector3 {
+    if (t >= 0 && t <= 1) return this.sample(t, out);
+    if (t < 0) {
+      this.sample(0, out);
+      this.tangent(0, _tan);
+      return out.addScaledVector(_tan, t * this.totalLength);
+    }
+    this.sample(1, out);
+    this.tangent(1, _tan);
+    return out.addScaledVector(_tan, (t - 1) * this.totalLength);
+  }
+
   /** Unit tangent at t, pointing downhill along the path. */
   tangent(t: number, out = _tan): THREE.Vector3 {
     const eps = 1 / 512;
@@ -53,7 +69,7 @@ export class SplinePath {
     this.sample(t1, out);
     out.sub(_scratch);
     if (out.lengthSq() < 1e-8) {
-      const { segment } = this.#mapT(t);
+      const { segment } = this.#mapT(THREE.MathUtils.clamp(t, 0, 1));
       const a = this.points[Math.max(0, segment)];
       const b = this.points[Math.min(this.points.length - 1, segment + 1)];
       return out.copy(b).sub(a).normalize();
@@ -63,7 +79,8 @@ export class SplinePath {
 
   /** Right vector (cross up × tangent) at t. */
   right(t: number, out = _right): THREE.Vector3 {
-    return out.copy(_up).cross(this.tangent(t, _tan)).normalize();
+    const tc = THREE.MathUtils.clamp(t, 0, 1);
+    return out.copy(_up).cross(this.tangent(tc, _tan)).normalize();
   }
 
   /** Closest point on the polyline approximation of the spline. */
