@@ -1,6 +1,12 @@
 import * as THREE from 'three';
-import type { CheckpointDef, PropKind, PropPlacement } from '@/types/course.ts';
+import type {
+  CheckpointDef,
+  PropKind,
+  PropPlacement,
+  TerrainBuildResult,
+} from '@/types/course.ts';
 import type { SplinePath } from '@/course/SplinePath.ts';
+import { lateralToU, sampleTerrainAt } from '@/course/TerrainGenerator.ts';
 import { presetBudgets, type LodBudgets } from '@/engine/Lod.ts';
 import {
   buildCheckpointGate,
@@ -12,10 +18,27 @@ import {
   buildTree,
   buildTunnel,
 } from '@/course/props/builders.ts';
-import { registerPropsPhysics, tagPropRoot } from '@/course/props/physics.ts';
+import {
+  registerPropsPhysics,
+  tagPropRoot,
+  type PropUserData,
+} from '@/course/props/physics.ts';
 
 export type { PropUserData } from '@/course/props/physics.ts';
 export { registerPropsPhysics };
+
+const _snapPos = new THREE.Vector3();
+const _snapQuat = new THREE.Quaternion();
+const _snapScale = new THREE.Vector3();
+const _snapBed = new THREE.Vector3();
+const _snapComposed = new THREE.Matrix4();
+
+/** World transform for one instanced tree before part-local bake. */
+export interface TreeInstanceBase {
+  id: string;
+  variant: number;
+  matrix: THREE.Matrix4;
+}
 
 /** Prop kinds this module can author + register. */
 export const SUPPORTED_PROP_KINDS: readonly PropKind[] = [
@@ -39,6 +62,8 @@ export interface PropTrigger {
 export interface PropsBuildResult {
   root: THREE.Group;
   triggers: PropTrigger[];
+  /** World matrices for instanced trees (before part-local bake). */
+  treeBases: TreeInstanceBase[];
   dispose(): void;
 }
 
@@ -110,6 +135,90 @@ function buildPropObject(placement: PropPlacement): THREE.Object3D | null {
   }
 }
 
+/** Sample terrain bed Y under a world XZ via path closest + mesh height. */
+function terrainBedY(
+  terrain: TerrainBuildResult,
+  path: SplinePath,
+  corridorWidth: number,
+  x: number,
+  y: number,
+  z: number
+): number {
+  _snapPos.set(x, y, z);
+  const { t, lateral } = path.closestPoint(_snapPos);
+  const u = lateralToU(lateral, corridorWidth);
+  return sampleTerrainAt(terrain, t, u, _snapBed).y;
+}
+
+/**
+ * Snap authored props onto the generated terrain mesh.
+ * Updates visual transforms, instanced tree matrices, and placement Y
+ * (so physics registered afterward matches). Gates/finish are left to CourseModule.
+ */
+export function snapPropsToTerrain(
+  props: PropsBuildResult,
+  terrain: TerrainBuildResult,
+  path: SplinePath,
+  corridorWidth: number,
+  placements: PropPlacement[] = []
+): void {
+  const byId = new Map(placements.map((p) => [p.id, p]));
+
+  for (const child of props.root.children) {
+    const data = child.userData.prop as PropUserData | undefined;
+    if (!data) continue;
+    if (data.propKind === 'checkpoint_gate' || data.propKind === 'finish_arch') continue;
+
+    const y = terrainBedY(
+      terrain,
+      path,
+      corridorWidth,
+      child.position.x,
+      child.position.y,
+      child.position.z
+    );
+    child.position.y = y;
+    const placement = byId.get(data.propId);
+    if (placement) placement.position[1] = y;
+  }
+
+  if (props.treeBases.length === 0) return;
+
+  for (const base of props.treeBases) {
+    base.matrix.decompose(_snapPos, _snapQuat, _snapScale);
+    const y = terrainBedY(terrain, path, corridorWidth, _snapPos.x, _snapPos.y, _snapPos.z);
+    _snapPos.y = y;
+    base.matrix.compose(_snapPos, _snapQuat, _snapScale);
+    const placement = byId.get(base.id);
+    if (placement) placement.position[1] = y;
+  }
+
+  const basesByVariant = new Map<number, THREE.Matrix4[]>();
+  for (const base of props.treeBases) {
+    let list = basesByVariant.get(base.variant);
+    if (!list) {
+      list = [];
+      basesByVariant.set(base.variant, list);
+    }
+    list.push(base.matrix);
+  }
+
+  for (const child of props.root.children) {
+    const inst = child as THREE.InstancedMesh;
+    if (!inst.isInstancedMesh) continue;
+    const local = inst.userData.treePartLocal as THREE.Matrix4 | undefined;
+    const variant = inst.userData.treeVariant as number | undefined;
+    if (!local || variant === undefined) continue;
+    const matrices = basesByVariant.get(variant);
+    if (!matrices) continue;
+    for (let i = 0; i < matrices.length; i++) {
+      _snapComposed.multiplyMatrices(matrices[i]!, local);
+      inst.setMatrixAt(i, _snapComposed);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+  }
+}
+
 export function buildCourseProps(
   placements: readonly PropPlacement[],
   path: SplinePath,
@@ -119,27 +228,28 @@ export function buildCourseProps(
   const root = new THREE.Group();
   root.name = 'course-props';
   const triggers: PropTrigger[] = [];
-  const treeTransforms: { matrix: THREE.Matrix4; variant: number }[] = [];
+  const treeBases: TreeInstanceBase[] = [];
   const disposables: THREE.BufferGeometry[] = [];
   const extraMats: THREE.Material[] = [];
   let rockCount = 0;
 
   for (const placement of placements) {
     if (placement.kind === 'tree') {
-      if (treeTransforms.length >= budgets.maxTreeInstances) continue;
+      if (treeBases.length >= budgets.maxTreeInstances) continue;
       const scale =
         typeof placement.scale === 'number'
           ? new THREE.Vector3(placement.scale, placement.scale, placement.scale)
           : placement.scale
             ? new THREE.Vector3(...placement.scale)
             : new THREE.Vector3(1, 1, 1);
-      treeTransforms.push({
+      treeBases.push({
+        id: placement.id,
+        variant: placement.variant ?? 0,
         matrix: new THREE.Matrix4().compose(
           new THREE.Vector3(...placement.position),
           yawQuat(placement.rotationY ?? 0),
           scale
         ),
-        variant: placement.variant ?? 0,
       });
       continue;
     }
@@ -191,7 +301,7 @@ export function buildCourseProps(
 
   // Instanced trees — bake each part's local transform into the instance matrix.
   const byVariant = new Map<number, THREE.Matrix4[]>();
-  for (const t of treeTransforms) {
+  for (const t of treeBases) {
     let list = byVariant.get(t.variant);
     if (!list) {
       list = [];
@@ -219,6 +329,8 @@ export function buildCourseProps(
       inst.castShadow = cast;
       inst.receiveShadow = true;
       inst.name = `trees-v${variant}-${mesh.uuid.slice(0, 6)}`;
+      inst.userData.treePartLocal = local;
+      inst.userData.treeVariant = variant;
       const composed = new THREE.Matrix4();
       for (let i = 0; i < matrices.length; i++) {
         composed.multiplyMatrices(matrices[i]!, local);
@@ -252,6 +364,7 @@ export function buildCourseProps(
   return {
     root,
     triggers,
+    treeBases,
     dispose() {
       root.traverse((child) => {
         const mesh = child as THREE.Mesh;

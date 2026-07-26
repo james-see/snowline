@@ -14,6 +14,7 @@ import { getCourseDef } from '@/course/CourseDefs.ts';
 import {
   buildCourseProps,
   registerPropsPhysics,
+  snapPropsToTerrain,
   type PropTrigger,
   type PropsBuildResult,
 } from '@/course/Props.ts';
@@ -78,6 +79,8 @@ export class CourseModule implements GameModule {
     const budgets = ctx ? resolveLodBudgets(ctx.settings) : undefined;
     const props = buildCourseProps(def.props, path, def.checkpoints, budgets);
 
+    // Snap trees/rocks/rails/etc. onto the visual mesh; sync placement Y for physics.
+    snapPropsToTerrain(props, terrain, path, def.terrain.width, def.props);
     // Snap gates/finish onto the visual mesh before physics registration.
     this.#snapMarkersToTerrain(def, path, terrain, props);
 
