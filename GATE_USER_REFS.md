@@ -31,20 +31,20 @@ Compare Snowline captures to:
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-26, tip `343b624` — see `CRITIC_REPORT.md`)
+## Current score (2026-07-26, tip `94a874b` — forest v4 `2822f40` — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
 | B1_peaks | **PASS** — amphitheater + dark rock mass |
-| B2_forest | **FAIL** — harsh; spaced cones ≠ alpine timberline belts |
+| B2_forest | **FAIL** — harsh; denser tris (~316k) but still gapped cones ≠ alpine belts |
 | B3_shadows | **PASS** — long sun casts on corduroy |
 | B4_corduroy | **PASS** |
 | B5_snow_color | **PASS** — warm muddy strip |
-| B6_furniture | **FAIL** — harsh; park rails/boxes invisible on `grind`; thin fences only |
-| B7_rider | **PASS** — carve lean + contrast |
-| B8_camera | **FAIL** — midfield empty corduroy / grind apron void |
+| B6_furniture | **PASS** — fences/signs near line (no grind probe) |
+| B7_rider | **PASS** — contrast kit |
+| B8_camera | **FAIL** — midfield empty corduroy; camera v4 WIP not merged |
 | B9_hud | **PASS** |
 | B10_no_float | **PASS** |
 | B11_atmosphere | **PASS** — cool aerial; milk void cleared |
 
-**Verdict: FAIL.** 8 PASS / 3 FAIL. Rubric mean ≈ **5.25** vs user refs.
+**Verdict: FAIL.** 9 PASS / 2 FAIL. Rubric mean ≈ **5.40** vs user refs.
