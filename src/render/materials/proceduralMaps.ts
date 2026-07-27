@@ -131,6 +131,17 @@ const PALETTES: Record<PbrSetId, VariantPalette> = {
     iceChance: 0,
     corduroy: 0,
   },
+  foliage_pine: {
+    // Mid needle brown — runtime canopy mats multiply alpine green tints.
+    base: [78, 92, 52],
+    dirt: [48, 58, 34],
+    ice: [110, 120, 90],
+    roughness: 0.94,
+    roughnessVar: 0.05,
+    dirtChance: 0.18,
+    iceChance: 0,
+    corduroy: 0,
+  },
   wood_plank: {
     base: [118, 78, 42],
     dirt: [70, 48, 28],

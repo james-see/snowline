@@ -15,6 +15,7 @@ export function getSharedPropMaterials(library: MaterialLibrary): SharedPropMate
     wood: library.prop('wood'),
     plank: library.prop('plank'),
     fabric: library.prop('fabric'),
+    foliage: library.prop('foliage'),
     metal: library.prop('metal'),
     ice: library.prop('ice'),
   };
