@@ -1,0 +1,136 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import type { PropPlacement } from '@/types/course.ts';
+import type { SurfaceKind } from '@/types/gameplay.ts';
+import type {
+  KinematicBodyDesc,
+  PhysicsWorld,
+  RaycastHit,
+  RaycastOptions,
+  RigidBodyHandle,
+} from '@/types/physics.ts';
+import { registerPropsPhysics, tagPropRoot } from './physics.ts';
+
+interface BoxCall {
+  surface: SurfaceKind;
+  actorId: string;
+}
+
+interface CapsuleCall {
+  surface: SurfaceKind;
+  actorId: string;
+  radius: number;
+}
+
+function recordingPhysics(): PhysicsWorld & { boxes: BoxCall[]; capsules: CapsuleCall[] } {
+  const handle: RigidBodyHandle = { id: 1, remove() {} };
+  const boxes: BoxCall[] = [];
+  const capsules: CapsuleCall[] = [];
+  return {
+    boxes,
+    capsules,
+    ready: true,
+    async init() {},
+    beginTick() {},
+    step() {},
+    raycast(_options: RaycastOptions): RaycastHit | null {
+      return null;
+    },
+    createKinematicBody(_desc: KinematicBodyDesc) {
+      return handle;
+    },
+    createTrimesh() {
+      return handle;
+    },
+    createHeightfield() {
+      return handle;
+    },
+    addHeightfield() {
+      return handle;
+    },
+    createKinematicBox() {
+      return handle;
+    },
+    createStaticBox(_h, _p, _r, surface, actorId = 'prop') {
+      boxes.push({ surface, actorId });
+      return handle;
+    },
+    createStaticCapsule(_hh, radius, _p, _r, surface, actorId = 'rail') {
+      capsules.push({ surface, actorId, radius });
+      return handle;
+    },
+    setNextKinematicTransform() {},
+    removeBody() {},
+    clearWorld() {},
+    dispose() {},
+  };
+}
+
+function placeRoot(placement: PropPlacement): THREE.Group {
+  const root = new THREE.Group();
+  const obj = new THREE.Group();
+  obj.position.set(...placement.position);
+  tagPropRoot(obj, placement);
+  root.add(obj);
+  return root;
+}
+
+describe('registerPropsPhysics', () => {
+  it('registers ramps as packed rideable decks (never wood/rail grind)', () => {
+    const physics = recordingPhysics();
+    const placement: PropPlacement = {
+      id: 'ramp-test',
+      kind: 'ramp',
+      position: [0, 0, 0],
+      lip: 2.4,
+      // Mis-tag that must be ignored — ramps launch, they do not grind.
+      surface: 'wood',
+      grindable: true,
+    };
+    registerPropsPhysics(physics, [placement], placeRoot(placement));
+
+    assert.equal(physics.boxes.length, 1);
+    assert.equal(physics.boxes[0]!.surface, 'packed');
+    assert.equal(physics.boxes[0]!.actorId, 'ramp-test');
+    assert.equal(physics.capsules.length, 0);
+  });
+
+  it('keeps box decks wood and adds thin rail capsules when grindable', () => {
+    const physics = recordingPhysics();
+    const placement: PropPlacement = {
+      id: 'box-test',
+      kind: 'box',
+      position: [0, 0, 0],
+      length: 10,
+      grindable: true,
+      surface: 'wood',
+    };
+    registerPropsPhysics(physics, [placement], placeRoot(placement));
+
+    assert.equal(physics.boxes.length, 1);
+    assert.equal(physics.boxes[0]!.surface, 'wood');
+    assert.equal(physics.capsules.length, 2);
+    for (const cap of physics.capsules) {
+      assert.equal(cap.surface, 'rail');
+      assert.ok(cap.radius <= 0.1);
+      assert.ok(cap.actorId.startsWith('box-test-rail-'));
+    }
+  });
+
+  it('does not add rail capsules on non-grindable boxes', () => {
+    const physics = recordingPhysics();
+    const placement: PropPlacement = {
+      id: 'box-ride',
+      kind: 'box',
+      position: [0, 0, 0],
+      length: 8,
+      surface: 'wood',
+    };
+    registerPropsPhysics(physics, [placement], placeRoot(placement));
+
+    assert.equal(physics.boxes.length, 1);
+    assert.equal(physics.boxes[0]!.surface, 'wood');
+    assert.equal(physics.capsules.length, 0);
+  });
+});

@@ -126,6 +126,7 @@ export function registerPropsPhysics(
       case 'box': {
         const len = data.length ?? placement.length ?? 10;
         const half = new THREE.Vector3(len * 0.5 * _scale.x, 0.55 * _scale.y, 1.25 * _scale.z);
+        // Rideable wood deck — BoardPhysics never latches grind on `wood`.
         physics.createStaticBox(
           half,
           _pos.clone().add(new THREE.Vector3(0, half.y, 0).applyQuaternion(_quat)),
@@ -133,17 +134,37 @@ export function registerPropsPhysics(
           placement.surface ?? 'wood',
           data.propId
         );
+        // Thin edge rails only when authored grindable (matches visual coping).
+        if (placement.grindable) {
+          const railHalfLen = len * 0.48 * _scale.x;
+          const railY = half.y * 2 + 0.06;
+          const railZ = half.z * 0.96;
+          const rot = _quat.clone().multiply(_railAxis);
+          for (const side of [-1, 1] as const) {
+            const railPos = _pos
+              .clone()
+              .add(new THREE.Vector3(0, railY, side * railZ).applyQuaternion(_quat));
+            physics.createStaticCapsule(
+              railHalfLen,
+              0.08,
+              railPos,
+              rot,
+              'rail',
+              `${data.propId}-rail-${side}`
+            );
+          }
+        }
         break;
       }
       case 'ramp': {
         const lip = data.lip ?? placement.lip ?? 2.4;
-        // Approach wedge + face so kickers read as rideable packed surfaces.
+        // Always packed — never honor wood/rail overrides (grind would steal launch).
         const half = new THREE.Vector3(3.2 * _scale.x, Math.max(0.6, lip * 0.45), 2.4 * _scale.z);
         physics.createStaticBox(
           half,
           _pos.clone().add(new THREE.Vector3(0, half.y, 0.6).applyQuaternion(_quat)),
           _quat.clone(),
-          placement.surface ?? 'packed',
+          'packed',
           data.propId
         );
         break;
