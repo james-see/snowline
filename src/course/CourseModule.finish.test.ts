@@ -38,18 +38,18 @@ function stubPhysics(): PhysicsWorld {
 }
 
 describe('finish void-bounce regression', () => {
-  it('completes when pathT is past approach and rider is near arch (old lateral gate failed)', () => {
-    // Reproduced from alpine probe: closest.lateral ~22–74 near finish while
-    // still on the race bed — pathT fallback used to reject these.
+  it('completes when pathT crosses finish.t even 50m+ from arch', () => {
+    // Alpine probe: at terrain t=0.95 closest pathT≈0.97 but XZ dist≈52m —
+    // prior plaza radius (45) rejected these void-bounce spots.
     assert.equal(
       shouldCompleteRun({
         alreadyFinished: false,
         inFinishTrigger: false,
         pathT: 0.97,
         finishT: 0.97,
-        distanceToFinish: 22,
-        finishRadius: 28,
-        approachT: 0.91,
+        distanceToFinish: 52,
+        finishRadius: 80,
+        approachT: 0.89,
       }),
       true
     );
@@ -57,11 +57,11 @@ describe('finish void-bounce regression', () => {
       shouldCompleteRun({
         alreadyFinished: false,
         inFinishTrigger: false,
-        pathT: 0.95,
+        pathT: 1,
         finishT: 0.97,
-        distanceToFinish: 18,
-        finishRadius: 28,
-        approachT: 0.91,
+        distanceToFinish: 56,
+        finishRadius: 80,
+        approachT: 0.89,
       }),
       true
     );
@@ -134,7 +134,7 @@ describe('CourseModule finish', () => {
     course.loadCourse('alpine', stubPhysics());
     const def = course.getDefinition()!;
     const terrain = course.getTerrain()!;
-    const bed = sampleTerrainAt(terrain, def.finish.t - 0.015, 0.5, new THREE.Vector3());
+    const bed = sampleTerrainAt(terrain, def.finish.t - 0.02, 0.5, new THREE.Vector3());
     riderPos.set(bed.x, bed.y - 4, bed.z);
 
     course.fixedUpdate(1 / 60, ctx);

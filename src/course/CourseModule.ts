@@ -257,7 +257,8 @@ export class CourseModule implements GameModule {
     }
 
     const fin = this.#def.finish;
-    const finishRadius = (fin.width ?? 20) * 1.75;
+    // Generous plaza — void bounce often sits 50m+ short of the arch bed.
+    const finishRadius = Math.max(80, (fin.width ?? 20) * 3);
     const distToFinish = this.#hasFinishBed
       ? horizontalDistance(_playerPos.x, _playerPos.z, this.#finishBed.x, this.#finishBed.z)
       : Number.POSITIVE_INFINITY;
@@ -269,7 +270,7 @@ export class CourseModule implements GameModule {
         finishT: fin.t,
         distanceToFinish: distToFinish,
         finishRadius,
-        approachT: fin.t - 0.06,
+        approachT: fin.t - 0.08,
       })
     ) {
       this.#emitFinish(ctx);
@@ -339,16 +340,16 @@ export class CourseModule implements GameModule {
     }
     const finTrigger = props.triggers.find((t) => t.kind === 'finish');
     if (finTrigger) {
-      // Deep + tall volume: catch fast tunnel-through, void wallow sink, and
-      // short approaches that used to bounce forever just uphill of the arch.
+      // Very deep + tall volume: catch tunnel-through, void wallow sink, and
+      // approaches that used to bounce forever just uphill of the arch.
       setOrientedTriggerBounds(
         finTrigger.bounds,
         finBed,
         finYaw,
-        finHalf,
-        24,
-        finBed.y - 10,
-        finBed.y + 22
+        Math.max(finHalf, (fin.width ?? 20) * 0.75),
+        36,
+        finBed.y - 16,
+        finBed.y + 28
       );
     }
   }

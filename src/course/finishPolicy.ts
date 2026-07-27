@@ -2,9 +2,9 @@
  * Pure finish-line policy — when a run should complete.
  * Checkpoints are progress markers; they do not gate the arch.
  *
- * Prefer distance-to-arch over spline `lateral`: terrain Y is dropped far
- * below authored control points, so closestPoint lateral near the finish
- * is often tens of metres even on the race centerline.
+ * Terrain Y is dropped far below authored control points, so spline
+ * closestPoint `lateral` near the finish is often tens of metres on the
+ * race centerline. Prefer pathT + XZ distance-to-arch instead.
  */
 
 export interface FinishCheckInput {
@@ -15,7 +15,7 @@ export interface FinishCheckInput {
   finishT: number;
   /** Horizontal (XZ) metres from rider to the finish bed / arch. */
   distanceToFinish: number;
-  /** Accept radius around the arch for path/progress fallback (metres). */
+  /** Accept radius around the arch for the approach band (metres). */
   finishRadius: number;
   /**
    * Path-T band before the arch that still counts when inside finishRadius.
@@ -28,9 +28,11 @@ export interface FinishCheckInput {
 export function shouldCompleteRun(i: FinishCheckInput): boolean {
   if (i.alreadyFinished) return false;
   if (i.inFinishTrigger) return true;
-  if (i.distanceToFinish > i.finishRadius) return false;
-  const approach = i.approachT ?? i.finishT - 0.05;
-  return i.pathT >= approach;
+  // Past the finish parameter: always complete — even off-mesh / void wallow
+  // where XZ distance to the arch can exceed the plaza radius.
+  if (i.pathT >= i.finishT) return true;
+  const approach = i.approachT ?? i.finishT - 0.06;
+  return i.pathT >= approach && i.distanceToFinish <= i.finishRadius;
 }
 
 /** Horizontal distance between two world positions (ignore Y). */
