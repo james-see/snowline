@@ -1,6 +1,16 @@
 import type { InputAction, InputState } from '@/types/input.ts';
 import type { EventBus } from '@/types/events.ts';
 import {
+  autoBindingMap,
+  capturePadSource,
+  detectGamepadPreset,
+  resolveBindingsForPad,
+  snapshotPad,
+  withReboundAction,
+  type GamepadBindAction,
+  type GamepadBindingMap,
+} from '@/engine/gamepadBindings.ts';
+import {
   dumpGamepads,
   edgeSets,
   gamepadHasActivity,
@@ -53,6 +63,14 @@ export class Input implements InputState {
   /** Last pad id announced via consumeGamepadToast (connect / slot steal). */
   #padToastId: string | null = null;
   #padPendingToast: string | null = null;
+  /** User overrides from Settings (null = auto-detect preset per pad). */
+  #padBindings: GamepadBindingMap | null = null;
+  /** Settings bind-by-press target; while set, suppress normal pad actions. */
+  #padRebindTarget: GamepadBindAction | null = null;
+  #padRebindCooldown = 0;
+  #padRebindBaseline: { buttons: number[]; axes: number[] } | null = null;
+  /** Last resolved map (for UI / debug). */
+  #padResolved: GamepadBindingMap | null = null;
 
   #lookX = 0;
   #lookY = 0;
@@ -249,13 +267,82 @@ export class Input implements InputState {
       this.#padPendingToast = gp.id;
     }
 
-    const sample = sampleGamepad(gp);
+    this.#padResolved = resolveBindingsForPad(gp, this.#padBindings);
+
+    // Bind-by-press: capture next button/axis, do not drive gameplay/menu actions.
+    if (this.#padRebindTarget) {
+      if (this.#padRebindCooldown > 0) {
+        this.#padRebindCooldown -= 1;
+        if (this.#padRebindCooldown === 0) {
+          this.#padRebindBaseline = snapshotPad(gp);
+        }
+      } else if (this.#padRebindBaseline) {
+        const src = capturePadSource(gp, this.#padRebindBaseline);
+        if (src) {
+          const next = withReboundAction(
+            this.#padBindings,
+            gp,
+            this.#padRebindTarget,
+            src,
+          );
+          this.#padBindings = next;
+          this.#padResolved = next;
+          this.#padRebindTarget = null;
+          this.#padRebindBaseline = null;
+          this.#clearPadEdges();
+          return { x: 0, lookX: 0, lookY: 0 };
+        }
+      }
+      this.#clearPadEdges();
+      return { x: 0, lookX: 0, lookY: 0 };
+    }
+
+    const sample = sampleGamepad(gp, this.#padBindings);
     const { pressed, released } = edgeSets(this.#padHeld, sample.held);
     this.#padHeld = sample.held;
     this.#padPressed = pressed;
     this.#padReleased = released;
 
     return { x: sample.steer, lookX: sample.lookX, lookY: sample.lookY };
+  }
+
+  /** Persistable overrides (null = auto preset from pad id). */
+  getGamepadBindings(): GamepadBindingMap | null {
+    return this.#padBindings;
+  }
+
+  setGamepadBindings(map: GamepadBindingMap | null): void {
+    this.#padBindings = map;
+  }
+
+  /** Active map after auto-detect / overrides (null before first pad sample). */
+  getResolvedGamepadBindings(): GamepadBindingMap | null {
+    return this.#padResolved;
+  }
+
+  /** Start listening for the next button/axis to bind `action`. */
+  beginGamepadRebind(action: GamepadBindAction): void {
+    this.#padRebindTarget = action;
+    this.#padRebindBaseline = null;
+    // Ignore the click/confirm that opened listening.
+    this.#padRebindCooldown = 12;
+  }
+
+  cancelGamepadRebind(): void {
+    this.#padRebindTarget = null;
+    this.#padRebindCooldown = 0;
+    this.#padRebindBaseline = null;
+  }
+
+  get gamepadRebindTarget(): GamepadBindAction | null {
+    return this.#padRebindTarget;
+  }
+
+  /** Reset to auto-detect (clears Settings overrides). */
+  resetGamepadBindings(): void {
+    this.#padBindings = null;
+    this.#padResolved = null;
+    this.cancelGamepadRebind();
   }
 
   /**
@@ -341,6 +428,24 @@ export class Input implements InputState {
     return this.#bindings.get(action);
   }
 
+  /** Active resolved map for the current pad (for Settings remap UI). */
+  resolvedGamepadBindings(): GamepadBindingMap | null {
+    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
+    const gp = pickActiveGamepad(Array.from(pads), this.#padIndex);
+    if (!gp) {
+      return this.#padBindings ?? autoBindingMap({ id: '', mapping: 'standard', axes: [0, 0, 0, 0] });
+    }
+    return resolveBindingsForPad(gp, this.#padBindings);
+  }
+
+  gamepadPresetId(): string {
+    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
+    const gp = pickActiveGamepad(Array.from(pads), this.#padIndex);
+    if (!gp) return 'none';
+    if (this.#padBindings?.preset === 'custom') return 'custom';
+    return detectGamepadPreset(gp.id, gp.mapping);
+  }
+
   requestPointerLock(): void {
     this.#element.requestPointerLock?.();
   }
@@ -364,11 +469,16 @@ export class Input implements InputState {
     lockedOut: boolean;
     move: { x: number; y: number };
     held: InputAction[];
+    bindings: GamepadBindingMap | null;
+    rebindTarget: GamepadBindAction | null;
   } {
     const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
     const list = Array.from(pads);
     const dump = dumpGamepads(list);
     const active = pickActiveGamepad(list, this.#padIndex);
+    const bindings =
+      this.#padResolved ??
+      (active ? resolveBindingsForPad(active, this.#padBindings) : this.#padBindings);
     return {
       ...dump,
       awaitingGesture: this.gamepadAwaitingGesture || dump.awaitingGesture,
@@ -377,6 +487,8 @@ export class Input implements InputState {
       lockedOut: this.#lockedOut,
       move: { x: this.move.x, y: this.move.y },
       held: [...this.#padHeld],
+      bindings,
+      rebindTarget: this.#padRebindTarget,
     };
   }
 

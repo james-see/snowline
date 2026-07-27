@@ -1,3 +1,5 @@
+import type { GamepadBindingMap } from '@/engine/gamepadBindings.ts';
+
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra';
 export type AntialiasMode = 'none' | 'fxaa' | 'smaa' | 'taa';
 
@@ -31,6 +33,11 @@ export interface QualitySettings {
   sfxVolume: number;
   musicVolume: number;
   showPerfHud: boolean;
+  /**
+   * Custom gamepad binds (null = auto-preset from pad id / mapping).
+   * Persisted in localStorage with the rest of settings.
+   */
+  gamepadBindings: GamepadBindingMap | null;
   applyPreset(preset: QualityPreset): void;
   save(): void;
   load(): void;

@@ -64,6 +64,7 @@ async function main(): Promise<void> {
     capture: params.capture,
   });
   engine.settings.load();
+  engine.input.setGamepadBindings(engine.settings.gamepadBindings);
 
   const bridge = new CaptureBridge(engine);
 

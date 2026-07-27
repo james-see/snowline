@@ -765,6 +765,78 @@ canvas#viewport {
   color: var(--ice-dim);
 }
 
+.pad-remap-panel {
+  width: min(520px, 92vw);
+  margin: 8px 0 4px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  background: rgba(8, 22, 36, 0.72);
+  text-align: left;
+}
+
+.pad-remap-panel h3 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 4px;
+  color: var(--sun);
+}
+
+.pad-remap-preset {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--ice-dim);
+}
+
+.pad-remap-preset strong {
+  color: var(--ice);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pad-remap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.pad-remap-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid rgba(215, 232, 247, 0.14);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--ice);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pad-remap-row:hover {
+  border-color: rgba(226, 177, 90, 0.45);
+}
+
+.pad-remap-row.listening {
+  border-color: var(--lime);
+  background: rgba(180, 230, 120, 0.1);
+  color: var(--lime);
+}
+
+.pad-remap-row b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--sun);
+}
+
+.pad-remap-row.listening b {
+  color: var(--lime);
+}
+
 .ui-toast {
   position: absolute;
   left: 50%;
