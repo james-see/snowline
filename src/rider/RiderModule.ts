@@ -105,6 +105,7 @@ export class RiderModule implements GameModule {
     this.tricks.cancelAir();
     this.grinds.cancel();
     this.#wasAirborne = false;
+    this.#visual.resetPose();
     this.#visual.sync(0, this.board);
     this.#syncPublished();
   }

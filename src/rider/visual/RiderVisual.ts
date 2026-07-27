@@ -23,6 +23,9 @@ const BASE = {
   rightArmX: 0.35,
 } as const;
 
+/** Neutral crouch floor used at spawn / after lean clears (matches sync carve=0). */
+const SPAWN_CROUCH = 0.14;
+
 /**
  * Rider + board scene graph: glTF when present under public/assets, else
  * procedural silhouette. Owns run visibility and cosmetic tint hooks.
@@ -84,6 +87,15 @@ export class RiderVisual {
     for (const m of suitMats) m.color.setHex(cosmetics.suitColor);
   }
 
+  /**
+   * Clear lean filter and snap joints to neutral spawn crouch.
+   * Required by RiderModule.reset / init — must not be a no-op stub.
+   */
+  resetPose(): void {
+    this.#lean = 0;
+    this.#applyStance(0, SPAWN_CROUCH);
+  }
+
   /** Pose root from board physics and animate lean / knee flex. */
   sync(dt: number, board: BoardPhysics): void {
     this.root.position.copy(board.position);
@@ -92,20 +104,28 @@ export class RiderVisual {
     const target = board.lean;
     const k = 1 - Math.exp(-LEAN_FOLLOW * Math.max(0, dt));
     this.#lean += (target - this.#lean) * (dt > 0 ? k : 1);
-    const lean = this.#lean;
-    const abs = Math.abs(lean);
 
     // Extra knee load when edged and moving — strong carve compression in stills.
+    const lean = this.#lean;
+    const abs = Math.abs(lean);
     const edge = Math.min(1, Math.abs(board.edgeAngle) / 0.45);
     const speedN = Math.min(1, board.speed / 14);
     const carve = board.grounded ? abs * 0.7 + edge * 0.45 * speedN : abs * 0.35;
-    const crouch = 0.14 + carve * 0.38;
+    const crouch = SPAWN_CROUCH + carve * 0.38;
+
+    this.#applyStance(lean, crouch);
+  }
+
+  /** Apply body / limb stance for current lean + crouch (procedural or glTF body). */
+  #applyStance(lean: number, crouch: number): void {
+    const abs = Math.abs(lean);
 
     if (this.#procedural && !this.#usingGltf) {
       const p = this.#procedural;
       p.body.rotation.set(BASE.bodyX + crouch * 0.55, 0, lean * LEAN_BODY);
       p.body.position.set(-lean * 0.16, 0.02 - crouch * 0.07, -0.04 - abs * 0.05);
       p.hips.rotation.z = lean * LEAN_HIP;
+      p.hips.rotation.x = 0;
       p.torso.rotation.z = lean * 0.22;
       p.torso.rotation.x = BASE.torsoX - crouch * 0.32 - abs * 0.12;
       p.head.rotation.z = -lean * 0.22;
@@ -135,10 +155,11 @@ export class RiderVisual {
       );
       p.leftShin.rotation.x = BASE.leftShinX - crouch * 0.95 - Math.max(0, lean) * 0.22;
       p.rightShin.rotation.x = BASE.rightShinX - crouch * 0.9 - Math.max(0, -lean) * 0.22;
-    } else {
-      this.#body.rotation.set(0.16 + crouch * 0.4, 0, lean * LEAN_BODY);
-      this.#body.position.set(-lean * 0.12, this.#body.position.y, this.#body.position.z);
+      return;
     }
+
+    this.#body.rotation.set(0.16 + crouch * 0.4, 0, lean * LEAN_BODY);
+    this.#body.position.set(-lean * 0.12, this.#body.position.y, this.#body.position.z);
   }
 
   dispose(ctx?: EngineContext): void {
