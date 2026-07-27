@@ -142,15 +142,18 @@ export class UiModule implements GameModule {
       if (nav.back) flow.goTitle();
     }
 
-    if (flow.screen === 'playing' && this.#hudVisible) {
+    if (flow.screen === 'playing' && this.#wantHud()) {
       this.#paintHud(ctx);
     }
   }
 
   setHud(visible: boolean): void {
+    // Capture stills must keep in-run HUD (B9); ignore hide when capture=1.
+    if (this.#ctx?.capture) visible = true;
     this.#hudVisible = visible;
     const play = this.#root?.querySelector('.hud-play') as HTMLElement | null;
-    if (play) play.style.display = visible ? 'block' : 'none';
+    const playing = this.#ctx?.getModule<GameFlowModule>('flow')?.screen === 'playing';
+    if (play) play.style.display = visible && playing ? 'block' : 'none';
   }
 
   #applyMenuLockout(ctx: EngineContext): void {
@@ -276,23 +279,41 @@ export class UiModule implements GameModule {
     return { left, right, up, down, confirm, back };
   }
 
+  /** In-run HUD on during play; always on in capture (B9). */
+  #wantHud(): boolean {
+    return this.#hudVisible || !!this.#ctx?.capture;
+  }
+
   #mountShell(): void {
     if (!this.#root) return;
     this.#root.innerHTML = `
       <div class="ui-layer" id="ui-layer"></div>
       <div class="hud-play" id="hud-play" style="display:none">
-        <div class="hud-top">
-          <div class="hud-score"><span class="label">Score</span><span id="hud-score">0</span></div>
-          <div class="hud-combo"><span class="label">Combo</span><span id="hud-combo">×1</span></div>
-          <div class="hud-time"><span class="label">Time</span><span id="hud-time">0:00.00</span></div>
+        <div class="hud-stack hud-stack-tl">
+          <div class="hud-score">
+            <span class="label">Score</span>
+            <span id="hud-score">0</span>
+          </div>
+          <div class="hud-combo" id="hud-combo-wrap">
+            <span class="label">Combo</span>
+            <span id="hud-combo">×1.0</span>
+          </div>
         </div>
-        <div class="hud-bottom">
-          <div class="hud-speed"><span id="hud-speed">0</span><span class="unit">km/h</span></div>
+        <div class="hud-stack hud-stack-tr">
+          <div class="hud-time">
+            <span class="label">Time</span>
+            <span id="hud-time">0:00.00</span>
+          </div>
+          <div class="hud-cp" id="hud-cp">CP 0/0</div>
+        </div>
+        <div class="hud-stack hud-stack-bl">
+          <div class="hud-speed">
+            <span id="hud-speed">0</span><span class="unit">km/h</span>
+          </div>
           <div class="boost-wrap">
             <span class="label">Boost</span>
             <div class="boost-track"><div class="boost-fill" id="hud-boost"></div></div>
           </div>
-          <div class="hud-cp" id="hud-cp">CP 0/0</div>
         </div>
         <div class="hud-popup" id="hud-popup"></div>
         <div class="hud-tip" id="hud-tip" style="display:none"></div>
@@ -311,11 +332,12 @@ export class UiModule implements GameModule {
     const screenChanged = this.#screen !== screen;
     this.#screen = screen;
 
-    play.style.display = screen === 'playing' && this.#hudVisible ? 'block' : 'none';
+    play.style.display = screen === 'playing' && this.#wantHud() ? 'block' : 'none';
 
     if (screen === 'playing') {
       layer.innerHTML = '';
       layer.className = 'ui-layer';
+      if (this.#wantHud()) this.#paintHud(ctx);
       return;
     }
 
@@ -473,7 +495,7 @@ export class UiModule implements GameModule {
       set('hud-score', String(hud.score + hud.pending));
       set('hud-combo', `×${hud.combo.toFixed(1)}`);
       set('hud-time', fmtTime(hud.time));
-      document.getElementById('hud-combo')?.classList.toggle('hot', hud.combo >= 2);
+      document.getElementById('hud-combo-wrap')?.classList.toggle('hot', hud.combo >= 2);
     }
     if (rider) {
       set('hud-speed', String(Math.round(rider.state.speed * 3.6)));

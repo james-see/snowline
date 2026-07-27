@@ -5,6 +5,8 @@
   --ice: #d7e8f7;
   --ice-dim: #8fb0cc;
   --sun: #e2b15a;
+  --lime: #c8ff3a;
+  --ember: #ff6a14;
   --line: rgba(215, 232, 247, 0.18);
   --danger: #d85a4a;
   --bronze: #b87333;
@@ -542,31 +544,41 @@ canvas#viewport {
   font-size: 13px;
 }
 
-/* HUD */
+/* HUD — SSX-like corners: speed + score/combo loud, rest restrained */
 .hud-play {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.hud-top,
-.hud-bottom {
+.hud-stack {
   position: absolute;
-  left: 24px;
-  right: 24px;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(160deg, rgba(6, 18, 30, 0.72), rgba(6, 18, 30, 0.38));
+  border: 1px solid rgba(215, 232, 247, 0.16);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.65);
+}
+
+.hud-stack-tl {
+  top: 18px;
+  left: 18px;
+  min-width: 148px;
+}
+
+.hud-stack-tr {
+  top: 18px;
+  right: 18px;
   align-items: flex-end;
-  gap: 20px;
+  text-align: right;
 }
 
-.hud-top {
-  top: 20px;
-}
-
-.hud-bottom {
-  bottom: 24px;
-  align-items: center;
+.hud-stack-bl {
+  bottom: 20px;
+  left: 18px;
+  min-width: 200px;
 }
 
 .hud-score,
@@ -581,82 +593,103 @@ canvas#viewport {
 .hud-time span:last-child {
   display: block;
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: clamp(28px, 3.6vw, 40px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--ice);
 }
 
 .label {
   display: block;
   font-size: 10px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ice-dim);
+  margin-bottom: 2px;
 }
 
-.hud-combo {
+.hud-combo #hud-combo {
+  display: block;
   font-family: var(--font-display);
-  font-size: 28px;
-  color: var(--ice);
-  text-align: center;
-  transition: color 0.2s ease;
+  font-size: clamp(32px, 4vw, 44px);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--lime);
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
-.hud-combo.hot {
-  color: var(--sun);
+.hud-combo.hot #hud-combo {
+  color: var(--ember);
+  transform: scale(1.06);
 }
 
 .hud-speed {
   font-family: var(--font-display);
-  font-size: 42px;
-  line-height: 1;
+  font-size: clamp(52px, 7vw, 72px);
+  font-weight: 800;
+  line-height: 0.92;
+  color: var(--ice);
+  letter-spacing: -0.02em;
 }
 
 .hud-speed .unit {
-  margin-left: 6px;
+  margin-left: 8px;
   font-size: 14px;
-  color: var(--ice-dim);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--lime);
+  vertical-align: super;
 }
 
 .boost-wrap {
-  flex: 1;
-  max-width: 280px;
+  width: min(220px, 40vw);
 }
 
 .boost-track {
   margin-top: 4px;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
 
 .boost-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #5ea5d8, #7eb6e8);
+  background: linear-gradient(90deg, #5ea5d8, var(--lime));
   transition: width 0.08s linear;
 }
 
 .boost-fill.full {
-  background: linear-gradient(90deg, #7eb6e8, var(--sun));
+  background: linear-gradient(90deg, var(--lime), var(--ember));
 }
 
 .hud-cp {
   font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 0.08em;
+  font-size: 14px;
+  letter-spacing: 0.1em;
   color: var(--ice-dim);
+}
+
+.hud-time span:last-child {
+  font-size: clamp(20px, 2.4vw, 26px);
+  font-weight: 700;
 }
 
 .hud-popup {
   position: absolute;
   left: 50%;
-  top: 28%;
+  top: 26%;
   transform: translate(-50%, -10px);
   font-family: var(--font-display);
-  font-size: clamp(22px, 4vw, 30px);
+  font-size: clamp(24px, 4.2vw, 34px);
+  font-weight: 800;
   letter-spacing: 0.08em;
+  color: var(--lime);
   opacity: 0;
   pointer-events: none;
-  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
 }
 
 .hud-popup.show {
@@ -696,14 +729,24 @@ canvas#viewport {
 }
 
 @media (max-width: 640px) {
-  .hud-top,
-  .hud-bottom {
-    left: 12px;
-    right: 12px;
+  .hud-stack-tl,
+  .hud-stack-tr,
+  .hud-stack-bl {
+    left: 10px;
+    right: auto;
+  }
+
+  .hud-stack-tr {
+    left: auto;
+    right: 10px;
+  }
+
+  .hud-stack-bl {
+    bottom: 14px;
   }
 
   .hud-speed {
-    font-size: 32px;
+    font-size: 44px;
   }
 
   .results-stats {
