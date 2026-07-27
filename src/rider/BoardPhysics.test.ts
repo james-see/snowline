@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
+import type { SurfaceKind } from '@/types/gameplay.ts';
 import type { RiderInput } from '@/types/input.ts';
 import type {
   KinematicBodyDesc,
@@ -34,7 +35,7 @@ function idleInput(overrides: Partial<RiderInput> = {}): RiderInput {
 }
 
 /** Flat ground at `groundY` — models trimesh contact under a spawn pose. */
-function flatGroundPhysics(groundY = 0): PhysicsWorld {
+function flatGroundPhysics(groundY = 0, surface: SurfaceKind = 'packed'): PhysicsWorld {
   const handle: RigidBodyHandle = { id: 1, remove() {} };
   return {
     ready: true,
@@ -48,8 +49,8 @@ function flatGroundPhysics(groundY = 0): PhysicsWorld {
         point: new THREE.Vector3(options.origin.x, groundY, options.origin.z),
         normal: new THREE.Vector3(0, 1, 0),
         distance: Math.max(0, distance),
-        surface: 'packed',
-        actorId: 'terrain',
+        surface,
+        actorId: surface === 'rail' ? 'rail' : surface === 'wood' ? 'box' : 'terrain',
         colliderId: 1,
       };
     },
@@ -79,6 +80,10 @@ function flatGroundPhysics(groundY = 0): PhysicsWorld {
     clearWorld() {},
     dispose() {},
   };
+}
+
+function surfaceGroundPhysics(surface: SurfaceKind, groundY = 0): PhysicsWorld {
+  return flatGroundPhysics(groundY, surface);
 }
 
 /** Launch from a grounded spawn so `#wasAirborne` is armed. */
@@ -398,6 +403,37 @@ describe('BoardPhysics', () => {
     }
     assert.equal(recovered, true);
     assert.ok(Math.abs(board.position.y - lastY) < 0.35);
+  });
+
+  it('does not latch grind on wood decks or packed ramps', () => {
+    const wood = surfaceGroundPhysics('wood');
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(0, 0, 14);
+
+    let grindStarted = false;
+    for (let i = 0; i < 30; i++) {
+      const frame = board.fixedUpdate(1 / 60, idleInput(), wood);
+      if (frame.grindStarted) grindStarted = true;
+    }
+    assert.equal(grindStarted, false);
+    assert.equal(board.grinding, false);
+    assert.equal(board.surfaceKind, 'wood');
+    assert.equal(board.grounded, true);
+  });
+
+  it('latches grind on thin rail colliders', () => {
+    const rail = surfaceGroundPhysics('rail');
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(0, 0, 14);
+
+    // Latch is immediate; stickDown sinks the kinematic board on a flat mock,
+    // so only assert the start edge (not multi-frame hold on a fake infinite plane).
+    const frame = board.fixedUpdate(1 / 60, idleInput(), rail);
+    assert.equal(frame.grindStarted, true);
+    assert.equal(board.grinding, true);
+    assert.equal(board.surfaceKind, 'rail');
   });
 
   it('exposes speed limits from tuning', () => {

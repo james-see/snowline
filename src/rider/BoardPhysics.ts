@@ -536,9 +536,12 @@ export class BoardPhysics {
   }
 
   #tryStartGrind(): void {
+    // Only thin rail colliders latch. Wood decks / packed ramps stay rideable
+    // so kickers launch instead of stealing velocity into a contour grind.
     if (!isGrindableSurface(this.surfaceKind)) return;
     const center = this.#samples[centerSampleIndex()];
     if (!center?.hit) return;
+    if (!isGrindableSurface(center.surface)) return;
     if (center.contactGap > GRIND.latchDistance) return;
 
     this.grinding = true;
@@ -784,7 +787,7 @@ function majoritySurface(counts: Record<SurfaceKind, number>, fallback: SurfaceK
   return best;
 }
 
-/** Rails + wood park boxes latch grind; packed ramps stay launch-only. */
+/** Thin rail colliders only — wood/packed decks ride and launch, never grind. */
 function isGrindableSurface(kind: SurfaceKind): boolean {
-  return kind === 'rail' || kind === 'wood';
+  return kind === 'rail';
 }
