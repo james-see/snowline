@@ -5,22 +5,22 @@ import { buildProceduralRig, type ProceduralRig } from './buildProceduralRig.ts'
 import { resolveCosmetics, type RiderCosmetics } from './cosmetics.ts';
 import { tryLoadRiderGltf, type LoadedRiderGltf } from './loadRiderGltf.ts';
 
-const LEAN_FOLLOW = 12;
-const LEAN_BODY = 0.48;
-const LEAN_HIP = 0.18;
+const LEAN_FOLLOW = 14;
+const LEAN_BODY = 0.78;
+const LEAN_HIP = 0.32;
 const MENU_SCREENS = new Set(['title', 'course', 'mode', 'settings']);
 
-// Carve-ready base pose (radians) — always crouched, never upright idle.
+// Carve-ready base pose (radians) — deep crouch, never upright idle.
 const BASE = {
-  bodyX: 0.14,
-  torsoX: -0.18,
-  headX: -0.08,
-  leftLegX: 0.72,
-  rightLegX: 0.55,
-  leftShinX: -0.95,
-  rightShinX: -0.85,
-  leftArmX: 0.35,
-  rightArmX: 0.28,
+  bodyX: 0.22,
+  torsoX: -0.28,
+  headX: -0.12,
+  leftLegX: 0.88,
+  rightLegX: 0.7,
+  leftShinX: -1.15,
+  rightShinX: -1.05,
+  leftArmX: 0.42,
+  rightArmX: 0.35,
 } as const;
 
 /**
@@ -95,49 +95,49 @@ export class RiderVisual {
     const lean = this.#lean;
     const abs = Math.abs(lean);
 
-    // Extra knee load when edged and moving — reads as carve-ready in stills.
-    const edge = Math.min(1, Math.abs(board.edgeAngle) / 0.55);
-    const speedN = Math.min(1, board.speed / 18);
-    const carve = board.grounded ? abs * 0.55 + edge * 0.35 * speedN : abs * 0.25;
-    const crouch = 0.08 + carve * 0.22;
+    // Extra knee load when edged and moving — strong carve compression in stills.
+    const edge = Math.min(1, Math.abs(board.edgeAngle) / 0.45);
+    const speedN = Math.min(1, board.speed / 14);
+    const carve = board.grounded ? abs * 0.7 + edge * 0.45 * speedN : abs * 0.35;
+    const crouch = 0.14 + carve * 0.38;
 
     if (this.#procedural && !this.#usingGltf) {
       const p = this.#procedural;
-      p.body.rotation.set(BASE.bodyX + crouch * 0.35, 0, lean * LEAN_BODY);
-      p.body.position.set(-lean * 0.1, 0.02 - crouch * 0.04, -0.04 - abs * 0.03);
+      p.body.rotation.set(BASE.bodyX + crouch * 0.55, 0, lean * LEAN_BODY);
+      p.body.position.set(-lean * 0.16, 0.02 - crouch * 0.07, -0.04 - abs * 0.05);
       p.hips.rotation.z = lean * LEAN_HIP;
-      p.torso.rotation.z = lean * 0.12;
-      p.torso.rotation.x = BASE.torsoX - crouch * 0.2 - abs * 0.08;
-      p.head.rotation.z = -lean * 0.14;
-      p.head.rotation.x = BASE.headX - abs * 0.04;
+      p.torso.rotation.z = lean * 0.22;
+      p.torso.rotation.x = BASE.torsoX - crouch * 0.32 - abs * 0.12;
+      p.head.rotation.z = -lean * 0.22;
+      p.head.rotation.x = BASE.headX - abs * 0.06;
 
       p.leftArm.rotation.set(
-        BASE.leftArmX + abs * 0.45 + crouch * 0.15,
-        0.12 * lean,
-        0.62 + lean * 0.42
+        BASE.leftArmX + abs * 0.65 + crouch * 0.22,
+        0.18 * lean,
+        0.72 + lean * 0.55
       );
       p.rightArm.rotation.set(
-        BASE.rightArmX + abs * 0.4 + crouch * 0.12,
-        0.12 * lean,
-        -0.52 + lean * 0.42
+        BASE.rightArmX + abs * 0.58 + crouch * 0.18,
+        0.18 * lean,
+        -0.62 + lean * 0.55
       );
 
-      // Hip flex + shin counter-rotation = visible knee bend on carve.
+      // Hip flex + shin counter-rotation = loud knee bend on carve.
       p.leftLeg.rotation.set(
-        BASE.leftLegX + crouch * 0.55 + lean * 0.12,
-        0.1,
-        0.14 + lean * 0.08
+        BASE.leftLegX + crouch * 0.85 + lean * 0.2,
+        0.12,
+        0.18 + lean * 0.14
       );
       p.rightLeg.rotation.set(
-        BASE.rightLegX + crouch * 0.5 - lean * 0.12,
-        -0.08,
-        -0.12 + lean * 0.08
+        BASE.rightLegX + crouch * 0.78 - lean * 0.2,
+        -0.1,
+        -0.16 + lean * 0.14
       );
-      p.leftShin.rotation.x = BASE.leftShinX - crouch * 0.65 - Math.max(0, lean) * 0.12;
-      p.rightShin.rotation.x = BASE.rightShinX - crouch * 0.6 - Math.max(0, -lean) * 0.12;
+      p.leftShin.rotation.x = BASE.leftShinX - crouch * 0.95 - Math.max(0, lean) * 0.22;
+      p.rightShin.rotation.x = BASE.rightShinX - crouch * 0.9 - Math.max(0, -lean) * 0.22;
     } else {
-      this.#body.rotation.set(0.1 + crouch * 0.25, 0, lean * LEAN_BODY);
-      this.#body.position.set(-lean * 0.08, this.#body.position.y, this.#body.position.z);
+      this.#body.rotation.set(0.16 + crouch * 0.4, 0, lean * LEAN_BODY);
+      this.#body.position.set(-lean * 0.12, this.#body.position.y, this.#body.position.z);
     }
   }
 
