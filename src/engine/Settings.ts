@@ -21,6 +21,7 @@ type PresetFields = Omit<
   | 'musicVolume'
   | 'showPerfHud'
   | 'gamepadBindings'
+  | 'invertGamepadX'
 >;
 
 const PRESETS: Record<QualityPreset, PresetFields> = {
@@ -145,6 +146,8 @@ export class Settings implements QualitySettings {
   musicVolume = 0.55;
   showPerfHud = false;
   gamepadBindings: GamepadBindingMap | null = null;
+  /** Default true so steer feels flipped from the previous shipping mapping. */
+  invertGamepadX = true;
 
   applyPreset(preset: QualityPreset): void {
     this.preset = preset;

@@ -65,6 +65,7 @@ async function main(): Promise<void> {
   });
   engine.settings.load();
   engine.input.setGamepadBindings(engine.settings.gamepadBindings);
+  engine.input.invertGamepadX = engine.settings.invertGamepadX;
 
   const bridge = new CaptureBridge(engine);
 

@@ -635,6 +635,7 @@ export class UiModule implements GameModule {
         lastConnectId?: string | null;
         move: { x: number; y: number };
         rawMoveX?: number;
+        invertGamepadX?: boolean;
         held: string[];
         pads: Array<{
           id: string;
@@ -735,6 +736,7 @@ export class UiModule implements GameModule {
     const held = dump.held.length ? dump.held.join(', ') : '—';
     const rebind = dump.rebindTarget;
     const preset = dump.bindings?.preset;
+    const invertX = dump.invertGamepadX !== false;
     const listen = rebind
       ? `<p class="pad-gesture">Remap listening — lit b# / a# are raw indices</p>`
       : '';
@@ -744,7 +746,7 @@ export class UiModule implements GameModule {
       ${slotLine}
       ${pads}
       <div class="pad-live">
-        <div class="pad-live-meta">move.x ${rawX.toFixed(2)} · lockedOut ${dump.lockedOut ? 'yes' : 'no'} · held ${escapeHtml(held)}${preset ? ` · preset ${escapeHtml(String(preset))}` : ''}</div>
+        <div class="pad-live-meta">move.x ${rawX.toFixed(2)}${invertX ? ' (inverted)' : ''} · invertX ${invertX ? 'on' : 'off'} · lockedOut ${dump.lockedOut ? 'yes' : 'no'} · held ${escapeHtml(held)}${preset ? ` · preset ${escapeHtml(String(preset))}` : ''}</div>
         ${axesHtml}
         ${buttonsHtml}
       </div>
@@ -806,6 +808,7 @@ export class UiModule implements GameModule {
           <label>FOV <input id="set-fov" type="range" min="50" max="85" step="1" value="${s.fov}" /></label>
           <label class="check"><input id="set-assist" type="checkbox" ${s.landingAssist ? 'checked' : ''}/> Landing assist</label>
           <label class="check"><input id="set-motion" type="checkbox" ${s.reducedMotion ? 'checked' : ''}/> Reduced motion</label>
+          <label class="check"><input id="set-invert-x" type="checkbox" ${s.invertGamepadX ? 'checked' : ''}/> Invert steer (X)</label>
         </div>
         <p class="unlocks">Unlocked: ${unlocks || '—'}</p>
         <section class="pad-test-panel" aria-label="Controller test">
@@ -858,6 +861,12 @@ export class UiModule implements GameModule {
       ctx.settings.reducedMotion = (e.target as HTMLInputElement).checked;
       ctx.settings.save();
       ctx.events.emit('settings:changed');
+    });
+    layer?.querySelector('#set-invert-x')?.addEventListener('change', (e) => {
+      const on = (e.target as HTMLInputElement).checked;
+      ctx.settings.invertGamepadX = on;
+      (ctx.input as { invertGamepadX?: boolean }).invertGamepadX = on;
+      ctx.settings.save();
     });
     layer?.querySelector('[data-act="back"]')?.addEventListener('click', () => this.#leaveSettings(flow));
     layer?.querySelector('[data-act="pad-reset"]')?.addEventListener('click', () => {

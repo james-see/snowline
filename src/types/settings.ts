@@ -38,6 +38,11 @@ export interface QualitySettings {
    * Persisted in localStorage with the rest of settings.
    */
   gamepadBindings: GamepadBindingMap | null;
+  /**
+   * Negate left-stick X (steer) after sampling — independent of X/D pad preset.
+   * Default on so plugged-in Ultimate 2 (incl. D mode) steers as expected.
+   */
+  invertGamepadX: boolean;
   applyPreset(preset: QualityPreset): void;
   save(): void;
   load(): void;

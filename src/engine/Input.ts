@@ -89,6 +89,8 @@ export class Input implements InputState {
 
   sensitivity = 0.002;
   invertY = false;
+  /** Negate left-stick X (and stick-derived steerLeft/Right). Keyboard unchanged. */
+  invertGamepadX = true;
 
   #element: HTMLElement;
   #events: EventBus | null;
@@ -322,13 +324,31 @@ export class Input implements InputState {
       return { x: 0, lookX: 0, lookY: 0 };
     }
 
+    // Invert after sample — applies for every preset (standard / ultimate2-x / D / custom).
     const sample = sampleGamepad(gp, this.#padBindings);
-    const { pressed, released } = edgeSets(this.#padHeld, sample.held);
-    this.#padHeld = sample.held;
+    let steer = sample.steer;
+    const held = sample.held;
+    if (this.invertGamepadX) {
+      steer = -steer;
+      // Stick-only digital steer (not remappable) — keep menus/edges consistent.
+      const left = held.has('steerLeft');
+      const right = held.has('steerRight');
+      if (left !== right) {
+        if (left) {
+          held.delete('steerLeft');
+          held.add('steerRight');
+        } else {
+          held.delete('steerRight');
+          held.add('steerLeft');
+        }
+      }
+    }
+    const { pressed, released } = edgeSets(this.#padHeld, held);
+    this.#padHeld = held;
     this.#padPressed = pressed;
     this.#padReleased = released;
 
-    return { x: sample.steer, lookX: sample.lookX, lookY: sample.lookY };
+    return { x: steer, lookX: sample.lookX, lookY: sample.lookY };
   }
 
   /** Persistable overrides (null = auto preset from pad id). */
@@ -496,6 +516,7 @@ export class Input implements InputState {
     move: { x: number; y: number };
     /** Stick X before lockout zeroing — Controller Test should use this. */
     rawMoveX: number;
+    invertGamepadX: boolean;
     held: InputAction[];
     bindings: GamepadBindingMap | null;
     rebindTarget: GamepadBindAction | null;
@@ -522,6 +543,7 @@ export class Input implements InputState {
       lastConnectId: this.#padLastConnectId,
       move: { x: this.move.x, y: this.move.y },
       rawMoveX: this.#rawMoveX,
+      invertGamepadX: this.invertGamepadX,
       held: [...this.#padHeld],
       bindings,
       rebindTarget: this.#padRebindTarget,

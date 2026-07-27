@@ -35,7 +35,7 @@ Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`. Every
 
 | Action | Control |
 |--------|---------|
-| Steer | Left stick X |
+| Steer | Left stick X (Settings → **Invert steer (X)** defaults on) |
 | Camera look | Right stick |
 | Jump / Confirm | A |
 | Brake | B |
@@ -61,4 +61,4 @@ Returns connected pad ids, mapping, axes, buttons, raw `slots` (null vs present)
 
 ## Settings
 
-Landing assist, reduced motion, **Controller Test** (live pads / axes / buttons; lockout cleared; gesture + Mac troubleshooting copy), and **Controller Remap** (bind-by-press overrides, Reset to auto). Back with Esc/B only — A does not leave the panel. Same snapshot as `window.__snowline.gamepadDebug()`.
+Landing assist, reduced motion, **Invert steer (X)** (`invertGamepadX`, default on — negates left-stick X after sampling for any X/D preset; keyboard A/D unchanged), **Controller Test** (live pads / axes / buttons; shows `(inverted)` on move.x when on; lockout cleared; gesture + Mac troubleshooting copy), and **Controller Remap** (bind-by-press overrides, Reset to auto). Back with Esc/B only — A does not leave the panel. Same snapshot as `window.__snowline.gamepadDebug()`.

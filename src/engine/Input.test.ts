@@ -76,6 +76,8 @@ describe('Input gamepad → rider', () => {
     });
     input = new Input(el);
     input.setLockout(false);
+    // Existing cases assert raw stick polarity; invert covered separately.
+    input.invertGamepadX = false;
   });
 
   afterEach(() => {
@@ -197,5 +199,49 @@ describe('Input gamepad → rider', () => {
     input.beginFrame();
     assert.equal(input.isDown('boost'), false);
     input.endFrame();
+  });
+
+  it('invertGamepadX negates stick steer and swaps digital steer edges', () => {
+    const buttons = Array.from({ length: 16 }, () => fakeButton(false));
+    pads = [fakePad({ axes: [0.9, 0, 0, 0], buttons })];
+    input.invertGamepadX = true;
+    input.beginFrame();
+    assert.ok(input.move.x < -0.5);
+    assert.equal(input.isDown('steerLeft'), true);
+    assert.equal(input.isDown('steerRight'), false);
+    assert.ok(input.gamepadDebug().rawMoveX < -0.5);
+    assert.equal(input.gamepadDebug().invertGamepadX, true);
+    const rider = readRiderInput(input);
+    assert.ok(rider.steer < -0.5);
+    input.endFrame();
+  });
+
+  it('invertGamepadX applies on Ultimate 2 empty-mapping (D) preset too', () => {
+    const buttons = Array.from({ length: 17 }, () => fakeButton(false));
+    pads = [
+      fakePad({
+        id: '8BitDo Ultimate 2 Wireless',
+        mapping: '',
+        axes: [0.85, 0, 0, 0, 0, 0],
+        buttons,
+      }),
+    ];
+    input.invertGamepadX = true;
+    input.beginFrame();
+    assert.ok(input.move.x < -0.5);
+    assert.equal(input.gamepadPresetId(), 'ultimate2-x');
+    input.endFrame();
+  });
+
+  it('invertGamepadX leaves keyboard A/D polarity alone', () => {
+    pads = [null, null, null, null];
+    input.invertGamepadX = true;
+    // Simulate KeyD (steerRight) via inject — keyboard path uses action holds.
+    input.inject(['steerRight'], true);
+    input.beginFrame();
+    assert.equal(input.move.x, 1);
+    assert.ok(readRiderInput(input).steer > 0.5);
+    input.endFrame();
+    input.inject(['steerRight'], false);
   });
 });
