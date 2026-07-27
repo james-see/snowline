@@ -15,8 +15,8 @@ describe('expandCourseProps', () => {
     assert.equal(trees.length, maxTrees);
     const banners = props.filter((p) => p.kind === 'banner');
     const fences = props.filter((p) => p.kind === 'fence');
-    assert.ok(banners.length >= 24);
-    assert.ok(fences.length >= 40);
+    assert.ok(banners.length >= 28);
+    assert.ok(fences.length >= 48);
     assert.ok(props.some((p) => p.kind === 'checkpoint_gate'));
   });
 
@@ -80,7 +80,7 @@ describe('expandCourseProps', () => {
         nearGallery += 1;
         denseWorld.push({ x: tree.position[0], z: tree.position[2] });
       }
-      if (closest.distance <= raceHalf + 26) midfieldBelt += 1;
+      if (closest.distance <= raceHalf + 22) midfieldBelt += 1;
       const s = typeof tree.scale === 'number' ? tree.scale : 1;
       scales += 1;
       scaleMin = Math.min(scaleMin, s);
@@ -89,8 +89,8 @@ describe('expandCourseProps', () => {
     // Flank plant — stay outside race strip (curvature can shave a few metres).
     assert.ok(minDist >= raceHalf * 0.85);
     // Shallow multi-row lip wall — not amphitheater skyline loners.
-    assert.ok(maxDist <= raceHalf + 30);
-    // Front-weighted solid gallery for forest / carve chase frames.
+    assert.ok(maxDist <= raceHalf + 26);
+    // Front-weighted solid gallery for forest / carve chase frames (first ~40%).
     assert.ok(nearGallery >= belt.length * 0.9);
     // Belt fills midfield depth (rows), not a single lip.
     assert.ok(midfieldBelt >= belt.length * 0.9);
@@ -114,7 +114,7 @@ describe('expandCourseProps', () => {
       }
     }
     assert.ok(nnN > 80);
-    assert.ok(sumNN / nnN <= 3.6, `avg NN ${sumNN / nnN} — expect solid canopy wall`);
+    assert.ok(sumNN / nnN <= 3.8, `avg NN ${sumNN / nnN} — expect solid canopy wall`);
     assert.ok(props.filter((p) => p.kind === 'banner').length >= 28);
     assert.ok(props.filter((p) => p.kind === 'fence').length >= 44);
     assert.ok(props.filter((p) => p.kind === 'rail').length >= 2);
@@ -136,7 +136,7 @@ describe('expandCourseProps', () => {
     for (const tree of belt) {
       pos.set(...tree.position);
       const closest = path.closestPoint(pos);
-      if (closest.distance <= raceHalf + 28) nearBelt += 1;
+      if (closest.distance <= raceHalf + 20) nearBelt += 1;
       if (closest.t <= 0.28) {
         front += 1;
         denseWorld.push({ x: tree.position[0], z: tree.position[2] });
@@ -163,8 +163,8 @@ describe('expandCourseProps', () => {
       }
     }
     assert.ok(nnN > 80);
-    assert.ok(sumNN / nnN <= 4.0, `alpine avg NN ${sumNN / nnN}`);
-    assert.ok(props.filter((p) => p.kind === 'banner').length >= 24);
+    assert.ok(sumNN / nnN <= 4.2, `alpine avg NN ${sumNN / nnN}`);
+    assert.ok(props.filter((p) => p.kind === 'banner').length >= 28);
   });
 
   it('fills forward chase frustum with mid-corridor props (no CAM_CROSS)', () => {
@@ -175,42 +175,51 @@ describe('expandCourseProps', () => {
     const pos = new THREE.Vector3();
 
     const inset = props.filter((p) => p.kind === 'tree' && p.id.startsWith('inset-tree-'));
-    assert.ok(inset.length >= 80, `expected inset frustum trees, got ${inset.length}`);
+    assert.ok(inset.length >= 180, `expected dense inset frustum trees, got ${inset.length}`);
 
     let insetInStrip = 0;
     let insetFront = 0;
+    let insetNearFov = 0;
     for (const tree of inset) {
       pos.set(...tree.position);
       const closest = path.closestPoint(pos);
-      // Mid-corridor-adjacent — inside race half, clear of dead center.
-      assert.ok(closest.distance >= raceHalf * 0.2);
-      assert.ok(closest.distance <= raceHalf * 0.95);
-      if (closest.distance <= raceHalf * 0.9) insetInStrip += 1;
-      if (closest.t <= 0.4) insetFront += 1;
+      // Inside FOV cone at chase look-ahead; clear of dead-center fall line.
+      assert.ok(closest.distance >= raceHalf * 0.08);
+      assert.ok(closest.distance <= raceHalf * 0.6);
+      if (closest.distance <= raceHalf * 0.55) insetInStrip += 1;
+      if (closest.t <= 0.42) insetFront += 1;
+      // Near FOV half-width at ~40 m (~0.42 raceHalf on alpine).
+      if (closest.t <= 0.06 && closest.distance <= raceHalf * 0.45) insetNearFov += 1;
     }
     assert.ok(insetInStrip >= inset.length * 0.9);
-    assert.ok(insetFront >= inset.length * 0.75);
+    assert.ok(insetFront >= inset.length * 0.85);
+    assert.ok(
+      insetNearFov >= 40,
+      `expected near look-ahead inset mass in FOV cone, got ${insetNearFov}`
+    );
 
     const rocks = props.filter((p) => p.kind === 'rock' && p.id.startsWith('frustum-rock-'));
-    assert.ok(rocks.length >= 30, `expected forward-frustum rocks, got ${rocks.length}`);
+    assert.ok(rocks.length >= 40, `expected forward-frustum rocks, got ${rocks.length}`);
     let rockFrontMid = 0;
     for (const rock of rocks) {
       pos.set(...rock.position);
       const closest = path.closestPoint(pos);
-      if (closest.t <= 0.38 && closest.distance <= raceHalf * 0.75) rockFrontMid += 1;
+      if (closest.t <= 0.4 && closest.distance <= raceHalf * 0.45) rockFrontMid += 1;
     }
     assert.ok(
-      rockFrontMid >= rocks.length * 0.55,
+      rockFrontMid >= rocks.length * 0.7,
       `expected front mid-corridor rocks in look-ahead, got ${rockFrontMid}/${rocks.length}`
     );
 
     const midBanners = props.filter((p) => p.id.startsWith('frustum-banner-'));
-    assert.ok(midBanners.length >= 16);
+    assert.ok(midBanners.length >= 28);
+    const midFences = props.filter((p) => p.id.startsWith('frustum-fence-'));
+    assert.ok(midFences.length >= 36);
     // Fall-line lane stays open for playability.
-    for (const p of [...inset, ...rocks, ...midBanners]) {
+    for (const p of [...inset, ...rocks, ...midBanners, ...midFences]) {
       pos.set(...p.position);
       const closest = path.closestPoint(pos);
-      assert.ok(closest.distance >= raceHalf * 0.18, `${p.id} too close to centerline`);
+      assert.ok(closest.distance >= raceHalf * 0.08, `${p.id} too close to centerline`);
     }
   });
 });
