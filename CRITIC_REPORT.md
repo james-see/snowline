@@ -37,7 +37,7 @@
 
 Loud first-viewport read: **dark amphitheater + long sun casts on muddy corduroy, but sparse cones — not alpine timberline**.
 
-## Rubric (mean = **5.45**, gameplay mean = **5.35**)
+## Rubric (mean = **5.35**, gameplay mean = **5.20**)
 
 | Category | Score | Note |
 |----------|------:|------|
@@ -87,7 +87,7 @@ Cleared vs prior: `empty_mountain`, `no_sun_shadows` (and milk `flat_ambient` wh
 | B8 | FAIL | FAIL |
 | B11 | FAIL | **PASS** |
 | tally | 5/6 | **9/2** |
-| mean | 4.55 | **5.45** |
+| mean | 4.55 | **5.35** |
 
 ## Gate
 

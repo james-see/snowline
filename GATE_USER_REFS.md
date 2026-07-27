@@ -47,4 +47,4 @@ Compare Snowline captures to:
 | B10_no_float | **PASS** |
 | B11_atmosphere | **PASS** — cool aerial; milk void cleared |
 
-**Verdict: FAIL.** 9 PASS / 2 FAIL. Rubric mean ≈ **5.45** vs user refs.
+**Verdict: FAIL.** 9 PASS / 2 FAIL. Rubric mean ≈ **5.35** vs user refs.
