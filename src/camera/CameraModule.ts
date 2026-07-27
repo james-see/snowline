@@ -7,8 +7,12 @@ import { ChaseCamera } from './ChaseCamera.ts';
 
 const _pathAim = new THREE.Vector3();
 
-/** Metres along the spline used as the course-line look target (snap + chase). */
-const PATH_LOOK_AHEAD_M = 120;
+/**
+ * Metres along the spline for lateral course-line aim.
+ * Kept short so chase looks into readable midfield (B8), not empty far void.
+ * ChaseCamera clamps aim distance to its look-ahead anyway.
+ */
+const PATH_LOOK_AHEAD_M = 38;
 
 export class CameraModule implements GameModule {
   readonly name = 'camera';
@@ -61,6 +65,11 @@ export class CameraModule implements GameModule {
       ctx.input.look,
       this.#pathAim(ctx, rider)
     );
+  }
+
+  /** Capture / shot helper — hard re-frame onto rider + near course line. */
+  resnap(ctx: EngineContext): void {
+    this.#snapNow(ctx);
   }
 
   #snapNow(ctx: EngineContext): void {

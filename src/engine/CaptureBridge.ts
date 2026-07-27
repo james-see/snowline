@@ -3,6 +3,7 @@ import type { InputAction } from '@/types/input.ts';
 import type { GameFlowModule } from '@/modes/GameFlowModule.ts';
 import type { UiModule } from '@/ui/UiModule.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
+import type { CameraModule } from '@/camera/CameraModule.ts';
 import type { CourseId, GameModeId } from '@/types/gameplay.ts';
 
 export interface ShotPreset {
@@ -255,6 +256,8 @@ export class CaptureBridge {
       flow.startRun('freeride');
       this.#engine.setTimeScale(1);
       for (let i = 0; i < 90; i++) this.#engine.stepManual(1 / 60);
+      // Lock midfield-fill chase (B8) after settle — avoid empty far-corridor drift.
+      this.#engine.ctx.getModule<CameraModule>('camera')?.resnap(this.#engine.ctx);
     };
 
     return [
