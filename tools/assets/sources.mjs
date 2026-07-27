@@ -30,14 +30,14 @@ export const MATERIALS = [
   {
     id: 'snow_groom',
     slug: 'snow_floor',
-    tileScale: 6,
-    note: 'Packed groom / corduroy snow floor. Replaces flat ground_snow for readable ridges.',
+    tileScale: 16,
+    note: 'Packed groom / corduroy snow floor. Large metres-per-repeat so wide aprons stay continuous, not wallpaper.',
   },
   {
     id: 'snow_powder',
     slug: 'snow_01',
-    tileScale: 6,
-    note: 'Fresh powder with subtle sparkle variation. Off-piste and landing zones.',
+    tileScale: 22,
+    note: 'Fresh powder with subtle sparkle variation. Extra-large tile for soft off-piste fields.',
   },
   {
     id: 'rock_face',
@@ -54,14 +54,14 @@ export const MATERIALS = [
   {
     id: 'ice_glass',
     slug: 'snow_02',
-    tileScale: 5,
+    tileScale: 10,
     metalness: 0.05,
     note: 'Smooth frosty snow (PH snow_02) for race ice — clearcoat/low roughness in MaterialLibrary. ice_01 gone 2026.',
   },
   {
     id: 'ice_frost',
     slug: 'snow_03',
-    tileScale: 4,
+    tileScale: 12,
     note: 'Trampled/dirty snow (PH snow_03) for frosted tree-line transition. frozen_ground_01 gone 2026.',
   },
   {

@@ -57,33 +57,33 @@ const ALPINE_SUN_DIR = { x: 0.86, y: 0.24, z: 0.45 };
  */
 const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   powder: {
-    color: 0xc0cede,
-    roughness: 0.92,
+    color: 0xb0c0d2,
+    roughness: 0.94,
     metalness: 0.0,
-    clearcoat: 0.05,
-    clearcoatRoughness: 0.78,
-    sheen: 0.85,
-    sheenColor: 0xb4cce4,
-    sheenRoughness: 0.88,
-    envMapIntensity: 0.55,
-    normalScale: 1.2,
+    clearcoat: 0.06,
+    clearcoatRoughness: 0.72,
+    sheen: 0.78,
+    sheenColor: 0xa8c4de,
+    sheenRoughness: 0.84,
+    envMapIntensity: 0.36,
+    normalScale: 1.15,
     speckle: 0.12,
-    sunResponse: 0.4,
+    sunResponse: 0.55,
   },
   packed: {
-    // Warm groom — bright alpine, soft specular (no harsh corduroy banding).
-    color: 0xc8bcaa,
-    roughness: 0.62,
-    metalness: 0.02,
-    clearcoat: 0.28,
-    clearcoatRoughness: 0.32,
-    sheen: 0.42,
-    sheenColor: 0xe0d0b0,
-    sheenRoughness: 0.48,
-    envMapIntensity: 0.72,
+    color: 0xb2a898,
+    roughness: 0.48,
+    metalness: 0.03,
+    clearcoat: 0.55,
+    clearcoatRoughness: 0.14,
+    sheen: 0.28,
+    sheenColor: 0xd4c2a0,
+    sheenRoughness: 0.34,
+    envMapIntensity: 1.05,
+    /** Softer than sharp chase grooves — corduroy reads via bake, not plastic bump. */
     normalScale: 1.55,
-    speckle: 0.06,
-    sunResponse: 0.48,
+    speckle: 0.08,
+    sunResponse: 0.85,
   },
   ice: {
     color: 0x6a92ae,
@@ -306,8 +306,9 @@ export class MaterialLibrary {
       mat.vertexColors = false;
       const setId = SNOW_VARIANT_TO_PBR[v];
       const maps = this.#mapsFor(setId);
-      // Tighter repeats → micro-detail + corduroy readable at chase distance.
-      const tileMul = v === 'packed' ? 0.55 : 0.72;
+      // Larger world metres-per-repeat → continuous snow fields (not bathroom tile).
+      // Powder gets the biggest tiles; packed keeps corduroy readable without dense wallpaper.
+      const tileMul = v === 'powder' ? 1.2 : v === 'ice' ? 1.1 : 1.0;
       const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * tileMul;
       this.#bindSnowMaps(mat, maps, setId, tuning, {
         repeatU: width / tile,
@@ -407,10 +408,10 @@ export class MaterialLibrary {
     let local = cloneMaps(maps);
 
     if (setId === 'snow_groom' && typeof document !== 'undefined') {
-      // CC0 groom lacks corduroy — bake chase-scale grooves into albedo/normal/ORM.
+      // CC0 groom lacks corduroy — bake soft chase-scale grooves (low contrast, multi-freq).
       try {
         const baked = bakeCorduroyGroom(local, {
-          strength: 1.25,
+          strength: 0.82,
           seed: 77 + Math.floor(tuning.normalScale * 10),
         });
         if (baked) {
@@ -441,8 +442,8 @@ export class MaterialLibrary {
 
     applyPbrMaps(mat, local, repeat);
     mat.normalScale.set(tuning.normalScale, tuning.normalScale);
-    // Mild AO — troughs read without muddying bright alpine groom.
-    mat.aoMapIntensity = setId === 'snow_groom' ? 0.95 : 0.85;
+    // Mild AO — troughs read without carving a plastic grid into wide fields.
+    mat.aoMapIntensity = setId === 'snow_groom' ? 1.08 : 1.0;
     mat.color.setHex(tuning.color);
     mat.roughness = tuning.roughness;
     mat.metalness = tuning.metalness;
@@ -459,20 +460,19 @@ export class MaterialLibrary {
       mat.clearcoat = Math.max(mat.clearcoat, 0.95);
       mat.clearcoatRoughness = Math.min(mat.clearcoatRoughness, 0.05);
     } else if (setId === 'snow_groom') {
-      // Packed: soft arcade glints — no hard specular banding on corduroy.
-      mat.roughness = Math.max(mat.roughness, 0.58);
-      mat.clearcoat = Math.min(mat.clearcoat, 0.32);
-      mat.clearcoatRoughness = Math.max(mat.clearcoatRoughness, 0.28);
+      // Packed: preserve specular response for sun glints on corduroy.
+      mat.roughness = Math.min(mat.roughness, 0.52);
+      mat.clearcoat = Math.max(mat.clearcoat, 0.5);
     } else if (setId === 'snow_powder') {
       // Powder stays soft — kill accidental hard specular from ORM lows.
       mat.roughness = Math.max(mat.roughness, 0.88);
-      mat.clearcoat = Math.min(mat.clearcoat, 0.08);
+      mat.clearcoat = Math.min(mat.clearcoat, 0.1);
     }
   }
 
   /**
    * Warm sun-facing / cool shade tint in world space (matches RenderModule sun).
-   * Keeps snow from reading as flat grey under directional key light.
+   * Also fades mapped microdetail with distance so tiled snow doesn't wallpaper midfield.
    */
   #attachSnowSunResponse(
     mat: THREE.MeshPhysicalMaterial,
@@ -480,7 +480,7 @@ export class MaterialLibrary {
     variant: SnowVariantId
   ): void {
     if (amount <= 0) return;
-    const key = `snow-sun-${variant}-${amount.toFixed(2)}`;
+    const key = `snow-sun-fade-${variant}-${amount.toFixed(2)}`;
     mat.customProgramCacheKey = () => key;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.snowSunAmount = { value: amount };
@@ -496,15 +496,20 @@ uniform vec3 snowSunDir;`
         )
         .replace(
           '#include <normal_fragment_maps>',
-          /* glsl */ `#include <normal_fragment_maps>
+          /* glsl */ `vec3 snowGeoNormal = normal;
+#include <normal_fragment_maps>
 {
+  float viewDist = length( vViewPosition );
+  // Soft distance fade — near corduroy stays, far fields read continuous.
+  float detailFade = smoothstep( 24.0, 130.0, viewDist );
+  normal = normalize( mix( normal, snowGeoNormal, detailFade * 0.68 ) );
+  float flatLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatLuma ), detailFade * 0.18 );
   vec3 worldN = inverseTransformDirection( normal, viewMatrix );
   float sunFacing = clamp( dot( normalize( worldN ), normalize( snowSunDir ) ), 0.0, 1.0 );
-  // Soft warm/cool — avoid specular-like banding on corduroy normals.
-  vec3 warmTint = vec3( 1.08, 1.03, 0.94 );
-  vec3 coolTint = vec3( 0.94, 0.97, 1.06 );
-  float face = smoothstep( 0.15, 0.92, sunFacing );
-  diffuseColor.rgb *= mix( coolTint, warmTint, face * snowSunAmount );
+  vec3 warmTint = vec3( 1.12, 1.04, 0.90 );
+  vec3 coolTint = vec3( 0.88, 0.94, 1.10 );
+  diffuseColor.rgb *= mix( coolTint, warmTint, sunFacing * sunFacing * snowSunAmount );
 }`
         );
     };

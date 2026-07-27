@@ -7,7 +7,7 @@
       "albedo": "/assets/textures/snow_groom_albedo.webp",
       "normal": "/assets/textures/snow_groom_normal.jpg",
       "orm": "/assets/textures/snow_groom_orm.jpg",
-      "tileScale": 6,
+      "tileScale": 16,
       "source": {
         "name": "Snow Floor",
         "author": "eye-candy.xyz",
@@ -20,7 +20,7 @@
       "albedo": "/assets/textures/snow_powder_albedo.webp",
       "normal": "/assets/textures/snow_powder_normal.jpg",
       "orm": "/assets/textures/snow_powder_orm.jpg",
-      "tileScale": 6,
+      "tileScale": 22,
       "source": {
         "name": "Snow 01",
         "author": "Rob Tuytel",
@@ -59,7 +59,7 @@
       "albedo": "/assets/textures/ice_glass_albedo.webp",
       "normal": "/assets/textures/ice_glass_normal.jpg",
       "orm": "/assets/textures/ice_glass_orm.jpg",
-      "tileScale": 5,
+      "tileScale": 10,
       "source": {
         "name": "Snow 02",
         "author": "Rob Tuytel",
@@ -72,7 +72,7 @@
       "albedo": "/assets/textures/ice_frost_albedo.webp",
       "normal": "/assets/textures/ice_frost_normal.jpg",
       "orm": "/assets/textures/ice_frost_orm.jpg",
-      "tileScale": 4,
+      "tileScale": 12,
       "source": {
         "name": "Snow 03",
         "author": "Rob Tuytel",

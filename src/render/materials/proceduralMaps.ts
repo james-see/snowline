@@ -71,7 +71,7 @@ const PALETTES: Record<PbrSetId, VariantPalette> = {
     corduroy: 0,
   },
   snow_groom: {
-    // Warmer packed alpine — corduroy ridges catch sun.
+    // Warmer packed alpine — soft corduroy, not zebra wallpaper.
     base: [168, 172, 170],
     dirt: [86, 72, 58],
     ice: [132, 156, 176],
@@ -79,7 +79,7 @@ const PALETTES: Record<PbrSetId, VariantPalette> = {
     roughnessVar: 0.24,
     dirtChance: 0.1,
     iceChance: 0.06,
-    corduroy: 1.55,
+    corduroy: 0.95,
   },
   ice_glass: {
     base: [110, 150, 178],
@@ -164,14 +164,24 @@ const PALETTES: Record<PbrSetId, VariantPalette> = {
   },
 };
 
-/** ~primary grooves per tile — coarse enough to read at chase distance after mips. */
-const CORDUROY_PRIMARY = 28;
-const CORDUROY_SECONDARY = 56;
+/**
+ * Soft arcade corduroy in UV space.
+ * Primary frequency targets ~0.25 m world spacing at tileScale≈16
+ * (cycles ≈ PRIMARY/2 → spacing = 2·tile/PRIMARY).
+ * Low-freq wander + compressed contrast break wallpaper periodicity.
+ */
+const CORDUROY_PRIMARY = 110;
+const CORDUROY_WANDER = 9;
+const CORDUROY_MICRO = 41;
 
 function corduroyWave(v: number, wander: number): number {
-  const primary = Math.sin(v * Math.PI * CORDUROY_PRIMARY + wander * 2.1);
-  const secondary = Math.sin(v * Math.PI * CORDUROY_SECONDARY + 0.35) * 0.28;
-  return primary * 0.5 + 0.5 + secondary;
+  const phase = wander * 2.35 + wander * wander * 0.4;
+  const primary = Math.sin(v * Math.PI * CORDUROY_PRIMARY + phase);
+  const micro = Math.sin(v * Math.PI * CORDUROY_MICRO + phase * -0.7) * 0.14;
+  const undulate = Math.sin(v * Math.PI * CORDUROY_WANDER + wander * 1.15) * 0.1;
+  const soft = primary * 0.5 + 0.5 + micro + undulate;
+  // Compress contrast — groomed grain, not plastic zebra stripes.
+  return 0.5 + (soft - 0.5) * 0.52;
 }
 
 /**
@@ -211,24 +221,24 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
     for (let x = 0; x < size; x++) {
       const u = x / size;
       const v = y / size;
-      const nMacro = fbm(u * 5, v * 5, seed, 5);
-      const nMicro = fbm(u * 36, v * 36, seed + 3, 4);
-      const nDetail = fbm(u * 96, v * 96, seed + 7, 3);
-      const nCrumb = fbm(u * 180, v * 180, seed + 11, 2);
-      let h = nMacro * 0.42 + nMicro * 0.32 + nDetail * 0.18 + nCrumb * 0.08;
+      const nMacro = fbm(u * 3.2, v * 3.2, seed, 5);
+      const nMicro = fbm(u * 22, v * 22, seed + 3, 4);
+      const nDetail = fbm(u * 64, v * 64, seed + 7, 3);
+      const nCrumb = fbm(u * 120, v * 120, seed + 11, 2);
+      let h = nMacro * 0.48 + nMicro * 0.28 + nDetail * 0.16 + nCrumb * 0.08;
       let cord = 0.5;
 
       if (pal.corduroy > 0) {
-        // Dense groomed corduroy ridges along V — packed signature at chase scale.
-        cord = corduroyWave(v, nMacro);
-        const w = Math.min(0.92, 0.62 * pal.corduroy);
+        // Soft groomed ridges along V — multi-freq + macro wander kills wallpaper.
+        cord = corduroyWave(v + nMacro * 0.045, nMacro);
+        const w = Math.min(0.72, 0.48 * pal.corduroy);
         h = h * (1 - w) + cord * w;
       }
 
       if (isPowder) {
-        // Soft wind ripples — powder signature vs packed ridges.
-        const rip = Math.sin(u * Math.PI * 14 + nMacro * 3) * 0.5 + 0.5;
-        h = h * 0.78 + rip * 0.22;
+        // Broad wind ripples — powder signature without dense periodic stripes.
+        const rip = Math.sin(u * Math.PI * 6 + nMacro * 2.4) * 0.5 + 0.5;
+        h = h * 0.86 + rip * 0.14 + nMacro * 0.04;
       }
 
       height[y * size + x] = h;
@@ -248,24 +258,32 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
       b = Math.min(255, b * shade);
 
       if (isGroom) {
-        // Warm ridge / cool trough albedo grooves — readable without relying on normals alone.
+        // Mild warm ridge / cool trough — readable without bathroom-tile zebra.
         const ridge = Math.min(1, Math.max(0, cord));
-        const warmR = 214,
-          warmG = 196,
-          warmB = 168;
-        const coolR = 118,
-          coolG = 140,
+        const warmR = 206,
+          warmG = 194,
+          warmB = 176;
+        const coolR = 138,
+          coolG = 152,
           coolB = 168;
-        const t = ridge * ridge;
-        r = r * 0.42 + (warmR * t + coolR * (1 - t)) * 0.58;
-        g = g * 0.42 + (warmG * t + coolG * (1 - t)) * 0.58;
-        b = b * 0.42 + (warmB * t + coolB * (1 - t)) * 0.58;
-        // Sharpen trough darkening for corduroy stripe read.
-        const groove = Math.pow(Math.abs(Math.sin(v * Math.PI * CORDUROY_PRIMARY + nMacro * 2.1)), 0.55);
-        const grooveShade = 0.78 + groove * 0.32;
+        const t = ridge * ridge * (3 - 2 * ridge);
+        const stripe = 0.32;
+        r = r * (1 - stripe) + (warmR * t + coolR * (1 - t)) * stripe;
+        g = g * (1 - stripe) + (warmG * t + coolG * (1 - t)) * stripe;
+        b = b * (1 - stripe) + (warmB * t + coolB * (1 - t)) * stripe;
+        // Soft trough darkening (power→1 = gentle sine, not sharp valleys).
+        const groove = Math.abs(
+          Math.sin(v * Math.PI * CORDUROY_PRIMARY + nMacro * 2.35)
+        );
+        const grooveShade = 0.9 + groove * 0.14;
         r *= grooveShade;
         g *= grooveShade;
-        b *= grooveShade * 1.02;
+        b *= grooveShade * 1.01;
+        // Macro mottling breaks exact periodicity across the tile.
+        const mott = (nMacro - 0.5) * 18;
+        r = Math.min(255, Math.max(0, r + mott * 0.9));
+        g = Math.min(255, Math.max(0, g + mott * 0.55));
+        b = Math.min(255, Math.max(0, b - mott * 0.35));
       } else if (isPowder) {
         // Cooler powder with soft warm sun-side mottling — not grey speckles.
         const mott = nMacro * 2 - 1;
@@ -323,15 +341,15 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
     }
   }
 
-  // Sobel → tangent-space normal from height (stronger grooves for groom).
+  // Sobel → tangent-space normal from height (soft grooves for groom — not plastic).
   const strength = id.startsWith('ice_')
     ? 1.8
     : id.startsWith('rock_')
       ? 2.4
       : isGroom
-        ? 4.2
+        ? 2.55
         : isPowder
-          ? 2.4
+          ? 1.85
           : 2.85;
   writeNormalsFromHeight(height, normal, size, strength);
 
@@ -426,8 +444,8 @@ function sampleTexRgba(
 }
 
 /**
- * Bake chase-scale corduroy grooves into CC0 (or any) groom maps.
- * Rewrites albedo stripes + tangent normals + ORM so packed snow reads as groomed.
+ * Bake soft chase-scale corduroy into CC0 (or any) groom maps.
+ * Multi-frequency + low contrast so packed snow reads groomed, not tiled wallpaper.
  */
 export function bakeCorduroyGroom(
   maps: PbrMaps,
@@ -435,7 +453,7 @@ export function bakeCorduroyGroom(
 ): PbrMaps | null {
   if (typeof document === 'undefined') return null;
   const size = opts.size ?? 512;
-  const strength = opts.strength ?? 1.2;
+  const strength = opts.strength ?? 0.85;
   const seed = opts.seed ?? 77;
 
   const srcAlbedo = sampleTexRgba(maps.albedo, size);
@@ -451,10 +469,12 @@ export function bakeCorduroyGroom(
     for (let x = 0; x < size; x++) {
       const u = x / size;
       const v = y / size;
-      const nMacro = fbm(u * 5, v * 5, seed, 4);
-      const cord = corduroyWave(v, nMacro);
-      const micro = fbm(u * 48, v * 48, seed + 3, 3);
-      const h = cord * 0.78 + micro * 0.22;
+      const nMacro = fbm(u * 2.8, v * 2.8, seed, 4);
+      const nBreak = fbm(u * 7.5, v * 5.5, seed + 19, 3);
+      const cord = corduroyWave(v + nMacro * 0.05 + nBreak * 0.02, nMacro);
+      const micro = fbm(u * 28, v * 28, seed + 3, 3);
+      // Corduroy dominant but macro noise breaks exact period repeats.
+      const h = cord * (0.62 * strength + 0.18) + micro * 0.18 + nMacro * 0.12;
       height[y * size + x] = h;
 
       const i = (y * size + x) * 4;
@@ -462,55 +482,60 @@ export function bakeCorduroyGroom(
       let g = srcAlbedo[i + 1]!;
       let b = srcAlbedo[i + 2]!;
 
-      // Pull pale CC0 toward mid alpine, then stripe warm/cool corduroy.
-      const mid = 0.82 + h * 0.22;
-      r = Math.min(255, r * mid * 0.88);
-      g = Math.min(255, g * mid * 0.9);
-      b = Math.min(255, b * mid * 0.94);
+      // Gentle mid pull — keep CC0 snow character, avoid muddy stripe wash.
+      const mid = 0.9 + h * 0.14;
+      r = Math.min(255, r * mid * 0.94);
+      g = Math.min(255, g * mid * 0.95);
+      b = Math.min(255, b * mid * 0.97);
 
       const ridge = Math.min(1, Math.max(0, cord));
-      const t = ridge * ridge;
-      const warmR = 208,
-        warmG = 190,
-        warmB = 162;
-      const coolR = 112,
-        coolG = 134,
-        coolB = 160;
-      const stripe = Math.min(1, 0.55 * strength);
+      const t = ridge * ridge * (3 - 2 * ridge);
+      const warmR = 204,
+        warmG = 192,
+        warmB = 174;
+      const coolR = 132,
+        coolG = 146,
+        coolB = 162;
+      const stripe = Math.min(0.38, 0.28 * strength);
       r = r * (1 - stripe) + (warmR * t + coolR * (1 - t)) * stripe;
       g = g * (1 - stripe) + (warmG * t + coolG * (1 - t)) * stripe;
       b = b * (1 - stripe) + (warmB * t + coolB * (1 - t)) * stripe;
 
-      const groove = Math.pow(
-        Math.abs(Math.sin(v * Math.PI * CORDUROY_PRIMARY + nMacro * 2.1)),
-        0.55
+      const groove = Math.abs(
+        Math.sin(v * Math.PI * CORDUROY_PRIMARY + nMacro * 2.35)
       );
-      const grooveShade = 0.74 + groove * 0.36;
+      const grooveShade = 0.9 + groove * (0.1 + 0.06 * strength);
       r *= grooveShade;
       g *= grooveShade;
-      b *= grooveShade * 1.03;
+      b *= grooveShade * 1.015;
+
+      // Slow mottling so adjacent tiles don't read as identical wallpaper.
+      const mott = (nMacro - 0.5) * 14 * strength;
+      r = Math.min(255, Math.max(0, r + mott));
+      g = Math.min(255, Math.max(0, g + mott * 0.6));
+      b = Math.min(255, Math.max(0, b - mott * 0.4));
 
       albedo[i] = Math.min(255, Math.max(0, r));
       albedo[i + 1] = Math.min(255, Math.max(0, g));
       albedo[i + 2] = Math.min(255, Math.max(0, b));
       albedo[i + 3] = 255;
 
-      let ao = 0.4 + h * 0.5;
-      let rough = 0.42 + (0.5 - h) * 0.35;
+      let ao = 0.52 + h * 0.38;
+      let rough = 0.46 + (0.5 - h) * 0.22;
       let metal = 0.02;
       if (srcOrm) {
-        ao = (srcOrm[i]! / 255) * 0.45 + ao * 0.55;
-        rough = (srcOrm[i + 1]! / 255) * 0.4 + rough * 0.6;
+        ao = (srcOrm[i]! / 255) * 0.55 + ao * 0.45;
+        rough = (srcOrm[i + 1]! / 255) * 0.5 + rough * 0.5;
         metal = srcOrm[i + 2]! / 255;
       }
-      orm[i] = Math.floor(Math.min(1, Math.max(0.2, ao)) * 255);
-      orm[i + 1] = Math.floor(Math.min(0.95, Math.max(0.12, rough)) * 255);
+      orm[i] = Math.floor(Math.min(1, Math.max(0.28, ao)) * 255);
+      orm[i + 1] = Math.floor(Math.min(0.95, Math.max(0.18, rough)) * 255);
       orm[i + 2] = Math.floor(Math.min(0.2, metal) * 255);
       orm[i + 3] = 255;
     }
   }
 
-  writeNormalsFromHeight(height, normal, size, 3.8 * strength);
+  writeNormalsFromHeight(height, normal, size, 2.2 * strength);
 
   const albedoTex = toDataTex(albedo, size, true);
   const normalTex = toDataTex(normal, size, false);
