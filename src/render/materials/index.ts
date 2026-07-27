@@ -21,6 +21,8 @@ export {
 } from '@/render/materials/pbrMaps.ts';
 
 export {
+  bakeCorduroyGroom,
+  isDrawableImageSource,
   makeProceduralPbr,
   speckledAlbedo,
 } from '@/render/materials/proceduralMaps.ts';
