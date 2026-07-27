@@ -81,6 +81,9 @@ export class UiModule implements GameModule {
       const el = document.getElementById('hud-cp');
       if (el) el.textContent = `CP ${index + 1}/${total}`;
     });
+    ctx.events.on('course:finish', () => {
+      this.#flashPopup('FINISH', 0);
+    });
 
     ctx.setTimeScale(0);
   }
@@ -537,9 +540,9 @@ export class UiModule implements GameModule {
     const modeLabel = MODES.find((m) => m.id === r?.mode)?.label ?? r?.mode ?? '—';
     return `
       <section class="screen results-screen">
-        <p class="eyebrow">Run Complete</p>
+        <p class="eyebrow finish-banner">FINISH</p>
         <h2>${courseName}</h2>
-        <p class="results-mode">${modeLabel}</p>
+        <p class="results-mode">${modeLabel} · Run Complete</p>
         <div class="medal-badge medal-${medal}" aria-label="${medalLabel}">
           <span class="medal-ring"></span>
           <span class="medal-label">${medalLabel}</span>

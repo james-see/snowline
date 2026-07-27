@@ -417,6 +417,24 @@ canvas#viewport {
 /* Results + medals */
 .results-screen {
   gap: 18px;
+  animation: results-in 420ms ease-out both;
+}
+
+.finish-banner {
+  color: var(--lime);
+  letter-spacing: 0.28em;
+  font-size: 14px;
+}
+
+@keyframes results-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .results-mode {
@@ -761,6 +779,7 @@ canvas#viewport {
 
 @media (prefers-reduced-motion: reduce) {
   .screen,
+  .results-screen,
   .title-screen .brand,
   .title-sun,
   .title-ridge,

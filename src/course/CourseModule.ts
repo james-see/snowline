@@ -20,11 +20,36 @@ import {
   type PropsBuildResult,
 } from '@/course/Props.ts';
 import { resolveLodBudgets, presetBudgets } from '@/engine/Lod.ts';
+import { shouldCompleteRun } from '@/course/finishPolicy.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
 
 const _playerPos = new THREE.Vector3();
 const _spawnBed = new THREE.Vector3();
 const _gateBed = new THREE.Vector3();
+const _boundCorner = new THREE.Vector3();
+
+/** Axis-aligned box covering an oriented gate/finish opening. */
+function setOrientedTriggerBounds(
+  bounds: THREE.Box3,
+  origin: THREE.Vector3,
+  yaw: number,
+  halfWidth: number,
+  halfDepth: number,
+  yMin: number,
+  yMax: number
+): void {
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  bounds.makeEmpty();
+  for (const lx of [-halfWidth, halfWidth]) {
+    for (const lz of [-halfDepth, halfDepth]) {
+      const x = origin.x + lx * cos + lz * sin;
+      const z = origin.z - lx * sin + lz * cos;
+      bounds.expandByPoint(_boundCorner.set(x, yMin, z));
+      bounds.expandByPoint(_boundCorner.set(x, yMax, z));
+    }
+  }
+}
 
 /** Path parameter for run start — just downhill of the lip, on generated mesh. */
 export const SPAWN_PATH_T = 0.02;
@@ -196,6 +221,8 @@ export class CourseModule implements GameModule {
     const closest = this.#path.closestPoint(_playerPos);
     this.#pathT = closest.t;
 
+    let inFinishTrigger = false;
+
     for (const trigger of this.#triggers) {
       if (!trigger.bounds.containsPoint(_playerPos)) continue;
 
@@ -219,16 +246,34 @@ export class CourseModule implements GameModule {
         });
       }
 
-      if (trigger.kind === 'finish' && this.#nextCheckpoint >= this.#def.checkpoints.length) {
-        this.#finished = true;
-        ctx.events.emit('course:finish', {
-          courseId: this.#def.id,
-          elapsed: this.#runElapsed,
-          checkpointsCleared: this.#def.checkpoints.length,
-          position: { x: _playerPos.x, y: _playerPos.y, z: _playerPos.z },
-        });
-      }
+      if (trigger.kind === 'finish') inFinishTrigger = true;
     }
+
+    const fin = this.#def.finish;
+    const finishHalf = (fin.width ?? 20) * 0.55;
+    if (
+      shouldCompleteRun({
+        alreadyFinished: this.#finished,
+        inFinishTrigger,
+        pathT: this.#pathT,
+        finishT: fin.t,
+        lateralAbs: Math.abs(closest.lateral),
+        finishHalfWidth: finishHalf,
+      })
+    ) {
+      this.#emitFinish(ctx);
+    }
+  }
+
+  #emitFinish(ctx: EngineContext): void {
+    if (!this.#def || this.#finished) return;
+    this.#finished = true;
+    ctx.events.emit('course:finish', {
+      courseId: this.#def.id,
+      elapsed: this.#runElapsed,
+      checkpointsCleared: this.#nextCheckpoint,
+      position: { x: _playerPos.x, y: _playerPos.y, z: _playerPos.z },
+    });
   }
 
   dispose(): void {
@@ -253,7 +298,7 @@ export class CourseModule implements GameModule {
       const bed = sampleTerrainAt(terrain, cp.t, u, _gateBed);
       const tan = path.tangent(cp.t);
       const yaw = Math.atan2(tan.x, tan.z);
-      const halfW = (cp.width ?? 14) * 0.5;
+      const halfW = (cp.width ?? 14) * 0.55;
 
       const gate = props.root.getObjectByName(`gate-${cp.id}`);
       if (gate) {
@@ -265,10 +310,7 @@ export class CourseModule implements GameModule {
         (t) => t.kind === 'checkpoint' && t.checkpointIndex === i
       );
       if (trigger) {
-        trigger.bounds.set(
-          new THREE.Vector3(bed.x - halfW, bed.y - 2, bed.z - 5),
-          new THREE.Vector3(bed.x + halfW, bed.y + 12, bed.z + 5)
-        );
+        setOrientedTriggerBounds(trigger.bounds, bed, yaw, halfW, 6, bed.y - 2, bed.y + 12);
       }
     }
 
@@ -276,7 +318,7 @@ export class CourseModule implements GameModule {
     const finBed = sampleTerrainAt(terrain, fin.t, 0.5, _gateBed);
     const finTan = path.tangent(fin.t);
     const finYaw = Math.atan2(finTan.x, finTan.z);
-    const finHalf = (fin.width ?? 20) * 0.5;
+    const finHalf = (fin.width ?? 20) * 0.55;
     const arch = props.root.getObjectByName('finish');
     if (arch) {
       arch.position.copy(finBed);
@@ -284,9 +326,15 @@ export class CourseModule implements GameModule {
     }
     const finTrigger = props.triggers.find((t) => t.kind === 'finish');
     if (finTrigger) {
-      finTrigger.bounds.set(
-        new THREE.Vector3(finBed.x - finHalf, finBed.y - 2, finBed.z - 6),
-        new THREE.Vector3(finBed.x + finHalf, finBed.y + 14, finBed.z + 6)
+      // Deep volume along travel so fast riders cannot tunnel past the arch.
+      setOrientedTriggerBounds(
+        finTrigger.bounds,
+        finBed,
+        finYaw,
+        finHalf,
+        10,
+        finBed.y - 2,
+        finBed.y + 14
       );
     }
   }

@@ -414,7 +414,8 @@ export class CaptureBridge {
             courseId: 'alpine',
             mode: 'freeride',
           };
-          flow.screen = 'results';
+          flow.controller.finishRun();
+          this.#engine.setTimeScale(0);
           this.#engine.ctx.events.emit('ui:navigate', { screen: 'results' });
         },
       },

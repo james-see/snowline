@@ -53,6 +53,7 @@ export class GameFlowModule implements GameModule {
     ctx.events.on('run:finish', (payload) => {
       this.lastResults = payload;
       this.controller.finishRun();
+      ctx.setTimeScale(0);
       ctx.input.setLockout(true);
       ctx.input.exitPointerLock();
       ctx.events.emit('ui:navigate', { screen: 'results' });

@@ -42,4 +42,14 @@ describe('ModeController', () => {
     c.setPaused(false);
     assert.equal(c.state.screen, 'playing');
   });
+
+  it('finishRun clears runActive and lands on results', () => {
+    const c = new ModeController();
+    c.selectMode('time_trial');
+    assert.equal(c.state.runActive, true);
+    c.finishRun();
+    assert.equal(c.state.screen, 'results');
+    assert.equal(c.state.runActive, false);
+    assert.equal(c.state.paused, false);
+  });
 });
