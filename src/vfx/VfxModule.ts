@@ -76,14 +76,14 @@ export class VfxModule implements GameModule {
     this.#spray = new ParticlePool({
       capacity: CAP_SPRAY,
       color: SPRAY_COLOR,
-      size: 0.85,
-      opacity: 0.95,
+      size: 1.05,
+      opacity: 0.98,
     });
     this.#burst = new ParticlePool({
       capacity: CAP_BURST,
       color: BURST_COLOR,
-      size: 0.28,
-      opacity: 0.95,
+      size: 0.36,
+      opacity: 0.98,
     });
     this.#boostParts = new ParticlePool({
       capacity: CAP_BOOST,
@@ -163,16 +163,17 @@ export class VfxModule implements GameModule {
     this.#speedLines.setBudget(budgets.speed);
 
     this.#updateSnowfall(dt, ctx, budgets.snow);
-    this.#spray.update(dt, 7.5, 0.55);
-    this.#burst.update(dt, 11, 0.55);
+    // Softer gravity so carve plumes hold volume longer (ref denser spray).
+    this.#spray.update(dt, 5.8, 0.42);
+    this.#burst.update(dt, 9.5, 0.48);
     this.#boostParts.update(dt, 2.5, 1.2);
     this.#speedLines.update(dt);
 
     const snowOpacity = ctx.capture ? 0.3 : ctx.settings.reducedMotion ? 0.35 : 0.55;
     this.#snow.setOpacity(snowOpacity);
-    // Larger points in capture so carve stills show edge spray without raising Lod caps.
-    this.#spray.setSizeScale(ctx.capture ? 1.55 : 1.15);
-    this.#spray.setOpacity(ctx.capture ? 1 : ctx.settings.reducedMotion ? 0.7 : 0.95);
+    // Larger soft points so carve stills read as plumes, not sparse dots.
+    this.#spray.setSizeScale(ctx.capture ? 1.85 : 1.35);
+    this.#spray.setOpacity(ctx.capture ? 1 : ctx.settings.reducedMotion ? 0.75 : 0.98);
     this.#speedLines.setOpacity(ctx.capture ? 0.15 : this.#boosting ? 0.45 : 0.28);
 
     if (rider) {
@@ -266,13 +267,13 @@ export class VfxModule implements GameModule {
     if (!rider.state.grounded) return;
 
     const surfaceMul =
-      surface === 'powder' ? 1.55 : surface === 'packed' ? 1.15 : surface === 'ice' ? 0.55 : 0.8;
-    const captureMul = ctx.capture ? 1.4 : 1;
-    // Floor density so weak pack-snow carves still read; cap vs Lod spray budget.
+      surface === 'powder' ? 1.7 : surface === 'packed' ? 1.3 : surface === 'ice' ? 0.6 : 0.9;
+    const captureMul = ctx.capture ? 1.55 : 1;
+    // Dense plume within Lod spray budget — recycle slots rather than raise caps.
     const budget = this.#spray.budget;
-    const maxPerEmit = Math.max(10, Math.floor(budget * 0.15));
-    const desired = Math.floor((12 + intensity * 54) * surfaceMul * captureMul);
-    const count = Math.min(maxPerEmit, Math.max(10, desired));
+    const maxPerEmit = Math.max(16, Math.floor(budget * 0.22));
+    const desired = Math.floor((18 + intensity * 72) * surfaceMul * captureMul);
+    const count = Math.min(maxPerEmit, Math.max(14, desired));
     const origin = rider.state.position;
     const vel = rider.state.velocity;
     const yaw = rider.state.boardYaw;
@@ -281,47 +282,49 @@ export class VfxModule implements GameModule {
     this.#forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     this.#lateral.set(this.#forward.z, 0, -this.#forward.x).multiplyScalar(Math.sign(edge || 1));
 
-    const sizeBase = surface === 'powder' ? 1.2 : surface === 'ice' ? 0.72 : 0.98;
-    const kick = 3.2 + intensity * 5.5;
+    const sizeBase = surface === 'powder' ? 1.35 : surface === 'ice' ? 0.82 : 1.12;
+    const kick = 2.8 + intensity * 5.2;
 
     for (let n = 0; n < count; n++) {
-      // Fan along the edged rail: lateral throw + slight aft so spray clears the board.
-      const along = (Math.random() - 0.5) * 0.62;
-      const out = 0.26 + Math.random() * 0.62;
+      // Fan along the edged rail: lateral throw + aft so spray clears the board.
+      const along = (Math.random() - 0.55) * 0.85;
+      const out = 0.18 + Math.random() * 0.72;
       const px =
         origin.x +
         this.#lateral.x * out +
         this.#forward.x * along +
-        (Math.random() - 0.5) * 0.14;
+        (Math.random() - 0.5) * 0.12;
       const pz =
         origin.z +
         this.#lateral.z * out +
         this.#forward.z * along +
-        (Math.random() - 0.5) * 0.14;
+        (Math.random() - 0.5) * 0.12;
       // Lift above snow mesh so depthTest doesn't bury soft points.
-      const py = origin.y + 0.12 + Math.random() * 0.28;
+      const py = origin.y + 0.1 + Math.random() * 0.38;
       const vx =
-        -vel.x * 0.1 +
+        -vel.x * 0.12 +
         this.#lateral.x * kick +
-        this.#forward.x * (Math.random() - 0.55) * 2.0 +
-        (Math.random() - 0.5) * 1.5;
-      const vy = 1.6 + Math.random() * (3.0 + intensity * 3.4) * surfaceMul;
+        this.#forward.x * (Math.random() - 0.65) * 2.4 +
+        (Math.random() - 0.5) * 1.2;
+      const vy = 1.35 + Math.random() * (2.6 + intensity * 3.8) * surfaceMul;
       const vz =
-        -vel.z * 0.1 +
+        -vel.z * 0.12 +
         this.#lateral.z * kick +
-        this.#forward.z * (Math.random() - 0.55) * 2.0 +
-        (Math.random() - 0.5) * 1.5;
-      // Mix chunky crystals with a few larger soft mist flakes.
-      const mist = Math.random() > 0.78;
+        this.#forward.z * (Math.random() - 0.65) * 2.4 +
+        (Math.random() - 0.5) * 1.2;
+      // Majority soft mist + fewer chunky crystals → denser plume volume.
+      const mist = Math.random() > 0.42;
       this.#spray.spawn(
         px,
         py,
         pz,
-        mist ? vx * 0.55 : vx,
-        mist ? vy * 0.65 + 0.4 : vy,
-        mist ? vz * 0.55 : vz,
-        mist ? 0.55 + Math.random() * 0.45 : 0.42 + Math.random() * 0.55 * (0.75 + intensity),
-        sizeBase * (mist ? 1.15 + Math.random() * 0.7 : 0.7 + Math.random() * 0.95)
+        mist ? vx * 0.5 : vx,
+        mist ? vy * 0.7 + 0.35 : vy,
+        mist ? vz * 0.5 : vz,
+        mist
+          ? 0.65 + Math.random() * 0.55
+          : 0.48 + Math.random() * 0.6 * (0.8 + intensity),
+        sizeBase * (mist ? 1.35 + Math.random() * 0.95 : 0.75 + Math.random() * 1.05)
       );
     }
   }

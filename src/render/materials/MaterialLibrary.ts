@@ -56,33 +56,35 @@ const ALPINE_SUN_DIR = { x: 0.86, y: 0.24, z: 0.45 };
  */
 const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   powder: {
-    color: 0xb0c0d2,
-    roughness: 0.94,
+    // Cool alpine powder — reads as volume under directional sun, not grey fill.
+    color: 0xc2d0de,
+    roughness: 0.92,
     metalness: 0.0,
-    clearcoat: 0.06,
-    clearcoatRoughness: 0.72,
-    sheen: 0.78,
-    sheenColor: 0xa8c4de,
-    sheenRoughness: 0.84,
-    envMapIntensity: 0.36,
-    normalScale: 1.15,
-    speckle: 0.12,
-    sunResponse: 0.55,
+    clearcoat: 0.08,
+    clearcoatRoughness: 0.68,
+    sheen: 0.82,
+    sheenColor: 0xb4cce2,
+    sheenRoughness: 0.8,
+    envMapIntensity: 0.42,
+    normalScale: 1.35,
+    speckle: 0.1,
+    sunResponse: 0.72,
   },
   packed: {
-    color: 0xb2a898,
-    roughness: 0.48,
+    // Cooler packed groom — less muddy brown; corduroy + sun form for hills/kickers.
+    color: 0xc8c6c0,
+    roughness: 0.44,
     metalness: 0.03,
-    clearcoat: 0.55,
-    clearcoatRoughness: 0.14,
-    sheen: 0.28,
-    sheenColor: 0xd4c2a0,
-    sheenRoughness: 0.34,
-    envMapIntensity: 1.05,
-    /** Softer than sharp chase grooves — corduroy reads via bake, not plastic bump. */
-    normalScale: 1.55,
-    speckle: 0.08,
-    sunResponse: 0.85,
+    clearcoat: 0.58,
+    clearcoatRoughness: 0.12,
+    sheen: 0.32,
+    sheenColor: 0xd8d0c4,
+    sheenRoughness: 0.32,
+    envMapIntensity: 1.15,
+    /** Stronger corduroy normals so hill volume / jump faces read under key light. */
+    normalScale: 1.85,
+    speckle: 0.06,
+    sunResponse: 0.95,
   },
   ice: {
     color: 0x6a92ae,
@@ -434,7 +436,7 @@ export class MaterialLibrary {
       // CC0 groom lacks corduroy — bake soft chase-scale grooves (low contrast, multi-freq).
       try {
         const baked = bakeCorduroyGroom(local, {
-          strength: 0.82,
+          strength: 0.95,
           seed: 77 + Math.floor(tuning.normalScale * 10),
         });
         if (baked) {
@@ -465,8 +467,8 @@ export class MaterialLibrary {
 
     applyPbrMaps(mat, local, repeat);
     mat.normalScale.set(tuning.normalScale, tuning.normalScale);
-    // Mild AO — troughs read without carving a plastic grid into wide fields.
-    mat.aoMapIntensity = setId === 'snow_groom' ? 1.08 : 1.0;
+    // Stronger AO in groom troughs so corduroy + jump faces get directional form.
+    mat.aoMapIntensity = setId === 'snow_groom' ? 1.22 : setId === 'snow_powder' ? 1.05 : 1.0;
     mat.color.setHex(tuning.color);
     mat.roughness = tuning.roughness;
     mat.metalness = tuning.metalness;
@@ -593,9 +595,12 @@ uniform vec3 snowSunDir;`;
   ${seamBody}
   vec3 worldN = inverseTransformDirection( normal, viewMatrix );
   float sunFacing = clamp( dot( normalize( worldN ), normalize( snowSunDir ) ), 0.0, 1.0 );
-  vec3 warmTint = vec3( 1.12, 1.04, 0.90 );
-  vec3 coolTint = vec3( 0.88, 0.94, 1.10 );
+  vec3 warmTint = vec3( 1.14, 1.05, 0.88 );
+  vec3 coolTint = vec3( 0.82, 0.9, 1.12 );
+  // Stronger warm/cool split so hills and kickers read soft volume under key light.
   diffuseColor.rgb *= mix( coolTint, warmTint, sunFacing * sunFacing * snowSunAmount );
+  float shadeBoost = mix( 0.9, 1.06, sunFacing );
+  diffuseColor.rgb *= mix( 1.0, shadeBoost, clamp( snowSunAmount, 0.0, 1.0 ) );
 }`
         );
     };
