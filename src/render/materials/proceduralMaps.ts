@@ -231,14 +231,15 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
       if (pal.corduroy > 0) {
         // Soft groomed ridges along V — multi-freq + macro wander kills wallpaper.
         cord = corduroyWave(v + nMacro * 0.045, nMacro);
-        const w = Math.min(0.72, 0.48 * pal.corduroy);
+        const w = Math.min(0.78, 0.54 * pal.corduroy);
         h = h * (1 - w) + cord * w;
       }
 
       if (isPowder) {
-        // Broad wind ripples — powder signature without dense periodic stripes.
+        // Broad wind ripples + soft mound noise — powder volume, not flat fill.
         const rip = Math.sin(u * Math.PI * 6 + nMacro * 2.4) * 0.5 + 0.5;
-        h = h * 0.86 + rip * 0.14 + nMacro * 0.04;
+        const mound = fbm(u * 5.5, v * 5.5, seed + 23, 4);
+        h = h * 0.78 + rip * 0.14 + mound * 0.1 + nMacro * 0.05 + nMicro * 0.04;
       }
 
       height[y * size + x] = h;
@@ -341,15 +342,15 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
     }
   }
 
-  // Sobel → tangent-space normal from height (soft grooves for groom — not plastic).
+  // Sobel → tangent-space normal from height (groom grooves + powder micro-bumps).
   const strength = id.startsWith('ice_')
     ? 1.8
     : id.startsWith('rock_')
       ? 2.4
       : isGroom
-        ? 2.55
+        ? 3.15
         : isPowder
-          ? 1.85
+          ? 2.25
           : 2.85;
   writeNormalsFromHeight(height, normal, size, strength);
 
@@ -535,7 +536,7 @@ export function bakeCorduroyGroom(
     }
   }
 
-  writeNormalsFromHeight(height, normal, size, 2.2 * strength);
+  writeNormalsFromHeight(height, normal, size, 2.75 * strength);
 
   const albedoTex = toDataTex(albedo, size, true);
   const normalTex = toDataTex(normal, size, false);
