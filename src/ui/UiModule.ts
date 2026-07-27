@@ -674,9 +674,10 @@ export class UiModule implements GameModule {
       if (!focused) {
         statusHtml += `<p class="pad-test-empty">Tab not focused — click the game window first</p>`;
       } else if (connectN === 0) {
-        statusHtml += `<p class="pad-test-empty">Chrome sees <strong>no controller</strong> (4 null slots). Bluetooth often never reaches the Gamepad API on Mac Chrome — use the Ultimate 2 <strong>2.4&nbsp;GHz dock/dongle in X mode</strong>. Also: allow Chrome under System Settings → Privacy → Bluetooth, disable Steam Input, check <code>chrome://device-log</code>.</p>`;
+        // slotCount 4 + pads [] is Chrome's normal pre-gesture state — not proof BT failed.
+        statusHtml += `<p class="pad-test-empty"><code>getGamepads()</code> is four nulls (<code>pads:[]</code> omits nulls only — Snowline is not filtering). Press A/B after focus. Still empty? Mac: rear switch <strong>D</strong> for Apple BT · Privacy → Bluetooth → Chrome · disable Steam Input · verify on any HTML5 gamepad tester · then try USB-C or 2.4&nbsp;GHz X as fallback.</p>`;
       } else {
-        statusHtml += `<p class="pad-test-empty">Saw gamepadconnected (${escapeHtml(dump.lastConnectId ?? '?')}) but getGamepads() still null — switch to the <strong>2.4&nbsp;GHz dock/dongle (X mode)</strong>.</p>`;
+        statusHtml += `<p class="pad-test-empty">Saw gamepadconnected (${escapeHtml(dump.lastConnectId ?? '?')}) but slots still null — refocus + press again; if stuck, try D-input BT or USB-C / 2.4&nbsp;GHz X.</p>`;
       }
     } else if (dump.awaitingGesture) {
       statusHtml = `<p class="pad-gesture">Press any button to activate</p>`;
@@ -809,7 +810,7 @@ export class UiModule implements GameModule {
         <p class="unlocks">Unlocked: ${unlocks || '—'}</p>
         <section class="pad-test-panel" aria-label="Controller test">
           <h3>Controller Test</h3>
-          <p class="pad-test-blurb">No special site permission — click the page, press any button. Console: <code>__snowline.gamepadDebug()</code>. <strong>8BitDo Ultimate 2:</strong> use the <strong>2.4&nbsp;GHz dock/dongle in X mode</strong> for Chrome (Bluetooth alone often never appears in <code>getGamepads()</code> on Mac).</p>
+          <p class="pad-test-blurb">No special site permission — click the page, press any button. Console: <code>__snowline.gamepadDebug()</code>. <code>pads:[]</code> + 4 slots = Chrome nulls (pre-gesture or not exposed) — not our filter. <strong>8BitDo on Mac:</strong> Apple BT → rear switch <strong>D</strong>; BT often works in Chrome after a button press.</p>
           <div id="pad-test" class="pad-test"></div>
         </section>
         <section class="pad-remap-panel" aria-label="Controller remap">

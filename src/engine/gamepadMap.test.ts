@@ -238,6 +238,7 @@ describe('gamepadMap', () => {
   it('dumpGamepads snapshots live pads', () => {
     const dump = dumpGamepads([null, fakePad({ index: 1, id: 'Pad One', axes: [0.2, 0] })]);
     assert.equal(dump.slotCount, 2);
+    assert.equal(dump.presentCount, 1);
     assert.equal(dump.awaitingGesture, false);
     assert.equal(dump.pads.length, 1);
     assert.equal(dump.pads[0]?.id, 'Pad One');
@@ -245,6 +246,24 @@ describe('gamepadMap', () => {
     assert.equal(dump.slots.length, 2);
     assert.equal(dump.slots[0]?.present, false);
     assert.equal(dump.slots[1]?.present, true);
+  });
+
+  it('dumpGamepads does not filter idle connected pads', () => {
+    const idle = fakePad({ index: 0, id: '8BitDo Ultimate 2', axes: [0, 0, 0, 0] });
+    const dump = dumpGamepads([idle, null, null, null]);
+    assert.equal(dump.slotCount, 4);
+    assert.equal(dump.presentCount, 1);
+    assert.equal(dump.pads.length, 1);
+    assert.equal(dump.pads[0]?.id, '8BitDo Ultimate 2');
+    assert.equal(dump.awaitingGesture, false);
+  });
+
+  it('dumpGamepads empty pads with slotCount 4 means all-null browser list', () => {
+    const dump = dumpGamepads([null, null, null, null]);
+    assert.equal(dump.slotCount, 4);
+    assert.equal(dump.presentCount, 0);
+    assert.equal(dump.pads.length, 0);
+    assert.equal(dump.awaitingGesture, true);
   });
 
   it('edgeSets reports press and release', () => {

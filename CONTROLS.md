@@ -27,7 +27,9 @@ Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`. Every
 
 **Layouts:** Prefers W3C `mapping: "standard"` (DualSense, Xbox, Switch Pro over Bluetooth typically qualify after the first button press). Non-standard Bluetooth pads with 6 axes (LX LY LT RX RY RT) are handled via a fallback axis layout. Face buttons also honor `value` when `pressed` is sticky/false.
 
-**8BitDo Ultimate 2 (X mode):** Prefer the **2.4 GHz dock/dongle in X mode** for Mac Chrome — Bluetooth alone frequently never populates `getGamepads()` (`pads: []`, `slotCount: 4`) even after focus + button presses. If Chrome never fires `gamepadconnected`, Snowline cannot remap or drive the rider (OS/browser enumeration gap, not lockout). When a pad *does* appear, auto-detect uses `8BitDo`/`Ultimate` in `gamepad.id`: `mapping: "standard"` → W3C Xbox indices; empty mapping → Xbox BT raw HID (A0 · B1 · X3 · Y4 · LB6 · RB7 · LT a3|b8 · RT a4|b9 · Select10 · Start11 · LX0 LY1 RX2 RY5). Settings → **Controller Remap** overrides persist in `snowline.settings.v1`. Also check: System Settings → Privacy → Bluetooth → Chrome; disable Steam Input; `chrome://device-log`.
+**Debug semantics:** `__snowline.gamepadDebug().pads` lists only **non-null** browser slots. `pads: []` + `slotCount: 4` means Chrome returned `[null,null,null,null]` — not Snowline filtering “inactive” pads. That is normal until you press a button after focus (`awaitingGesture: true`). Cross-check with any HTML5 gamepad tester.
+
+**8BitDo Ultimate 2 / Ultimate 2 Bluetooth:** Bluetooth **does** reach Chrome’s Gamepad API for many Mac users (Apple Community reports HTML5 testers seeing Ultimate / Ultimate 2.4g over BT; SDL also enumerates Ultimate 2 Wireless over BT). Do **not** treat `pads: []` alone as “BT broken.” First: focus the tab → press a face button. For Apple pairing, 8BitDo docs want the rear switch on **D** (not X). If still empty after presses: System Settings → Privacy → Bluetooth → Chrome; disable Steam Input; try wired USB-C; optional 2.4 GHz dongle in **X** on Windows-oriented setups. When a pad appears, auto-detect uses `8BitDo`/`Ultimate` in `gamepad.id`: `mapping: "standard"` → W3C Xbox indices; empty mapping → Xbox BT raw HID (A0 · B1 · X3 · Y4 · LB6 · RB7 · LT a3|b8 · RT a4|b9 · Select10 · Start11 · LX0 LY1 RX2 RY5). Settings → **Controller Remap** overrides persist in `snowline.settings.v1`.
 
 **In-run:** `GameFlow.fixedUpdate` clears input lockout while `playing` *before* rider physics, so stick carve is not eaten by menu lockout ordering.
 
@@ -59,4 +61,4 @@ Returns connected pad ids, mapping, axes, buttons, raw `slots` (null vs present)
 
 ## Settings
 
-Landing assist, reduced motion, **Controller Test** (live pads / axes / buttons; lockout cleared; BT→2.4G copy), and **Controller Remap** (bind-by-press overrides, Reset to auto). Back with Esc/B only — A does not leave the panel. Same snapshot as `window.__snowline.gamepadDebug()`.
+Landing assist, reduced motion, **Controller Test** (live pads / axes / buttons; lockout cleared; gesture + Mac troubleshooting copy), and **Controller Remap** (bind-by-press overrides, Reset to auto). Back with Esc/B only — A does not leave the panel. Same snapshot as `window.__snowline.gamepadDebug()`.

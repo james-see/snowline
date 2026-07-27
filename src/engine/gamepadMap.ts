@@ -387,7 +387,13 @@ export type GamepadDebugPad = {
 
 export type GamepadDebugDump = {
   slotCount: number;
+  /** Count of non-null Gamepad objects from the browser (not activity-filtered). */
+  presentCount: number;
   awaitingGesture: boolean;
+  /**
+   * Non-null pads only. Empty with `slotCount: 4` means Chrome returned
+   * `[null,null,null,null]` — Snowline does **not** drop inactive pads here.
+   */
   pads: GamepadDebugPad[];
   slots: GamepadSlotScan[];
 };
@@ -397,6 +403,7 @@ export function dumpGamepads(pads: Array<Gamepad | null>): GamepadDebugDump {
   const list = pads.slice();
   const live: GamepadDebugPad[] = [];
   for (const gp of list) {
+    // Only skip browser null slots — never filter by activity / activation.
     if (!gp) continue;
     live.push({
       id: gp.id,
@@ -412,6 +419,7 @@ export function dumpGamepads(pads: Array<Gamepad | null>): GamepadDebugDump {
   }
   return {
     slotCount: list.length,
+    presentCount: live.length,
     awaitingGesture: gamepadsAwaitingGesture(list),
     pads: live,
     slots: scanGamepadSlots(list),
