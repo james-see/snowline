@@ -57,32 +57,33 @@ const ALPINE_SUN_DIR = { x: 0.86, y: 0.24, z: 0.45 };
  */
 const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   powder: {
-    color: 0xb0c0d2,
-    roughness: 0.94,
+    color: 0xc0cede,
+    roughness: 0.92,
     metalness: 0.0,
-    clearcoat: 0.06,
-    clearcoatRoughness: 0.72,
-    sheen: 0.78,
-    sheenColor: 0xa8c4de,
-    sheenRoughness: 0.84,
-    envMapIntensity: 0.36,
-    normalScale: 1.45,
-    speckle: 0.14,
-    sunResponse: 0.55,
+    clearcoat: 0.05,
+    clearcoatRoughness: 0.78,
+    sheen: 0.85,
+    sheenColor: 0xb4cce4,
+    sheenRoughness: 0.88,
+    envMapIntensity: 0.55,
+    normalScale: 1.2,
+    speckle: 0.12,
+    sunResponse: 0.4,
   },
   packed: {
-    color: 0xb2a898,
-    roughness: 0.48,
-    metalness: 0.03,
-    clearcoat: 0.55,
-    clearcoatRoughness: 0.14,
-    sheen: 0.28,
-    sheenColor: 0xd4c2a0,
-    sheenRoughness: 0.34,
-    envMapIntensity: 1.05,
-    normalScale: 2.35,
-    speckle: 0.08,
-    sunResponse: 0.85,
+    // Warm groom — bright alpine, soft specular (no harsh corduroy banding).
+    color: 0xc8bcaa,
+    roughness: 0.62,
+    metalness: 0.02,
+    clearcoat: 0.28,
+    clearcoatRoughness: 0.32,
+    sheen: 0.42,
+    sheenColor: 0xe0d0b0,
+    sheenRoughness: 0.48,
+    envMapIntensity: 0.72,
+    normalScale: 1.55,
+    speckle: 0.06,
+    sunResponse: 0.48,
   },
   ice: {
     color: 0x6a92ae,
@@ -440,8 +441,8 @@ export class MaterialLibrary {
 
     applyPbrMaps(mat, local, repeat);
     mat.normalScale.set(tuning.normalScale, tuning.normalScale);
-    // Strong AO so micro-valleys / corduroy troughs read, not flat fill.
-    mat.aoMapIntensity = setId === 'snow_groom' ? 1.45 : 1.25;
+    // Mild AO — troughs read without muddying bright alpine groom.
+    mat.aoMapIntensity = setId === 'snow_groom' ? 0.95 : 0.85;
     mat.color.setHex(tuning.color);
     mat.roughness = tuning.roughness;
     mat.metalness = tuning.metalness;
@@ -458,13 +459,14 @@ export class MaterialLibrary {
       mat.clearcoat = Math.max(mat.clearcoat, 0.95);
       mat.clearcoatRoughness = Math.min(mat.clearcoatRoughness, 0.05);
     } else if (setId === 'snow_groom') {
-      // Packed: preserve specular response for sun glints on corduroy.
-      mat.roughness = Math.min(mat.roughness, 0.52);
-      mat.clearcoat = Math.max(mat.clearcoat, 0.5);
+      // Packed: soft arcade glints — no hard specular banding on corduroy.
+      mat.roughness = Math.max(mat.roughness, 0.58);
+      mat.clearcoat = Math.min(mat.clearcoat, 0.32);
+      mat.clearcoatRoughness = Math.max(mat.clearcoatRoughness, 0.28);
     } else if (setId === 'snow_powder') {
       // Powder stays soft — kill accidental hard specular from ORM lows.
       mat.roughness = Math.max(mat.roughness, 0.88);
-      mat.clearcoat = Math.min(mat.clearcoat, 0.1);
+      mat.clearcoat = Math.min(mat.clearcoat, 0.08);
     }
   }
 
@@ -498,9 +500,11 @@ uniform vec3 snowSunDir;`
 {
   vec3 worldN = inverseTransformDirection( normal, viewMatrix );
   float sunFacing = clamp( dot( normalize( worldN ), normalize( snowSunDir ) ), 0.0, 1.0 );
-  vec3 warmTint = vec3( 1.12, 1.04, 0.90 );
-  vec3 coolTint = vec3( 0.88, 0.94, 1.10 );
-  diffuseColor.rgb *= mix( coolTint, warmTint, sunFacing * sunFacing * snowSunAmount );
+  // Soft warm/cool — avoid specular-like banding on corduroy normals.
+  vec3 warmTint = vec3( 1.08, 1.03, 0.94 );
+  vec3 coolTint = vec3( 0.94, 0.97, 1.06 );
+  float face = smoothstep( 0.15, 0.92, sunFacing );
+  diffuseColor.rgb *= mix( coolTint, warmTint, face * snowSunAmount );
 }`
         );
     };
