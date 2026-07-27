@@ -9,10 +9,10 @@ const _pathAim = new THREE.Vector3();
 
 /**
  * Metres along the spline for lateral course-line aim.
- * Kept short so chase looks into readable midfield (B8), not empty far void.
+ * Tight so chase looks into readable midfield (B8), not empty far void.
  * ChaseCamera clamps aim distance to its look-ahead anyway.
  */
-const PATH_LOOK_AHEAD_M = 38;
+const PATH_LOOK_AHEAD_M = 16;
 
 export class CameraModule implements GameModule {
   readonly name = 'camera';
