@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import * as THREE from 'three';
 import { SplinePath } from '@/course/SplinePath.ts';
 import { ALPINE_FLOW, TIMBERLINE } from '@/course/CourseDefs.ts';
-import { expandCourseProps } from '@/course/props/scatter.ts';
+import { expandCourseProps, resolvePathPlacements } from '@/course/props/scatter.ts';
 import { presetBudgets } from '@/engine/Lod.ts';
 
 describe('expandCourseProps', () => {
@@ -18,6 +18,27 @@ describe('expandCourseProps', () => {
     assert.ok(banners.length >= 16);
     assert.ok(fences.length >= 32);
     assert.ok(props.some((p) => p.kind === 'checkpoint_gate'));
+  });
+
+  it('authors alpine park features on the path (rails, ramps, boxes)', () => {
+    const path = new SplinePath(ALPINE_FLOW.controlPoints);
+    const props = expandCourseProps(ALPINE_FLOW, path, {
+      maxTreeInstances: presetBudgets('high').maxTreeInstances,
+      furniture: false,
+    });
+    const rails = props.filter((p) => p.kind === 'rail');
+    const ramps = props.filter((p) => p.kind === 'ramp');
+    const boxes = props.filter((p) => p.kind === 'box');
+    assert.ok(rails.length >= 4, `expected several rails, got ${rails.length}`);
+    assert.ok(ramps.length >= 4, `expected several ramps, got ${ramps.length}`);
+    assert.ok(boxes.length >= 2, `expected park boxes, got ${boxes.length}`);
+    const pos = new THREE.Vector3();
+    for (const feature of [...rails, ...ramps, ...boxes]) {
+      pos.set(...feature.position);
+      const closest = path.closestPoint(pos);
+      // Path-resolved park stays on/near the run — not apron void.
+      assert.ok(closest.distance <= ALPINE_FLOW.terrain.width * 0.55);
+    }
   });
 
   it('keeps timberline corridor clear while packing dense flanks', () => {
@@ -48,5 +69,33 @@ describe('expandCourseProps', () => {
     assert.ok(nearGallery >= belt.length * 0.7);
     assert.ok(props.filter((p) => p.kind === 'banner').length >= 18);
     assert.ok(props.filter((p) => p.kind === 'fence').length >= 36);
+    assert.ok(props.filter((p) => p.kind === 'rail').length >= 2);
+    assert.ok(props.some((p) => p.kind === 'ramp'));
+    assert.ok(props.some((p) => p.kind === 'box'));
+  });
+});
+
+describe('resolvePathPlacements', () => {
+  it('maps pathT/lateral onto spline world XZ', () => {
+    const path = new SplinePath(ALPINE_FLOW.controlPoints);
+    const [resolved] = resolvePathPlacements(
+      [
+        {
+          id: 'rail-test',
+          kind: 'rail',
+          position: [0, 0, 0],
+          pathT: 0.5,
+          lateral: 30,
+          length: 12,
+          grindable: true,
+        },
+      ],
+      path
+    );
+    assert.ok(resolved);
+    const pos = new THREE.Vector3(...resolved!.position);
+    const closest = path.closestPoint(pos);
+    assert.ok(Math.abs(closest.t - 0.5) < 0.06);
+    assert.ok(Math.abs(closest.distance - 30) < 1.5);
   });
 });

@@ -26,13 +26,14 @@ export interface ExpandPropsOptions {
  * Merge authored course props with procedural apron forest belts + race furniture.
  * Authored trees keep priority; belts fill remaining Lod tree slots.
  * Corridor center stays clear — plant on flanks only.
+ * Props with `pathT` resolve world XZ from the run spline before scatter merge.
  */
 export function expandCourseProps(
   def: Pick<CourseDef, 'id' | 'seed' | 'terrain' | 'props'>,
   path: SplinePath,
   options: ExpandPropsOptions
 ): PropPlacement[] {
-  const authored = [...def.props];
+  const authored = resolvePathPlacements(def.props, path);
   const rng = new SeededRng(def.seed ^ 0x70e5_f01e);
   const raceHalf = def.terrain.width * 0.5;
   const apron = def.terrain.apronWidth ?? Math.max(110, def.terrain.width * 1.4);
@@ -44,6 +45,46 @@ export function expandCourseProps(
       : scatterCourseFurniture(def.id, path, raceHalf, authored, rng);
 
   return [...authored, ...trees, ...furniture];
+}
+
+/**
+ * Resolve pathT/lateral authoring into world positions.
+ * rotationY is an offset from path-aligned defaults (ramp faces fall line;
+ * rail/box length follows tangent).
+ */
+export function resolvePathPlacements(
+  placements: readonly PropPlacement[],
+  path: SplinePath
+): PropPlacement[] {
+  return placements.map((p) => {
+    if (p.pathT === undefined) return { ...p };
+    const t = THREE.MathUtils.clamp(p.pathT, 0.02, 0.98);
+    const lateral = p.lateral ?? 0;
+    path.sample(t, _center);
+    path.right(t, _right);
+    _right.y = 0;
+    if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
+    else _right.normalize();
+    path.tangent(t, _tan);
+    _tan.y = 0;
+    if (_tan.lengthSq() < 1e-8) _tan.set(0, 0, 1);
+    else _tan.normalize();
+
+    const fallYaw = Math.atan2(_tan.x, _tan.z);
+    // Rails/boxes: local X = length → align with tangent.
+    // Ramps: local +Z = fall line.
+    const baseYaw =
+      p.kind === 'ramp' || p.kind === 'tunnel' || p.kind === 'checkpoint_gate' || p.kind === 'finish_arch'
+        ? fallYaw
+        : fallYaw + Math.PI * 0.5;
+    const x = _center.x + _right.x * lateral;
+    const z = _center.z + _right.z * lateral;
+    return {
+      ...p,
+      position: [x, _center.y, z],
+      rotationY: baseYaw + (p.rotationY ?? 0),
+    };
+  });
 }
 
 function scatterForestBelt(

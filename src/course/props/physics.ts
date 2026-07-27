@@ -120,8 +120,21 @@ export function registerPropsPhysics(
         );
         break;
       }
+      case 'box': {
+        const len = data.length ?? placement.length ?? 10;
+        const half = new THREE.Vector3(len * 0.5 * _scale.x, 0.55 * _scale.y, 1.25 * _scale.z);
+        physics.createStaticBox(
+          half,
+          _pos.clone().add(new THREE.Vector3(0, half.y, 0).applyQuaternion(_quat)),
+          _quat.clone(),
+          placement.surface ?? 'wood',
+          data.propId
+        );
+        break;
+      }
       case 'ramp': {
         const lip = data.lip ?? placement.lip ?? 2.4;
+        // Approach wedge + face so kickers read as rideable packed surfaces.
         const half = new THREE.Vector3(3.2 * _scale.x, Math.max(0.6, lip * 0.45), 2.4 * _scale.z);
         physics.createStaticBox(
           half,

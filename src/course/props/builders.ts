@@ -137,6 +137,50 @@ export function buildRail(length: number): THREE.Group {
   return g;
 }
 
+/** Grindable wood park box / funbox. Local X = length; top deck is the grind face. */
+export function buildBox(length: number, width = 2.6, height = 1.05): THREE.Group {
+  const g = new THREE.Group();
+  const half = length * 0.5;
+  const deckH = Math.max(0.75, height);
+
+  const deck = shadow(
+    new THREE.Mesh(new THREE.BoxGeometry(length, 0.16, width), mats.wood)
+  );
+  deck.position.y = deckH;
+  g.add(deck);
+
+  const body = shadow(
+    new THREE.Mesh(new THREE.BoxGeometry(length * 0.96, deckH * 0.85, width * 0.88), mats.woodDark)
+  );
+  body.position.y = deckH * 0.42;
+  g.add(body);
+
+  for (const side of [-1, 1] as const) {
+    const face = shadow(
+      new THREE.Mesh(new THREE.BoxGeometry(0.14, deckH, width * 0.95), mats.wood)
+    );
+    face.position.set(side * half, deckH * 0.5, 0);
+    g.add(face);
+
+    const lip = shadow(
+      new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, width * 0.7), mats.snowDeck)
+    );
+    lip.position.set(side * (half + 0.35), 0.18, 0);
+    lip.rotation.z = side * -0.42;
+    g.add(lip);
+  }
+
+  for (const z of [-1, 1] as const) {
+    const rail = shadow(
+      new THREE.Mesh(new THREE.BoxGeometry(length * 0.98, 0.07, 0.08), mats.railDark)
+    );
+    rail.position.set(0, deckH + 0.06, z * (width * 0.48));
+    g.add(rail);
+  }
+
+  return g;
+}
+
 /** Snow kicker with wood understructure, side walls, and lip coping. Fall line = +Z. */
 export function buildRamp(lip: number, width = 6.5): THREE.Group {
   const g = new THREE.Group();
