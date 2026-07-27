@@ -48,6 +48,8 @@ describe('capture shot catalogue', () => {
     assert.ok(ACTION_MACROS.forest_run.frames >= 60);
     assert.equal(ACTION_MACROS.forest_run.base, 'forest');
     assert.equal(ACTION_MACROS.carve.base, 'course_start');
+    // Park probe must start on the grind preset (early rail cluster), not empty apron.
+    assert.equal(ACTION_MACROS.grind.base, 'grind');
   });
 
   it('macro actions stay within known CaptureBridge macro vocabulary', () => {

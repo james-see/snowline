@@ -5,9 +5,12 @@ import type { UiModule } from '@/ui/UiModule.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
 import type { CameraModule } from '@/camera/CameraModule.ts';
 import type { CourseModule } from '@/course/CourseModule.ts';
-import { sampleTerrainAt } from '@/course/TerrainGenerator.ts';
+import { lateralToU, sampleTerrainAt } from '@/course/TerrainGenerator.ts';
 import type { CourseId, GameModeId } from '@/types/gameplay.ts';
 import * as THREE from 'three';
+
+const _placeBed = new THREE.Vector3();
+const _placeTan = new THREE.Vector3();
 
 export interface ShotPreset {
   id: string;
@@ -217,6 +220,32 @@ export class CaptureBridge {
     for (let i = 0; i < settle; i++) this.#engine.stepManual(1 / 60);
   }
 
+  /**
+   * Capture helper: drop the rider on the run at pathT/lateral with downhill speed.
+   * Used so grind frames the early park cluster instead of the empty start apron.
+   */
+  #placeOnPath(pathT: number, lateral: number, speed: number): void {
+    const ctx = this.#engine.ctx;
+    const course = ctx.getModule<CourseModule>('course');
+    const rider = ctx.getModule<RiderModule>('rider');
+    const path = course?.getPath();
+    const terrain = course?.getTerrain();
+    if (!course || !rider || !path || !terrain) return;
+
+    const t = THREE.MathUtils.clamp(pathT, 0.02, 0.98);
+    const u = lateralToU(lateral, terrain.meshWidth);
+    sampleTerrainAt(terrain, t, u, _placeBed);
+    path.tangent(t, _placeTan);
+    _placeTan.y = 0;
+    if (_placeTan.lengthSq() < 1e-8) _placeTan.set(0, 0, 1);
+    else _placeTan.normalize();
+
+    const yaw = Math.atan2(-_placeTan.x, -_placeTan.z);
+    rider.spawnAt(new THREE.Vector3(_placeBed.x, _placeBed.y + 1.2, _placeBed.z), yaw);
+    rider.board.velocity.set(_placeTan.x * speed, -2, _placeTan.z * speed);
+    ctx.getModule<CameraModule>('camera')?.resnap(ctx);
+  }
+
   #mapMacroActions(actions: string[]): {
     hold: InputAction[];
     phases: Array<{ actions: InputAction[]; frames: number }>;
@@ -392,10 +421,13 @@ export class CaptureBridge {
       },
       {
         id: 'grind',
-        intent: 'Rail grind',
+        intent: 'Rail grind — early park cluster in chase frustum',
         setup: async () => {
           await run('alpine');
-          for (let i = 0; i < 200; i++) this.#engine.stepManual(1 / 60);
+          // Uphill of rail-early (pathT 0.105 / lateral 14); approach from inside.
+          this.#placeOnPath(0.09, 10, 18);
+          this.#perform(['steerRight', 'boost'], 36, 6);
+          this.#engine.ctx.getModule<CameraModule>('camera')?.resnap(this.#engine.ctx);
         },
       },
       {

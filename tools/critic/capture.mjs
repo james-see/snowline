@@ -94,10 +94,11 @@ export const ACTION_MACROS = {
     settle: 0,
   },
   grind: {
-    base: 'course_start',
+    // Dedicated park preset — course_start still frames empty apron near SLOW DOWN.
+    base: 'grind',
     intent: 'rail/box grind: sparks or snow scrape, balanced slide',
     actions: ['grind'],
-    frames: 50,
+    frames: 40,
     settle: 4,
   },
   perfect_landing: {
