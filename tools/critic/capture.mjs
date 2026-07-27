@@ -29,7 +29,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
-import { detectBlankFrame } from './blank-frame.mjs';
+import {
+  detectBlankFrame,
+  UI_BLANK_THRESHOLDS,
+  UI_SHOT_IDS,
+} from './blank-frame.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -648,7 +652,9 @@ export async function capture(options = {}) {
 
       let blank = null;
       if (opts.blankCheck !== false) {
-        blank = await detectBlankFrame(png);
+        // UI plates use flat gradients by design; gameplay keeps strict floors.
+        const blankOpts = UI_SHOT_IDS.has(preset.id) ? UI_BLANK_THRESHOLDS : undefined;
+        blank = await detectBlankFrame(png, blankOpts);
         if (blank.blank) {
           throw new Error(
             `blank/washed frame for "${preset.id}": ${blank.reason} ` +
