@@ -17,6 +17,7 @@ import {
 import {
   buttonDown,
   pickActiveGamepad,
+  readGamepadSlots,
   resolveAxisLayout,
 } from '@/engine/gamepadMap.ts';
 import './styles.css';
@@ -146,7 +147,8 @@ export class UiModule implements GameModule {
     }
 
     if (flow.screen === 'settings') {
-      this.#applyMenuLockout(ctx);
+      // Controller Test / Remap need live stick + held — clear menu lockout.
+      ctx.input.setLockout(false);
       const input = ctx.input as {
         gamepadRebindTarget?: GamepadBindAction | null;
         cancelGamepadRebind?: () => void;
@@ -271,7 +273,7 @@ export class UiModule implements GameModule {
     back: boolean;
   } {
     const empty = { left: false, right: false, up: false, down: false, confirm: false, back: false };
-    const pads = Array.from(navigator.getGamepads?.() ?? []);
+    const pads = readGamepadSlots();
     const gp = pickActiveGamepad(pads, this.#padIndex);
     if (!gp) {
       this.#padIndex = null;
@@ -628,7 +630,11 @@ export class UiModule implements GameModule {
         activeIndex: number | null;
         activated: boolean;
         lockedOut: boolean;
+        documentHasFocus?: boolean;
+        connectEvents?: number;
+        lastConnectId?: string | null;
         move: { x: number; y: number };
+        rawMoveX?: number;
         held: string[];
         pads: Array<{
           id: string;
@@ -638,7 +644,18 @@ export class UiModule implements GameModule {
           axes: number[];
           buttons: Array<{ pressed: boolean; value: number }>;
         }>;
+        slots?: Array<{
+          index: number;
+          present: boolean;
+          id: string;
+          connected: boolean;
+          ghost: boolean;
+          activity: boolean;
+          pressedButtons: number[];
+        }>;
         slotCount: number;
+        rebindTarget?: string | null;
+        bindings?: { preset?: string } | null;
       };
     };
     const dump = input.gamepadDebug?.();
@@ -647,17 +664,51 @@ export class UiModule implements GameModule {
       return;
     }
 
-    const gesture = dump.awaitingGesture
-      ? `<p class="pad-gesture">Press any button to activate</p>`
-      : '';
+    const focused = dump.documentHasFocus !== false;
+    const connectN = dump.connectEvents ?? 0;
+    const rawX = dump.rawMoveX ?? dump.move.x;
+
+    let statusHtml = '';
+    if (dump.awaitingGesture && dump.pads.length === 0) {
+      statusHtml = `<p class="pad-gesture">Click this page, then press any pad button</p>`;
+      if (!focused) {
+        statusHtml += `<p class="pad-test-empty">Tab not focused — click the game window first</p>`;
+      } else if (connectN === 0) {
+        statusHtml += `<p class="pad-test-empty">Chrome sees <strong>no controller</strong> (4 null slots). Bluetooth often never reaches the Gamepad API on Mac Chrome — use the Ultimate 2 <strong>2.4&nbsp;GHz dock/dongle in X mode</strong>. Also: allow Chrome under System Settings → Privacy → Bluetooth, disable Steam Input, check <code>chrome://device-log</code>.</p>`;
+      } else {
+        statusHtml += `<p class="pad-test-empty">Saw gamepadconnected (${escapeHtml(dump.lastConnectId ?? '?')}) but getGamepads() still null — switch to the <strong>2.4&nbsp;GHz dock/dongle (X mode)</strong>.</p>`;
+      }
+    } else if (dump.awaitingGesture) {
+      statusHtml = `<p class="pad-gesture">Press any button to activate</p>`;
+    }
+
+    const slots = dump.slots ?? [];
+    const slotLine =
+      slots.length > 0
+        ? `<p class="pad-live-meta">slots ${slots
+            .map((s) => {
+              if (!s.present) return `#${s.index}=null`;
+              const flags = [
+                s.connected ? 'on' : 'off',
+                s.ghost ? 'ghost' : null,
+                s.activity ? 'act' : null,
+                s.pressedButtons.length ? `b[${s.pressedButtons.join(',')}]` : null,
+              ]
+                .filter(Boolean)
+                .join(',');
+              return `#${s.index}:{${flags}}`;
+            })
+            .join(' · ')} · connectEvents ${connectN} · focus ${focused ? 'yes' : 'no'}</p>`
+        : '';
+
     const pads =
       dump.pads.length === 0
-        ? `<p class="pad-test-empty">No pads connected${dump.slotCount ? ' (slots present — press a button)' : ''}</p>`
+        ? `<p class="pad-test-empty">No pads connected${dump.slotCount ? ' (slots allocated)' : ''}</p>`
         : `<ul class="pad-list">${dump.pads
             .map((p) => {
               const active = p.index === dump.activeIndex ? ' active' : '';
               const map = p.mapping || 'none';
-              return `<li class="pad-item${active}"><span class="pad-id">${escapeHtml(p.id)}</span><span class="pad-meta">#${p.index} · ${escapeHtml(map)}${active ? ' · active' : ''}</span></li>`;
+              return `<li class="pad-item${active}"><span class="pad-id">${escapeHtml(p.id || '(empty id)')}</span><span class="pad-meta">#${p.index} · ${escapeHtml(map)}${active ? ' · active' : ''}</span></li>`;
             })
             .join('')}</ul>`;
 
@@ -668,30 +719,31 @@ export class UiModule implements GameModule {
       axesHtml = `<div class="pad-axes">${activePad.axes
         .map((v, i) => {
           const pct = Math.round(((v + 1) / 2) * 100);
-          const lit = Math.abs(v) > 0.2 ? ' lit' : '';
+          const lit = Math.abs(v) > 0.08 ? ' lit' : '';
           return `<div class="pad-axis${lit}"><span>a${i}</span><div class="pad-axis-track"><i style="left:${pct}%"></i></div><b>${v.toFixed(2)}</b></div>`;
         })
         .join('')}</div>`;
       buttonsHtml = `<div class="pad-buttons">${activePad.buttons
         .map((b, i) => {
-          const on = b.pressed || b.value > 0.3;
+          const on = b.pressed || b.value > 0.08;
           return `<span class="pad-btn${on ? ' on' : ''}" title="${b.value.toFixed(2)}">${i}</span>`;
         })
         .join('')}</div>`;
     }
 
     const held = dump.held.length ? dump.held.join(', ') : '—';
-    const rebind = (dump as { rebindTarget?: string | null }).rebindTarget;
-    const preset = (dump as { bindings?: { preset?: string } }).bindings?.preset;
+    const rebind = dump.rebindTarget;
+    const preset = dump.bindings?.preset;
     const listen = rebind
       ? `<p class="pad-gesture">Remap listening — lit b# / a# are raw indices</p>`
       : '';
     root.innerHTML = `
-      ${gesture}
+      ${statusHtml}
       ${listen}
+      ${slotLine}
       ${pads}
       <div class="pad-live">
-        <div class="pad-live-meta">move.x ${dump.move.x.toFixed(2)} · lockedOut ${dump.lockedOut ? 'yes' : 'no'} · held ${escapeHtml(held)}${preset ? ` · preset ${escapeHtml(String(preset))}` : ''}</div>
+        <div class="pad-live-meta">move.x ${rawX.toFixed(2)} · lockedOut ${dump.lockedOut ? 'yes' : 'no'} · held ${escapeHtml(held)}${preset ? ` · preset ${escapeHtml(String(preset))}` : ''}</div>
         ${axesHtml}
         ${buttonsHtml}
       </div>
@@ -757,7 +809,7 @@ export class UiModule implements GameModule {
         <p class="unlocks">Unlocked: ${unlocks || '—'}</p>
         <section class="pad-test-panel" aria-label="Controller test">
           <h3>Controller Test</h3>
-          <p class="pad-test-blurb">Live axes and buttons — same data as <code>__snowline.gamepadDebug()</code></p>
+          <p class="pad-test-blurb">No special site permission — click the page, press any button. Console: <code>__snowline.gamepadDebug()</code>. <strong>8BitDo Ultimate 2:</strong> use the <strong>2.4&nbsp;GHz dock/dongle in X mode</strong> for Chrome (Bluetooth alone often never appears in <code>getGamepads()</code> on Mac).</p>
           <div id="pad-test" class="pad-test"></div>
         </section>
         <section class="pad-remap-panel" aria-label="Controller remap">
@@ -767,7 +819,7 @@ export class UiModule implements GameModule {
           <button type="button" class="btn ghost" data-act="pad-reset">Reset to Standard</button>
         </section>
         <button class="btn primary focused" data-focus="0" data-act="back">Back</button>
-        <p class="hint">Esc / B — back · press any pad button to activate</p>
+        <p class="hint">Esc / B — back · click page + any pad button to activate</p>
       </section>`;
   }
 

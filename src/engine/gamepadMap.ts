@@ -97,10 +97,41 @@ export function pickConnectedGamepad(
 
 /** Stick / button activity floor — ignores idle noise and resting trigger axes. */
 export const GAMEPAD_ACTIVITY = 0.35;
+/** Controller Test / steal threshold — any real press, including soft analog. */
+export const GAMEPAD_ACTIVITY_RAW = 0.08;
+
+/**
+ * Snapshot `navigator.getGamepads()` via indexed access.
+ * Prefer this over `Array.from` — some engines mishandle GamepadList holes.
+ */
+export function readGamepadSlots(
+  source?: ArrayLike<Gamepad | null> | null,
+): Array<Gamepad | null> {
+  const raw =
+    source ??
+    (typeof navigator !== 'undefined' ? navigator.getGamepads?.() : null) ??
+    null;
+  if (!raw) return [];
+  const out: Array<Gamepad | null> = new Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    out[i] = raw[i] ?? null;
+  }
+  return out;
+}
+
+/** Empty-id / unknown Steam·OS zombies that should lose to a real 8BitDo. */
+export function isGhostPad(gp: Pick<Gamepad, 'id' | 'buttons' | 'axes'>): boolean {
+  const id = (gp.id ?? '').trim();
+  if (!id) return true;
+  const lower = id.toLowerCase();
+  if (lower === 'unknown' || lower === 'xinput' || lower === 'ghost') return true;
+  return false;
+}
 
 /**
  * True when any button is down or any stick/trigger axis is meaningfully deflected.
  * Used to steal focus from zombie "connected" slots (Steam Input, OS ghosts).
+ * `pressed === true` always counts, even when value is 0 (some BT stacks).
  */
 export function gamepadHasActivity(gp: Gamepad, threshold = GAMEPAD_ACTIVITY): boolean {
   for (const b of gp.buttons) {
@@ -138,29 +169,119 @@ export function gamepadHasActivity(gp: Gamepad, threshold = GAMEPAD_ACTIVITY): b
   return false;
 }
 
+/** Preference score — activity first, then 8BitDo / non-empty id over ghosts. */
+export function padPreferenceScore(gp: Gamepad): number {
+  let score = 0;
+  if (gamepadHasActivity(gp, GAMEPAD_ACTIVITY_RAW)) score += 1000;
+  else if (gamepadHasActivity(gp)) score += 800;
+  if (isUltimate2Id(gp.id)) score += 200;
+  else if (/8bitdo|2dc8/i.test(gp.id)) score += 150;
+  if ((gp.id ?? '').trim()) score += 40;
+  if (gp.mapping === 'standard') score += 10;
+  if (isGhostPad(gp)) score -= 500;
+  // Stable tie-break: lower index wins only when scores equal (caller compares >).
+  score -= gp.index * 0.01;
+  return score;
+}
+
 /**
- * Over-sample every slot each frame. Any activity becomes the active pad;
- * otherwise keep preferred while connected, else first connected.
+ * Over-sample every slot each frame.
+ * 1) Highest preference among pads with any raw activity (steals from ghosts).
+ * 2) Else preferred while connected and non-ghost.
+ * 3) Else best non-ghost connected (8BitDo preferred).
+ * 4) Else first connected.
  */
 export function pickActiveGamepad(
   pads: Array<Gamepad | null>,
   preferredIndex: number | null,
 ): Gamepad | null {
-  let active: Gamepad | null = null;
+  let bestActive: Gamepad | null = null;
+  let bestActiveScore = -Infinity;
   for (const gp of pads) {
     if (!gp?.connected) continue;
-    if (!gamepadHasActivity(gp)) continue;
-    if (preferredIndex !== null && gp.index === preferredIndex) return gp;
-    if (!active) active = gp;
+    if (!gamepadHasActivity(gp, GAMEPAD_ACTIVITY_RAW) && !gamepadHasActivity(gp)) continue;
+    const score = padPreferenceScore(gp);
+    // Sticky preferred index still wins among active pads when tied-ish.
+    const boost =
+      preferredIndex !== null && gp.index === preferredIndex ? 50 : 0;
+    if (score + boost > bestActiveScore) {
+      bestActiveScore = score + boost;
+      bestActive = gp;
+    }
   }
-  if (active) return active;
-  return pickConnectedGamepad(pads, preferredIndex);
+  if (bestActive) return bestActive;
+
+  let bestIdle: Gamepad | null = null;
+  let bestIdleScore = -Infinity;
+  for (const gp of pads) {
+    if (!gp?.connected) continue;
+    let score = padPreferenceScore(gp);
+    // Mild sticky preference — below 8BitDo / activity bonuses.
+    if (preferredIndex !== null && gp.index === preferredIndex) score += 30;
+    if (score > bestIdleScore) {
+      bestIdleScore = score;
+      bestIdle = gp;
+    }
+  }
+  return bestIdle;
 }
 
 /** True when the Gamepad API has slots but every entry is still null (Chrome pre-gesture). */
 export function gamepadsAwaitingGesture(pads: Array<Gamepad | null>): boolean {
   if (pads.length === 0) return false;
   return pads.every((p) => p === null);
+}
+
+/** Per-slot raw scan for Controller Test / debug (includes nulls). */
+export type GamepadSlotScan = {
+  index: number;
+  present: boolean;
+  id: string;
+  mapping: string;
+  connected: boolean;
+  ghost: boolean;
+  activity: boolean;
+  pressedButtons: number[];
+  maxAxis: number;
+};
+
+export function scanGamepadSlots(pads: Array<Gamepad | null>): GamepadSlotScan[] {
+  return pads.map((gp, index) => {
+    if (!gp) {
+      return {
+        index,
+        present: false,
+        id: '',
+        mapping: '',
+        connected: false,
+        ghost: false,
+        activity: false,
+        pressedButtons: [],
+        maxAxis: 0,
+      };
+    }
+    const pressedButtons: number[] = [];
+    for (let i = 0; i < gp.buttons.length; i++) {
+      const b = gp.buttons[i];
+      if (b && (b.pressed || b.value > GAMEPAD_ACTIVITY_RAW)) pressedButtons.push(i);
+    }
+    let maxAxis = 0;
+    for (const a of gp.axes) {
+      if (!Number.isFinite(a)) continue;
+      maxAxis = Math.max(maxAxis, Math.abs(a));
+    }
+    return {
+      index: gp.index,
+      present: true,
+      id: gp.id,
+      mapping: gp.mapping || '',
+      connected: gp.connected,
+      ghost: isGhostPad(gp),
+      activity: gamepadHasActivity(gp, GAMEPAD_ACTIVITY_RAW),
+      pressedButtons,
+      maxAxis,
+    };
+  });
 }
 
 export type GamepadSample = {
@@ -268,11 +389,12 @@ export type GamepadDebugDump = {
   slotCount: number;
   awaitingGesture: boolean;
   pads: GamepadDebugPad[];
+  slots: GamepadSlotScan[];
 };
 
 /** Snapshot for `window.__snowline.gamepadDebug()`. */
 export function dumpGamepads(pads: Array<Gamepad | null>): GamepadDebugDump {
-  const list = Array.from(pads);
+  const list = pads.slice();
   const live: GamepadDebugPad[] = [];
   for (const gp of list) {
     if (!gp) continue;
@@ -292,6 +414,7 @@ export function dumpGamepads(pads: Array<Gamepad | null>): GamepadDebugDump {
     slotCount: list.length,
     awaitingGesture: gamepadsAwaitingGesture(list),
     pads: live,
+    slots: scanGamepadSlots(list),
   };
 }
 
