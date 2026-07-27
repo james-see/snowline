@@ -4,7 +4,10 @@ import type { GameFlowModule } from '@/modes/GameFlowModule.ts';
 import type { UiModule } from '@/ui/UiModule.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
 import type { CameraModule } from '@/camera/CameraModule.ts';
+import type { CourseModule } from '@/course/CourseModule.ts';
+import { sampleTerrainAt } from '@/course/TerrainGenerator.ts';
 import type { CourseId, GameModeId } from '@/types/gameplay.ts';
+import * as THREE from 'three';
 
 export interface ShotPreset {
   id: string;
@@ -25,6 +28,8 @@ export interface CaptureApi {
   setHud(visible: boolean): void;
   setSetting(key: string, value: unknown): void;
   startRun(courseId?: CourseId, mode?: GameModeId): void;
+  /** Place rider at the finish arch and step until results (or timeout). */
+  finishRun(maxFrames?: number): { finished: boolean; frames: number; screen: string };
   readonly version: string;
 }
 
@@ -95,6 +100,7 @@ export class CaptureBridge {
         flow.startRun(mode);
         this.#engine.setTimeScale(1);
       },
+      finishRun: (maxFrames = 90) => this.#finishRun(maxFrames),
       version: '1.0.0',
     };
     window.__snowline = api;
@@ -146,6 +152,50 @@ export class CaptureBridge {
       }
     }
     return { frames, stable: false };
+  }
+
+  /**
+   * Smoke path: teleport onto the finish bed and step until GameFlow hits results.
+   * Proves course:finish → run:finish → timeScale 0 without riding the full line.
+   */
+  #finishRun(maxFrames: number): { finished: boolean; frames: number; screen: string } {
+    const ctx = this.#engine.ctx;
+    const flow = ctx.getModule<GameFlowModule>('flow');
+    const course = ctx.getModule<CourseModule>('course');
+    const rider = ctx.getModule<RiderModule>('rider');
+    if (!flow || !course || !rider) {
+      return { finished: false, frames: 0, screen: flow?.screen ?? 'none' };
+    }
+
+    if (flow.screen !== 'playing' && flow.screen !== 'paused') {
+      flow.courseId = flow.courseId || 'alpine';
+      flow.startRun(flow.mode || 'freeride');
+    }
+
+    const def = course.getDefinition();
+    const terrain = course.getTerrain();
+    const path = course.getPath();
+    if (!def || !terrain || !path) {
+      return { finished: false, frames: 0, screen: flow.screen };
+    }
+
+    const bed = sampleTerrainAt(terrain, def.finish.t, 0.5, new THREE.Vector3());
+    const tan = path.tangent(def.finish.t);
+    const yaw = Math.atan2(-tan.x, -tan.z);
+    rider.spawnAt(new THREE.Vector3(bed.x, bed.y + 1.2, bed.z), yaw);
+
+    this.#engine.pinFrame(false);
+    this.#engine.setTimeScale(1);
+    let frames = 0;
+    while (frames < maxFrames && flow.screen !== 'results') {
+      this.#engine.stepManual(1 / 60);
+      frames++;
+    }
+    return {
+      finished: flow.screen === 'results' || course.getProgress().finished,
+      frames,
+      screen: flow.screen,
+    };
   }
 
   #perform(actions: string[] | InputAction[], frames: number, settle: number): void {

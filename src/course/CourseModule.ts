@@ -20,7 +20,7 @@ import {
   type PropsBuildResult,
 } from '@/course/Props.ts';
 import { resolveLodBudgets, presetBudgets } from '@/engine/Lod.ts';
-import { shouldCompleteRun } from '@/course/finishPolicy.ts';
+import { horizontalDistance, shouldCompleteRun } from '@/course/finishPolicy.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
 
 const _playerPos = new THREE.Vector3();
@@ -79,6 +79,11 @@ export class CourseModule implements GameModule {
   #finished = false;
   #runElapsed = 0;
   #pathT = 0;
+  /** Peak pathT this run — survives momentary closestPoint dips in void bounce. */
+  #peakPathT = 0;
+  /** World-space finish bed (terrain-snapped arch). */
+  #finishBed = new THREE.Vector3();
+  #hasFinishBed = false;
 
   constructor(private readonly options: CourseModuleOptions = {}) {
     this.#getRiderPosition = options.getRiderPosition ?? null;
@@ -183,6 +188,7 @@ export class CourseModule implements GameModule {
     this.#finished = false;
     this.#runElapsed = 0;
     this.#pathT = 0;
+    this.#peakPathT = 0;
     if (this.#def) {
       this.#ctx?.events.emit('course:reset', { courseId: this.#def.id });
     }
@@ -220,6 +226,7 @@ export class CourseModule implements GameModule {
     _playerPos.copy(rider);
     const closest = this.#path.closestPoint(_playerPos);
     this.#pathT = closest.t;
+    this.#peakPathT = Math.max(this.#peakPathT, closest.t);
 
     let inFinishTrigger = false;
 
@@ -250,15 +257,19 @@ export class CourseModule implements GameModule {
     }
 
     const fin = this.#def.finish;
-    const finishHalf = (fin.width ?? 20) * 0.55;
+    const finishRadius = (fin.width ?? 20) * 1.75;
+    const distToFinish = this.#hasFinishBed
+      ? horizontalDistance(_playerPos.x, _playerPos.z, this.#finishBed.x, this.#finishBed.z)
+      : Number.POSITIVE_INFINITY;
     if (
       shouldCompleteRun({
         alreadyFinished: this.#finished,
         inFinishTrigger,
-        pathT: this.#pathT,
+        pathT: this.#peakPathT,
         finishT: fin.t,
-        lateralAbs: Math.abs(closest.lateral),
-        finishHalfWidth: finishHalf,
+        distanceToFinish: distToFinish,
+        finishRadius,
+        approachT: fin.t - 0.06,
       })
     ) {
       this.#emitFinish(ctx);
@@ -316,9 +327,11 @@ export class CourseModule implements GameModule {
 
     const fin = def.finish;
     const finBed = sampleTerrainAt(terrain, fin.t, 0.5, _gateBed);
+    this.#finishBed.copy(finBed);
+    this.#hasFinishBed = true;
     const finTan = path.tangent(fin.t);
     const finYaw = Math.atan2(finTan.x, finTan.z);
-    const finHalf = (fin.width ?? 20) * 0.55;
+    const finHalf = (fin.width ?? 20) * 0.65;
     const arch = props.root.getObjectByName('finish');
     if (arch) {
       arch.position.copy(finBed);
@@ -326,15 +339,16 @@ export class CourseModule implements GameModule {
     }
     const finTrigger = props.triggers.find((t) => t.kind === 'finish');
     if (finTrigger) {
-      // Deep volume along travel so fast riders cannot tunnel past the arch.
+      // Deep + tall volume: catch fast tunnel-through, void wallow sink, and
+      // short approaches that used to bounce forever just uphill of the arch.
       setOrientedTriggerBounds(
         finTrigger.bounds,
         finBed,
         finYaw,
         finHalf,
-        10,
-        finBed.y - 2,
-        finBed.y + 14
+        24,
+        finBed.y - 10,
+        finBed.y + 22
       );
     }
   }
@@ -354,6 +368,9 @@ export class CourseModule implements GameModule {
     this.#props = null;
     this.#triggers = [];
     this.#terrainBody = null;
+    this.#hasFinishBed = false;
+    this.#finishBed.set(0, 0, 0);
+    this.#peakPathT = 0;
   }
 
   #disposeBackdrop(group: THREE.Group | null): void {
