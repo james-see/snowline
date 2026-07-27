@@ -3,6 +3,45 @@
   "note": "Images under images/ are fetched locally for critic QA and are gitignored. Do not redistribute commercial game screenshots.",
   "refs": [
     {
+      "id": "user_ref_alpine_groom",
+      "kind": "game",
+      "title": "USER REF — alpine groom / dense forest / long shadows",
+      "compare": ["lighting", "snow", "terrain", "course_composition", "atmosphere", "rider", "art_direction"],
+      "shots": ["course_start", "forest", "carve"],
+      "lookFor": "Dense evergreen forest, distant peaks with haze, corduroy groom with LONG sun shadows, course banners, vivid rider silhouette",
+      "source": "User-provided reference (local critic QA)",
+      "url": "",
+      "file": "images/user_ref_alpine_groom.png",
+      "license": "user-provided-local-qa",
+      "optional": true
+    },
+    {
+      "id": "user_ref_race_tunnel",
+      "kind": "game",
+      "title": "USER REF — race tunnel / banners / blue line",
+      "compare": ["course_composition", "props", "lighting", "readability_at_speed"],
+      "shots": ["course_start", "carve"],
+      "lookFor": "Authored race corridor, tunnel/arch, banners, line paint, packed trees on berms",
+      "source": "User-provided reference (local critic QA)",
+      "url": "",
+      "file": "images/user_ref_race_tunnel.png",
+      "license": "user-provided-local-qa",
+      "optional": true
+    },
+    {
+      "id": "user_ref_ssx_chase",
+      "kind": "game",
+      "title": "USER REF — SSX-style chase + HUD",
+      "compare": ["camera", "ui", "rider", "course_composition", "overall_fun"],
+      "shots": ["carve", "course_start", "forest"],
+      "lookFor": "Chase energy, dense props/lifts, HUD (time/speed/map), trick callout, readable mountain",
+      "source": "User-provided reference (local critic QA)",
+      "url": "",
+      "file": "images/user_ref_ssx_chase.png",
+      "license": "user-provided-local-qa",
+      "optional": true
+    },
+    {
       "id": "ssx3_race",
       "kind": "game",
       "title": "SSX 3 — race chase cam",

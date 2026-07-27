@@ -1,44 +1,25 @@
 # Agent ownership & branches
 
-Each plan system owns an isolated git branch / worktree. Main agent integrates only.
+File-map ownership. Prefer **feature branches**; worktrees optional (only if agents run truly concurrent writes).
 
 | Branch | Owns | Gate focus |
 |--------|------|------------|
-| `agent/physics` | `src/rider/BoardPhysics.ts`, `tuning.ts`, surfaces feel | control ≥9, physics ≥9 |
-| `agent/tricks` | `src/rider/AirTricks.ts`, grind/landing hooks | trick satisfaction ≥9 |
-| `agent/camera` | `src/camera/**` | camera ≥8, no blank-sky framing |
-| `agent/rider-art` | `src/rider/visual/**`, RiderModule visuals | rider/animation ≥8 |
-| `agent/course` | `src/course/TerrainGenerator.ts`, `CourseDefs.ts`, `CourseModule.ts`, `SplinePath.ts` | terrain/course ≥8, spawn on mesh |
-| `agent/props` | `src/course/Props.ts` | authored props, rails/ramps/trees |
-| `agent/materials` | `src/render/materials/**`, snow/rock/ice mats | snow/materials ≥8 |
-| `agent/vfx` | `src/vfx/**` | spray/trails/weather ≥8 |
-| `agent/lighting` | `src/render/Pipeline.ts`, `RenderModule.ts`, `post/**` | lighting/atmosphere ≥8, NO white-out |
-| `agent/audio` | `src/audio/**` | layered board/wind/UI feedback |
-| `agent/ui` | `src/ui/**` | title/HUD/pause/settings/results |
-| `agent/score` | `src/score/**`, `src/modes/**` | modes + persistence |
-| `agent/perf` | LOD/instancing/loading hooks | 60fps @1080p |
-| `agent/capture` | `tools/critic/**`, tests | all shots green |
-| `agent/critic` | critic rubric / gate tuning | gate thresholds honest |
-| `agent/docs` | root `*.md`, `LICENSE`, this file | docs complete |
+| `agent/physics` | `src/rider/BoardPhysics.ts`, `tuning.ts` | control ≥9, physics ≥9 |
+| `agent/tricks` | `src/rider/AirTricks.ts`, grind/landing | trick ≥9 |
+| `agent/camera` | `src/camera/**` | camera ≥8; fill frame like user refs |
+| `agent/rider-art` | `src/rider/visual/**` | rider ≥8; vivid gear |
+| `agent/course` | TerrainGenerator, CourseDefs, CourseModule, SplinePath | peaks/relief; B1 |
+| `agent/props` | `src/course/Props.ts`, `props/**` | dense forest + furniture; B2/B6/B10 |
+| `agent/materials` | `src/render/materials/**` | corduroy + snow color; B4/B5 |
+| `agent/vfx` | `src/vfx/**` | spray ≥8 |
+| `agent/lighting` | Pipeline, RenderModule, post/** | long sun shadows; B3/B11 |
+| `agent/audio` | `src/audio/**` | feedback |
+| `agent/ui` | `src/ui/**` | in-run HUD; B9 |
+| `agent/score` | score/modes | modes |
+| `agent/perf` | Lod | 60fps with denser props |
+| `agent/capture` | tools/critic | shots + refs in brief |
+| `agent/docs` | root md | docs |
 
-## Critical defect (all agents)
+## User-ref loop
 
-**Blank-sky / whiteout gameplay captures** — title OK; course shots wash to empty sky. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) and [PROGRESS.md](PROGRESS.md).
-
-Owners for the fix triad:
-
-1. `agent/course` — spawn rider on terrain mesh
-2. `agent/camera` — chase framing shows mountain + rider
-3. `agent/lighting` — post fog/exposure must not white-out (`fix/lighting-post-whiteout` WIP)
-
-Smoke: `npm run capture -- --shot course_start` must show mountain + rider.
-
-## Integration rule
-
-Do not merge overlapping files across agents. Main agent merges after:
-
-```bash
-npm run typecheck
-npm run build
-npm run capture -- --shot course_start
-```
+See [GATE_USER_REFS.md](GATE_USER_REFS.md). Director scores against `refs/snowboard/images/user_ref_*.png` and fans owners until all binary checks PASS.
