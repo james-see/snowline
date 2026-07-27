@@ -54,7 +54,11 @@ See [AGENT_OWNERS.md](AGENT_OWNERS.md). **Worktree required:** `~/.cursor/worktr
 
 ## Next
 
-1. Merge remaining non-overlapping agent branches (materials, props, vfx, ui, score, capture, perf, tricks, physics, rider-art)
+1. Merge remaining non-overlapping agent branches (materials, props, ui, score, capture, perf, tricks, physics, rider-art)
 2. Re-run `npm run critic` + `npm run gate`
-3. Route remaining fails (flat snow, sparse props) to materials/props/course
+3. Route muddy snow / alpine light to materials+lighting; park framing still open
 4. Acceptance from clean checkout
+
+## Recent
+
+- `f52fc36` (`vfx/trail-packed-snow`) — BoardTrail = packed-snow channel (not neon ribbon); critic tip PASS binary, trail PASS

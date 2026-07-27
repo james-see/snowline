@@ -31,20 +31,21 @@ Compare Snowline captures to:
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-26, tip `d53ff37` — dense ahead midfield clears B8 — see `CRITIC_REPORT.md`)
+## Current score (2026-07-27, tip `f52fc36` — packed-snow BoardTrail — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
 | B1_peaks | **PASS** — ridgelines behind timberline |
-| B2_forest | **PASS** — harsh; dense flank walls (~435–464k tris) |
+| B2_forest | **PASS** — dense flank walls (~409–432k tris) |
 | B3_shadows | **PASS** — soft directional casts on corduroy |
-| B4_corduroy | **PASS** — harsh; grooves readable |
+| B4_corduroy | **PASS** — grooves readable; packed trail scar on `max_speed` |
 | B5_snow_color | **PASS** — tonal range; darker muddy vs alpine white (μ≈72) |
-| B6_furniture | **PASS** — hut/fence on gate; grind park weak |
+| B6_furniture | **PASS** — fence / race markers on gate |
 | B7_rider | **PASS** — contrast kit |
-| B8_camera | **PASS** — harsh; dense ahead midfield clears open groom corridor |
+| B8_camera | **PASS** — midfield timber pack holds |
 | B9_hud | **PASS** |
 | B10_no_float | **PASS** |
 | B11_atmosphere | **PASS** — cool aerial; canopy depth |
 
-**Verdict: PASS** (binary 11/0). Rubric mean ≈ **5.55** vs floors ≥8.5 — quality bar still open.
+**Trail:** packed denser channel (**PASS** vs arcade ribbon) — groom≈95 vs trail≈71 on `max_speed`.  
+**Verdict: PASS** (binary 11/0). Rubric mean ≈ **5.70** vs floors ≥8.5 — quality bar still open.
