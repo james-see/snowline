@@ -257,11 +257,14 @@ export class CourseModule implements GameModule {
     }
 
     const fin = this.#def.finish;
-    // Generous plaza — void bounce often sits 50m+ short of the arch bed.
-    const finishRadius = Math.max(80, (fin.width ?? 20) * 3);
+    // Wide plaza — freeride/race void bounce often sits 80–180 m short of the arch.
+    const finishRadius = Math.max(160, (fin.width ?? 20) * 6);
     const distToFinish = this.#hasFinishBed
       ? horizontalDistance(_playerPos.x, _playerPos.z, this.#finishBed.x, this.#finishBed.z)
       : Number.POSITIVE_INFINITY;
+    const lastCp = this.#def.checkpoints[this.#def.checkpoints.length - 1];
+    const endZoneT = Math.min(fin.t - 0.02, lastCp?.t ?? fin.t - 0.12);
+    const inEndZoneVoid = riderMod?.board.voidRecovering === true;
     if (
       shouldCompleteRun({
         alreadyFinished: this.#finished,
@@ -270,7 +273,9 @@ export class CourseModule implements GameModule {
         finishT: fin.t,
         distanceToFinish: distToFinish,
         finishRadius,
-        approachT: fin.t - 0.08,
+        approachT: fin.t - 0.12,
+        endZoneT,
+        inEndZoneVoid,
       })
     ) {
       this.#emitFinish(ctx);

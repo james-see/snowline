@@ -11,6 +11,12 @@ const _right = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _scratch = new THREE.Vector3();
 
+function horizontalDistSq(a: THREE.Vector3, b: THREE.Vector3): number {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return dx * dx + dz * dz;
+}
+
 /**
  * Centripetal Catmull-Rom spline through world-space control points.
  * Parameter t ∈ [0, 1] spans the full run length.
@@ -83,7 +89,11 @@ export class SplinePath {
     return out.copy(_up).cross(this.tangent(tc, _tan)).normalize();
   }
 
-  /** Closest point on the polyline approximation of the spline. */
+  /**
+   * Closest point on the polyline approximation of the spline.
+   * Match on horizontal (XZ) distance — terrain Y is dropped far below
+   * authored control points, so 3D closestPoint biases toward the finish.
+   */
   closestPoint(
     position: THREE.Vector3,
     samples = 128
@@ -95,7 +105,7 @@ export class SplinePath {
     for (let i = 0; i <= samples; i++) {
       const t = i / samples;
       const p = this.sample(t, _scratch);
-      const d = p.distanceToSquared(position);
+      const d = horizontalDistSq(p, position);
       if (d < bestDist) {
         bestDist = d;
         bestT = t;
@@ -109,7 +119,7 @@ export class SplinePath {
       for (const offset of [-span, span]) {
         const t = THREE.MathUtils.clamp(bestT + offset, 0, 1);
         const p = this.sample(t, _scratch);
-        const d = p.distanceToSquared(position);
+        const d = horizontalDistSq(p, position);
         if (d < bestDist) {
           bestDist = d;
           bestT = t;

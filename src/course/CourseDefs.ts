@@ -37,7 +37,9 @@ export const ALPINE_FLOW: CourseDef = {
   terrain: {
     width: 100,
     apronWidth: 140,
-    apronT: 0.12,
+    // Longer tail apron so freeride can ride past the arch onto runout snow
+    // instead of dropping off the mesh lip into void wallow.
+    apronT: 0.2,
     drop: 300,
     pathSegmentsPer100m: 14,
     lateralSegments: 30,

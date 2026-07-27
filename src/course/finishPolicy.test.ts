@@ -48,6 +48,33 @@ describe('shouldCompleteRun', () => {
     );
   });
 
+  it('soft-completes on end-zone void short of the arch (freeride bounce)', () => {
+    assert.equal(
+      shouldCompleteRun({
+        ...base,
+        pathT: 0.9,
+        distanceToFinish: 180,
+        approachT: 0.85,
+        endZoneT: 0.88,
+        inEndZoneVoid: true,
+      }),
+      true
+    );
+  });
+
+  it('does not soft-complete on void mid-course', () => {
+    assert.equal(
+      shouldCompleteRun({
+        ...base,
+        pathT: 0.5,
+        distanceToFinish: 900,
+        endZoneT: 0.88,
+        inEndZoneVoid: true,
+      }),
+      false
+    );
+  });
+
   it('does not finish near arch when still early on the path', () => {
     assert.equal(
       shouldCompleteRun({ ...base, pathT: 0.5, distanceToFinish: 5 }),
