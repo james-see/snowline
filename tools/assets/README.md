@@ -52,7 +52,7 @@ public/basis/                        Basis Universal transcoder, copied from thr
 | `snow_groom` | Packed groom (`snow_floor`) |
 | `snow_powder` | Off-piste and landings |
 | `rock_face` / `rock_scree` | Cliffs / scree |
-| `ice_glass` / `ice_frost` | Race ice / frost |
+| `ice_glass` / `ice_frost` | Race ice / frost (`snow_02` / `snow_03`) |
 | `wood_bark` | Trunks / timber (`pine_bark`) |
 | `wood_plank` | Ramps / furniture (`brown_planks_07`) |
 | `fabric_banner` | Banners / flags (`hessian_230`) |
