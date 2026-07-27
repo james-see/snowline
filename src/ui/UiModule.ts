@@ -792,38 +792,42 @@ export class UiModule implements GameModule {
     const unlocks = loadSave().unlocks.map((u) => COSMETICS[u]?.label ?? u).join(', ');
     return `
       <section class="screen settings-screen">
-        <h2>Settings</h2>
-        <div class="settings-grid">
-          <label>Quality
-            <select id="set-quality">
-              <option value="low" ${s.preset === 'low' ? 'selected' : ''}>Low</option>
-              <option value="medium" ${s.preset === 'medium' ? 'selected' : ''}>Medium</option>
-              <option value="high" ${s.preset === 'high' ? 'selected' : ''}>High</option>
-              <option value="ultra" ${s.preset === 'ultra' ? 'selected' : ''}>Ultra</option>
-            </select>
-          </label>
-          <label>Master <input id="set-master" type="range" min="0" max="1" step="0.05" value="${s.masterVolume}" /></label>
-          <label>SFX <input id="set-sfx" type="range" min="0" max="1" step="0.05" value="${s.sfxVolume}" /></label>
-          <label>Music <input id="set-music" type="range" min="0" max="1" step="0.05" value="${s.musicVolume}" /></label>
-          <label>FOV <input id="set-fov" type="range" min="50" max="85" step="1" value="${s.fov}" /></label>
-          <label class="check"><input id="set-assist" type="checkbox" ${s.landingAssist ? 'checked' : ''}/> Landing assist</label>
-          <label class="check"><input id="set-motion" type="checkbox" ${s.reducedMotion ? 'checked' : ''}/> Reduced motion</label>
-          <label class="check"><input id="set-invert-x" type="checkbox" ${s.invertGamepadX ? 'checked' : ''}/> Invert steer (X)</label>
+        <header class="settings-header">
+          <h2>Settings</h2>
+          <button type="button" class="btn primary focused" data-focus="0" data-act="back">Back</button>
+        </header>
+        <div class="settings-body">
+          <div class="settings-grid">
+            <label>Quality
+              <select id="set-quality">
+                <option value="low" ${s.preset === 'low' ? 'selected' : ''}>Low</option>
+                <option value="medium" ${s.preset === 'medium' ? 'selected' : ''}>Medium</option>
+                <option value="high" ${s.preset === 'high' ? 'selected' : ''}>High</option>
+                <option value="ultra" ${s.preset === 'ultra' ? 'selected' : ''}>Ultra</option>
+              </select>
+            </label>
+            <label>Master <input id="set-master" type="range" min="0" max="1" step="0.05" value="${s.masterVolume}" /></label>
+            <label>SFX <input id="set-sfx" type="range" min="0" max="1" step="0.05" value="${s.sfxVolume}" /></label>
+            <label>Music <input id="set-music" type="range" min="0" max="1" step="0.05" value="${s.musicVolume}" /></label>
+            <label>FOV <input id="set-fov" type="range" min="50" max="85" step="1" value="${s.fov}" /></label>
+            <label class="check"><input id="set-assist" type="checkbox" ${s.landingAssist ? 'checked' : ''}/> Landing assist</label>
+            <label class="check"><input id="set-motion" type="checkbox" ${s.reducedMotion ? 'checked' : ''}/> Reduced motion</label>
+            <label class="check"><input id="set-invert-x" type="checkbox" ${s.invertGamepadX ? 'checked' : ''}/> Invert steer (X)</label>
+          </div>
+          <p class="unlocks">Unlocked: ${unlocks || '—'}</p>
+          <section class="pad-test-panel" aria-label="Controller test">
+            <h3>Controller Test</h3>
+            <p class="pad-test-blurb">No special site permission — click the page, press any button. Console: <code>__snowline.gamepadDebug()</code>. <code>pads:[]</code> + 4 slots = Chrome nulls (pre-gesture or not exposed) — not our filter. <strong>8BitDo on Mac:</strong> Apple BT → rear switch <strong>D</strong>; BT often works in Chrome after a button press.</p>
+            <div id="pad-test" class="pad-test"></div>
+          </section>
+          <section class="pad-remap-panel" aria-label="Controller remap">
+            <h3>Controller Remap</h3>
+            <p class="pad-test-blurb">8BitDo Ultimate 2 X mode → Xbox standard (or Xbox BT when mapping is empty). Click an action, then press a button / pull a trigger.</p>
+            <div id="pad-remap" class="pad-remap"></div>
+            <button type="button" class="btn ghost" data-act="pad-reset">Reset to Standard</button>
+          </section>
+          <p class="hint">Esc / B — back · click page + any pad button to activate</p>
         </div>
-        <p class="unlocks">Unlocked: ${unlocks || '—'}</p>
-        <section class="pad-test-panel" aria-label="Controller test">
-          <h3>Controller Test</h3>
-          <p class="pad-test-blurb">No special site permission — click the page, press any button. Console: <code>__snowline.gamepadDebug()</code>. <code>pads:[]</code> + 4 slots = Chrome nulls (pre-gesture or not exposed) — not our filter. <strong>8BitDo on Mac:</strong> Apple BT → rear switch <strong>D</strong>; BT often works in Chrome after a button press.</p>
-          <div id="pad-test" class="pad-test"></div>
-        </section>
-        <section class="pad-remap-panel" aria-label="Controller remap">
-          <h3>Controller Remap</h3>
-          <p class="pad-test-blurb">8BitDo Ultimate 2 X mode → Xbox standard (or Xbox BT when mapping is empty). Click an action, then press a button / pull a trigger.</p>
-          <div id="pad-remap" class="pad-remap"></div>
-          <button type="button" class="btn ghost" data-act="pad-reset">Reset to Standard</button>
-        </section>
-        <button class="btn primary focused" data-focus="0" data-act="back">Back</button>
-        <p class="hint">Esc / B — back · click page + any pad button to activate</p>
       </section>`;
   }
 

@@ -385,6 +385,52 @@ canvas#viewport {
   margin-bottom: 4px;
 }
 
+/* Tall Settings (controller test + remap): pin Back, scroll body */
+.settings-screen {
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 28px 14px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(8, 25, 40, 0.96), rgba(8, 25, 40, 0.88));
+  z-index: 2;
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 32px);
+}
+
+.settings-header .btn {
+  flex-shrink: 0;
+  min-width: 96px;
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 28px 40px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 .menu-stack {
   display: flex;
   flex-direction: column;
