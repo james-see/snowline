@@ -7,8 +7,8 @@ import { ChaseCamera } from './ChaseCamera.ts';
 
 const _pathAim = new THREE.Vector3();
 
-/** Metres along the spline used as the start-frame course-line look target. */
-const SNAP_PATH_LOOK_AHEAD_M = 70;
+/** Metres along the spline used as the course-line look target (snap + chase). */
+const PATH_LOOK_AHEAD_M = 120;
 
 export class CameraModule implements GameModule {
   readonly name = 'camera';
@@ -58,7 +58,8 @@ export class CameraModule implements GameModule {
       ctx.physics,
       ctx.settings.fov,
       ctx.settings.cameraShakeScale * (ctx.settings.reducedMotion ? 0.2 : 1),
-      ctx.input.look
+      ctx.input.look,
+      this.#pathAim(ctx, rider)
     );
   }
 
@@ -68,12 +69,12 @@ export class CameraModule implements GameModule {
     this.chase.snap(rider.state, ctx.physics, ctx.camera, this.#pathAim(ctx, rider));
   }
 
-  /** Sample the course spline ahead of the rider for mountain-line framing. */
+  /** Sample the course spline ahead of the rider for mountain/forest framing. */
   #pathAim(ctx: EngineContext, rider: RiderModule): THREE.Vector3 | null {
     const path = ctx.getModule<CourseModule>('course')?.getPath();
     if (!path || path.totalLength < 1) return null;
     const { t } = path.closestPoint(rider.state.position);
-    const aheadT = Math.min(1, t + SNAP_PATH_LOOK_AHEAD_M / path.totalLength);
+    const aheadT = Math.min(1, t + PATH_LOOK_AHEAD_M / path.totalLength);
     return path.sample(aheadT, _pathAim);
   }
 }
