@@ -1,88 +1,98 @@
 # Critic Report — Snowline
 
 **Verdict: FAIL** (user-ref gate)  
-**Date:** 2026-07-26 (evening, post merge-queue)  
-**Git tip scored:** `main` @ `770258acde7cb50884ef73beba2848f38289be51`  
-(`Merge branch 'assets/pine-canopy-leaf-albedo'` — includes peaks `5a929d6`, ice slugs `b5ff26d`, canopy `9df6fec`, lighting haze, midfield chase, rider carve silhouette, Kenney pines)  
+**Date:** 2026-07-26 (evening, full v2 stack)  
+**Git tip scored:** `main` @ `d3ef831cee522537ce55a97d7dfec4d3162ecea3`  
+(`Merge branch 'props/dense-forest-belt-v2'` — includes lighting `afe9b34`, camera `daa75c0`, peaks `f9f5ea0`, forest `2a0575c`)  
 **Stashes:** left alone (not applied)  
-**Harness note:** `capture.mjs` `rm`s `--out` each run — assembled four shots via per-shot temp dirs.
+**Harness note:** `capture.mjs` `rm`s `--out` each run — assembled four shots via per-shot temp dirs. Gameplay blank-PASS; `results` fails default blank σ (UI plate — capture accepts via UI thresholds).
 
-**Frames reviewed (fresh @ 770258a):**
-- `captures/tip-770258a/course_start.png` — HUD on, blank PASS (μ≈128.3 σ≈34.6)
-- `captures/tip-770258a/forest.png` — HUD on, blank PASS (μ≈120.5 σ≈33.4)
-- `captures/tip-770258a/carve.png` — HUD on, blank PASS (μ≈128.0 σ≈34.4)
-- `captures/tip-770258a/results.png` — FINISH / ALPINE FLOW / GOLD / 1:42.40 / 12800 (blank PASS μ≈87.8 σ≈15.1)
+**Frames reviewed (fresh @ d3ef831):**
+- `captures/tip-d3ef831/course_start.png` — HUD on, blank PASS (μ≈66.4 σ≈32.7)
+- `captures/tip-d3ef831/forest.png` — HUD on, blank PASS (μ≈65.4 σ≈36.8)
+- `captures/tip-d3ef831/carve.png` — HUD on, blank PASS (μ≈64.4 σ≈33.8)
+- `captures/tip-d3ef831/results.png` — FINISH / ALPINE FLOW / GOLD / 1:42.40 / 12800 (UI plate; default blank σ FAIL, capture UI thresholds PASS)
 
 **Refs:** `refs/snowboard/images/user_ref_{alpine_groom,race_tunnel,ssx_chase}.png`  
 **Gate doc:** `GATE_USER_REFS.md`  
-**Verdict JSON:** `captures/verdict-tip-770258a.json`
+**Verdict JSON:** `captures/verdict-tip-d3ef831.json`
 
 ## Binary checks B1–B11 (any FAIL = gate FAIL)
 
 | ID | Result | Evidence |
 |----|--------|----------|
-| B1_peaks | **FAIL** | Peaks exist as pale low-poly cardboard silhouettes washed into milk sky — still read as floating cutouts on empty fill, not grounded alpine mountain mass (`course_start` / `forest` / `carve` vs alpine groom). User complaint stands. |
-| B2_forest | **FAIL** | `forest.png` / `course_start.png` show ~4–8 lonely pines — not dozens / timberline belt. Canopy albedo landed; density did not. |
-| B3_shadows | **FAIL** | Corduroy self-shades; `carve.png` has short rider contact blob only — no long sun casts under trees/rider like alpine ref. |
+| B1_peaks | **PASS** | Amphitheater bowl + dark rock ridgelines fill horizon (`course_start` / `forest` / `carve`). Milk-void cardboard cutouts gone — grounded mountain mass vs prior FAIL. Still low-poly vs alpine ref, but gate bar met. |
+| B2_forest | **FAIL** | On-camera tree count still sparse (~dozens at best as lonely cones on apron/skyline). Alpine groom shows packed timberline belts; 320-tree budget not reading as forest density in chase frame. |
+| B3_shadows | **PASS** | Long directional casts across corduroy (`forest.png` striping; `carve` / `course_start` rider + terrain shadows). `no_sun_shadows` cleared. |
 | B4_corduroy | **PASS** | Packed grooves dominate race strip in all three gameplay shots. |
-| B5_snow_color | **PASS** | Warm muddy/tan strip tonal range under sun (not flat grey plastic). Apron still washed. |
-| B6_furniture | **PASS** | Fences + roadside banner readable near line (`forest.png`, `course_start.png`). |
-| B7_rider | **PASS** | `carve.png`: deep lean, high-contrast neon accents, red board, box-limb silhouette — athlete read improved vs capsule. |
-| B8_camera | **FAIL** | Midfield remains empty void — grey cones + plastic slab + blank haze; does not fill frame like alpine/SSX chase. |
+| B5_snow_color | **PASS** | Warm muddy/tan strip tonal range under sun (not flat grey plastic). Apron still washed/grey. |
+| B6_furniture | **PASS** | Fences + roadside banners readable near line (`course_start`, `forest`, `carve`). |
+| B7_rider | **PASS** | `carve.png`: deep lean, high-contrast neon accents, red board — athlete read holds. |
+| B8_camera | **FAIL** | Mountain fills upper frame, but midfield remains empty corduroy slab — not packed with trees/props like alpine/SSX chase. Harsh: mountain mass ≠ midfield fill. |
 | B9_hud | **PASS** | Score, combo, speed, time, CP visible on gameplay shots. |
 | B10_no_float | **PASS** | Tree bases sit on snow; no obvious floaters. |
-| B11_atmosphere | **FAIL** | Whiteout milk haze flattens near/far into blank void — not readable aerial perspective with mountain mass (alpine ref). |
+| B11_atmosphere | **PASS** | Cool blue-grey aerial depth with near/far separation — whiteout milk haze cleared. |
 
-**Binary tally: 5 PASS / 6 FAIL → gate FAIL.**
+**Binary tally: 9 PASS / 2 FAIL → gate FAIL.**
 
-Loud first-viewport read: **grey cones + plastic corduroy slab + floating cardboard peaks in blank milk** ≠ alpine groom ref.
+Loud first-viewport read: **dark amphitheater + long sun casts on muddy corduroy, but sparse cones — not alpine timberline**.
 
-## Rubric (mean = **4.55**, gameplay mean = **4.25**)
+## Rubric (mean = **5.45**, gameplay mean = **5.35**)
 
 | Category | Score | Note |
 |----------|------:|------|
-| lighting | 4 | Haze present but whiteout; casts still short |
-| snow | 6 | Corduroy + warm strip; apron grey |
-| terrain | 3 | Peaks grounded attempt; still cardboard-in-void |
-| materials | 5 | Ice slug fix + pine needles; peaks plastic |
-| atmosphere | 3 | Milk haze ≠ alpine aerial |
-| rider | 7 | Carve lean + contrast kit landed |
+| lighting | 7 | Long casts + cool alpine aerial landed |
+| snow | 6 | Corduroy + warm strip; muddy vs alpine white |
+| terrain | 6 | Amphitheater peaks grounded; still low-poly |
+| materials | 5 | Corduroy OK; peaks/apron plastic |
+| atmosphere | 6 | Cool depth; milk void cleared |
+| rider | 7 | Carve lean + contrast kit |
 | animation | 6 | Held lean readable in carve |
-| camera | 4 | Near corridor; midfield still empty |
+| camera | 5 | Mountain fill up; midfield still empty |
 | vfx | 3 | Minimal edge spray |
 | ui | 7 | In-run HUD + results plate |
-| course_composition | 3 | Sparse vs refs |
-| readability_at_speed | 4 | Readable because empty |
-| physics_believability | 5 | Planted; carve sells better |
+| course_composition | 4 | Sparse vs alpine/SSX density |
+| readability_at_speed | 5 | Readable; empty midfield helps |
+| physics_believability | 5 | Planted; carve sells |
 | control_feel | 4 | Neutral |
 | trick_satisfaction | 5 | Neutral |
 | audio_feedback | 5 | Neutral |
-| performance | 7 | ~200k+ tris; capture fps healthy |
+| performance | 7 | ~274–280k tris; capture fps healthy |
 | temporal_stability | 6 | Stills clean |
-| overall_fun | 3 | Tech demo |
-| art_direction | 3 | Mud strip + milk peaks |
+| overall_fun | 4 | Tech demo → early mountain |
+| art_direction | 4 | Mud strip + sparse cones ≠ alpine |
 
-**Disqualifiers:** `empty_mountain` (peaks-in-blank), `lonely_props`, `no_sun_shadows`  
-(Prior `flat_ambient` still fair — long casts missing.)
+**Disqualifiers:** `lonely_props` (forest density not reading)  
+Cleared vs prior: `empty_mountain`, `no_sun_shadows` (and milk `flat_ambient` whiteout).
 
-## Top 5 blockers → fan-out owners
+## Top blockers → fan-out owners
 
-1. **Peaks / midfield as blank milk void** (B1 / B8 / `empty_mountain`) → `course` (peaks mass + apron join) + `camera`
-2. **No forest belt** (B2) → `props` (density; canopy alone insufficient)
-3. **Whiteout haze, not alpine aerial** (B11) → `lighting` / atmosphere
-4. **No long sun cast shadows** (B3 / `no_sun_shadows`) → `lighting`
-5. **Sparse course furniture vs alpine banners** (composition; B6 barely scrapes) → `props` (+ race features for race-tunnel ref)
-
-Also: `materials` peak/apron PBR; `vfx` carve spray; race tunnel / line paint vs race-tunnel ref.
+1. **Forest belt not reading on camera** (B2 / `lonely_props`) → `props` — density must pack chase midfield like alpine timberline (budget alone insufficient)
+2. **Midfield corduroy void** (B8) → `camera` + `props` — mountain upper-fill ≠ tree/prop-packed midfield like alpine/SSX
+3. **Muddy brown strip vs alpine white groom** → `materials` — warm corduroy OK; overall snow language still off-ref
+4. **Peak/apron plastic low-poly** → `course` + `materials` — mass OK; surface fidelity still cardboard
+5. **Minimal carve spray / race features** → `vfx` + `props`/`course` — race-tunnel banners/tunnel/line paint absent
 
 ## Results shot note
 
 `results` proves finish-complete UI path. Does **not** clear any B1–B11 mountain binaries.
 
+## Delta vs tip `770258a`
+
+| Check | 770258a | d3ef831 |
+|-------|---------|---------|
+| B1 | FAIL | **PASS** |
+| B2 | FAIL | FAIL |
+| B3 | FAIL | **PASS** |
+| B8 | FAIL | FAIL |
+| B11 | FAIL | **PASS** |
+| tally | 5/6 | **9/2** |
+| mean | 4.55 | **5.45** |
+
 ## Gate
 
 ```bash
-npm run gate -- --verdict captures/verdict-tip-770258a.json --label tip-770258a --fps 500
+npm run gate -- --verdict captures/verdict-tip-d3ef831.json --label tip-d3ef831 --fps 500
 ```
 
 Expected: **exit 1**.
