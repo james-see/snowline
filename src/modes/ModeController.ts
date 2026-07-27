@@ -5,6 +5,7 @@ export type FlowScreen =
   | 'title'
   | 'course'
   | 'mode'
+  | 'loading'
   | 'playing'
   | 'paused'
   | 'results'
@@ -102,11 +103,19 @@ export class ModeController {
       screen === 'title' ||
       screen === 'course' ||
       screen === 'mode' ||
+      screen === 'loading' ||
       screen === 'settings'
     ) {
       this.#runActive = false;
       this.#paused = false;
     }
+  }
+
+  /** Mode confirmed — show load bar while course/physics boot. */
+  beginLoading(): void {
+    this.#screen = 'loading';
+    this.#runActive = false;
+    this.#paused = false;
   }
 
   selectCourse(id: CourseId): void {

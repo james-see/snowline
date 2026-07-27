@@ -11,7 +11,7 @@ const LEAN_IN = 16;
 const LEAN_OUT = 1.35;
 const LEAN_BODY = 1.05;
 const LEAN_HIP = 0.48;
-const MENU_SCREENS = new Set(['title', 'course', 'mode', 'settings']);
+const MENU_SCREENS = new Set(['title', 'course', 'mode', 'loading', 'settings']);
 /** Below this speed + zero lean → treat as spawn/idle snap (m/s). */
 const IDLE_SNAP_SPEED = 0.08;
 

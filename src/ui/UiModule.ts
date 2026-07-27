@@ -20,6 +20,7 @@ import {
   readGamepadSlots,
   resolveAxisLayout,
 } from '@/engine/gamepadMap.ts';
+import { resetRunProgress, setRunProgress } from '@/ui/runLoader.ts';
 import './styles.css';
 
 const COURSES: { id: CourseId; blurb: string }[] = [
@@ -83,6 +84,9 @@ export class UiModule implements GameModule {
     this.#render(ctx);
 
     ctx.events.on('ui:navigate', () => this.#render(ctx));
+    ctx.events.on('run:load-progress', ({ fraction, status }) => {
+      setRunProgress(fraction, status);
+    });
     ctx.events.on('score:popup', ({ text, points }) => this.#flashPopup(text, points));
     ctx.events.on('run:start', () => {
       const save = loadSave();
@@ -122,9 +126,13 @@ export class UiModule implements GameModule {
       this.#applyMenuLockout(ctx);
       if (nav.left) this.#modeIndex = (this.#modeIndex + 2) % 3;
       if (nav.right) this.#modeIndex = (this.#modeIndex + 1) % 3;
-      if (nav.confirm) flow.startRun(MODES[this.#modeIndex]!.id);
+      if (nav.confirm) void flow.startRun(MODES[this.#modeIndex]!.id);
       if (nav.back) flow.goCourseSelect();
       if (this.#paintedMode !== this.#modeIndex) this.#paintMode(flow);
+    }
+
+    if (flow.screen === 'loading') {
+      this.#applyMenuLockout(ctx);
     }
 
     if (flow.screen === 'title') {
@@ -431,6 +439,29 @@ export class UiModule implements GameModule {
           <p class="hint">←/→ or stick · Enter / A confirm · B / Back</p>
         </section>`;
       this.#paintMode(flow);
+    } else if (screen === 'loading') {
+      resetRunProgress();
+      layer.innerHTML = `
+        <section class="screen loading-screen" aria-label="Loading run" role="status" aria-live="polite">
+          <p class="eyebrow">Alpine Arcade</p>
+          <h1 class="brand">SNOWLINE</h1>
+          <div
+            id="run-bar-track"
+            class="run-bar-track"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            aria-label="Loading course"
+          >
+            <div id="run-bar-fill" class="run-bar-fill"></div>
+          </div>
+          <div class="loader-meta run-loader-meta">
+            <div class="status" id="run-loader-status">Preparing line</div>
+            <div class="pct" id="run-loader-pct">0%</div>
+          </div>
+        </section>`;
+      setRunProgress(0.02, 'Preparing line');
     } else if (screen === 'paused') {
       layer.innerHTML = `
         <section class="screen pause-screen">
@@ -513,7 +544,7 @@ export class UiModule implements GameModule {
     el.querySelectorAll('.card').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.#modeIndex = Number((btn as HTMLElement).dataset.i);
-        flow.startRun(MODES[this.#modeIndex]!.id);
+        void flow.startRun(MODES[this.#modeIndex]!.id);
       });
       btn.addEventListener('mouseenter', () => {
         const next = Number((btn as HTMLElement).dataset.i);

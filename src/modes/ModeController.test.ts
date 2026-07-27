@@ -14,6 +14,10 @@ describe('ModeController', () => {
     assert.equal(c.state.courseId, 'timberline');
     assert.equal(c.state.screen, 'mode');
 
+    c.beginLoading();
+    assert.equal(c.state.screen, 'loading');
+    assert.equal(c.state.runActive, false);
+
     c.selectMode('trick_attack');
     assert.equal(c.state.mode, 'trick_attack');
     assert.equal(c.state.screen, 'playing');
