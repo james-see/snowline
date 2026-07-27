@@ -6,9 +6,11 @@ import {
   dumpGamepads,
   edgeSets,
   GAMEPAD_DEADZONE,
+  gamepadHasActivity,
   gamepadsAwaitingGesture,
   GP,
   normalizeTriggerAxis,
+  pickActiveGamepad,
   pickConnectedGamepad,
   radialDeadzone,
   resolveAxisLayout,
@@ -65,6 +67,27 @@ describe('gamepadMap', () => {
     assert.equal(pickConnectedGamepad([a, b, c], 2)?.index, 2);
     assert.equal(pickConnectedGamepad([a, b, c], 0)?.index, 1);
     assert.equal(pickConnectedGamepad([a, null, null], null), null);
+  });
+
+  it('gamepadHasActivity ignores idle pads', () => {
+    assert.equal(gamepadHasActivity(fakePad({})), false);
+    const stick = fakePad({ axes: [0.8, 0, 0, 0] });
+    assert.equal(gamepadHasActivity(stick), true);
+    const buttons = Array.from({ length: 16 }, () => fakeButton(false));
+    buttons[0] = fakeButton(true);
+    assert.equal(gamepadHasActivity(fakePad({ buttons })), true);
+  });
+
+  it('pickActiveGamepad steals from idle preferred zombie', () => {
+    const zombie = fakePad({ index: 0, id: 'ghost' });
+    const buttons = Array.from({ length: 16 }, () => fakeButton(false));
+    buttons[0] = fakeButton(true);
+    const real = fakePad({ index: 1, id: 'DualSense', buttons, axes: [0, 0, 0, 0] });
+    assert.equal(pickConnectedGamepad([zombie, real], 0)?.index, 0);
+    assert.equal(pickActiveGamepad([zombie, real], 0)?.index, 1);
+    assert.equal(pickActiveGamepad([zombie, real], 1)?.index, 1);
+    // No activity → keep preferred / first connected
+    assert.equal(pickActiveGamepad([zombie, fakePad({ index: 1 })], 0)?.index, 0);
   });
 
   it('gamepadsAwaitingGesture detects Chrome null slots', () => {
