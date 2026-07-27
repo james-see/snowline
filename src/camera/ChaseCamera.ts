@@ -19,32 +19,40 @@ const _nearLook = new THREE.Vector3();
 /** Mountain-scale clip planes (spawn ~y=100–400, runs span hundreds of metres). */
 const CAM_NEAR = 0.45;
 const CAM_FAR = 8000;
-const MIN_CHASE_DIST = 2.6;
+const MIN_CHASE_DIST = 2.2;
 
 /**
- * Alpine / SSX chase snap — fill midfield, not sky void:
- * low + close behind rider, look pinned into the near corridor so mountain
- * wall + trees + props read in-frame (refs: user_ref_ssx_chase / alpine_groom).
+ * Alpine / SSX chase snap — fill midfield, not milk sky void:
+ * low + tight behind rider; look pinned into near corridor + rising
+ * amphitheater mass so mountain wall / trees / midground own the frame
+ * (refs: user_ref_ssx_chase / alpine_groom). Harder than fill-midfield-chase.
  */
-const SNAP_BACK = 4.35;
-const SNAP_HEIGHT = 1.72;
-const SNAP_LOOK_AHEAD = 20;
-const SNAP_FOV = 48;
+const SNAP_BACK = 3.45;
+const SNAP_HEIGHT = 1.22;
+const SNAP_LOOK_AHEAD = 12;
+const SNAP_FOV = 43;
 /** Metres above sampled terrain at the look point. */
-const SNAP_LOOK_TERRAIN_LIFT = 0.28;
-/** Max camera→look elevation (rad). Negative = pitch into snow, cuts sky void. */
-const SNAP_MAX_LOOK_ELEV = -0.26;
+const SNAP_LOOK_TERRAIN_LIFT = 0.1;
 /**
- * Blend look back toward the rider so the midfield isn't a far empty plane.
+ * Max cam→look elevation when aiming above terrain (rad).
+ * Negative = pitch into corridor; terrain-pinned mass may exceed this.
+ */
+const SNAP_MAX_SKY_ELEV = -0.34;
+/**
+ * Blend look back toward the rider so midfield reads near corridor, not far void.
  * 0 = pure ahead target; higher = rider larger / corridor nearer in frame.
  */
-const LOOK_RIDER_BLEND = 0.22;
+const LOOK_RIDER_BLEND = 0.4;
+/** Lateral metres to probe amphitheater walls for midfield mass fill. */
+const WALL_PROBE_M = 22;
+/** How hard to yaw look toward the taller flanking wall (0–1). */
+const WALL_PULL = 0.42;
 
 /** Runtime chase — same language as snap, slightly looser for playability. */
-const RUN_BACK = 4.15;
-const RUN_HEIGHT = 1.62;
-const RUN_LOOK_AHEAD = 14;
-const RUN_LOOK_DROP = 0.48;
+const RUN_BACK = 3.25;
+const RUN_HEIGHT = 1.12;
+const RUN_LOOK_AHEAD = 9;
+const RUN_LOOK_DROP = 0.78;
 
 /** Match BoardPhysics forwardFromYaw: (sin(yaw), 0, cos(yaw)). */
 function headingFromYaw(yaw: number, out: THREE.Vector3): THREE.Vector3 {
@@ -119,8 +127,8 @@ export class ChaseCamera {
   }
 
   /**
-   * Pin look.y to near-corridor terrain. Path aim only steers laterally —
-   * distance is clamped to `lookAhead` so we never stare into empty far midfield.
+   * Pin look to near-corridor + flanking wall mass. Path aim steers laterally;
+   * distance stays clamped to `lookAhead` so we never stare into empty far void.
    */
   #frameLookAlongTerrain(
     rider: RiderState,
@@ -147,37 +155,66 @@ export class ChaseCamera {
       } else {
         out.copy(_nearLook);
       }
-      // Keep some heading-forward bias so we don't yaw off the fall line.
-      out.x = THREE.MathUtils.lerp(_nearLook.x, out.x, 0.55);
-      out.z = THREE.MathUtils.lerp(_nearLook.z, out.z, 0.55);
+      // Prefer course line so amphitheater corridor stays centered.
+      out.x = THREE.MathUtils.lerp(_nearLook.x, out.x, 0.72);
+      out.z = THREE.MathUtils.lerp(_nearLook.z, out.z, 0.72);
     } else {
       out.copy(_nearLook);
+    }
+
+    // Yaw toward taller flanking wall — fills midfield with mountain mass, not void.
+    _right.crossVectors(_up, heading);
+    if (_right.lengthSq() > 1e-6) {
+      _right.normalize();
+      const leftY = terrainHeight(
+        physics,
+        out.x - _right.x * WALL_PROBE_M,
+        out.z - _right.z * WALL_PROBE_M,
+        rider.position.y
+      );
+      const rightY = terrainHeight(
+        physics,
+        out.x + _right.x * WALL_PROBE_M,
+        out.z + _right.z * WALL_PROBE_M,
+        rider.position.y
+      );
+      const bed0 = terrainHeight(physics, out.x, out.z, rider.position.y);
+      const centerY = bed0 ?? rider.position.y;
+      const leftRise = leftY != null ? leftY - centerY : 0;
+      const rightRise = rightY != null ? rightY - centerY : 0;
+      if (leftRise > 4 || rightRise > 4) {
+        const side = leftRise >= rightRise ? -1 : 1;
+        const rise = Math.max(leftRise, rightRise);
+        const pull = WALL_PULL * THREE.MathUtils.clamp((rise - 4) / 28, 0, 1);
+        out.addScaledVector(_right, side * WALL_PROBE_M * pull);
+      }
     }
 
     const bed = terrainHeight(physics, out.x, out.z, rider.position.y);
     if (bed != null) {
       out.y = bed + SNAP_LOOK_TERRAIN_LIFT;
     } else {
-      out.y = rider.position.y + 0.2 - lookAhead * lookDrop;
+      out.y = rider.position.y + 0.12 - lookAhead * lookDrop;
     }
 
     // Pull look toward rider so midfield reads near corridor, not distant void.
     out.x = THREE.MathUtils.lerp(out.x, rider.position.x, LOOK_RIDER_BLEND);
     out.z = THREE.MathUtils.lerp(out.z, rider.position.z, LOOK_RIDER_BLEND);
-    out.y = THREE.MathUtils.lerp(out.y, rider.position.y + 0.55, LOOK_RIDER_BLEND * 0.65);
+    out.y = THREE.MathUtils.lerp(out.y, rider.position.y + 0.42, LOOK_RIDER_BLEND * 0.55);
 
-    // Sky guard: if cam→look elevation is too high, pull look down onto terrain.
+    // Sky guard: cut milk-sky aim only. Keep terrain-pinned midground mass.
     _toLook.subVectors(out, this.#pos);
     const horiz = Math.hypot(_toLook.x, _toLook.z);
     if (horiz > 0.01) {
       const elev = Math.atan2(_toLook.y, horiz);
-      if (elev > SNAP_MAX_LOOK_ELEV) {
-        const targetY = this.#pos.y + Math.tan(SNAP_MAX_LOOK_ELEV) * horiz;
-        out.y = Math.min(out.y, targetY);
-        const bed2 = terrainHeight(physics, out.x, out.z, rider.position.y);
-        if (bed2 != null) {
-          out.y = Math.min(out.y, bed2 + SNAP_LOOK_TERRAIN_LIFT);
+      if (bed != null) {
+        const terrainElev = Math.atan2(bed + SNAP_LOOK_TERRAIN_LIFT - this.#pos.y, horiz);
+        const maxElev = Math.max(SNAP_MAX_SKY_ELEV, terrainElev);
+        if (elev > maxElev) {
+          out.y = this.#pos.y + Math.tan(maxElev) * horiz;
         }
+      } else if (elev > SNAP_MAX_SKY_ELEV) {
+        out.y = this.#pos.y + Math.tan(SNAP_MAX_SKY_ELEV) * horiz;
       }
     }
   }
@@ -196,9 +233,9 @@ export class ChaseCamera {
     this.#resolveHeading(rider, physics, _heading);
 
     // Keep chase compact at speed — long pull-back opens empty midfield.
-    const back = RUN_BACK + Math.min(3.2, speed * 0.045);
-    const height = RUN_HEIGHT + Math.min(0.95, speed * 0.014);
-    const lookAhead = RUN_LOOK_AHEAD + Math.min(12, speed * 0.12);
+    const back = RUN_BACK + Math.min(1.8, speed * 0.026);
+    const height = RUN_HEIGHT + Math.min(0.45, speed * 0.008);
+    const lookAhead = RUN_LOOK_AHEAD + Math.min(5, speed * 0.055);
 
     this.#airBlend = THREE.MathUtils.damp(
       this.#airBlend,
@@ -209,14 +246,14 @@ export class ChaseCamera {
 
     _desired.copy(rider.position);
     _desired.addScaledVector(_heading, -back);
-    _desired.y += height + this.#airBlend * 0.85;
+    _desired.y += height + this.#airBlend * 0.65;
 
     _right.crossVectors(_up, _heading);
     if (_right.lengthSq() > 1e-6) {
       _right.normalize();
-      _desired.addScaledVector(_right, look.x * 40);
+      _desired.addScaledVector(_right, look.x * 36);
     }
-    _desired.y += look.y * 20;
+    _desired.y += look.y * 16;
 
     _rayOrigin.copy(rider.position);
     _rayOrigin.y += 1.2;
@@ -251,7 +288,7 @@ export class ChaseCamera {
       _look
     );
     if (rider.velocity.y < -0.5) {
-      _look.y += rider.velocity.y * 0.05;
+      _look.y += rider.velocity.y * 0.04;
     }
     this.#lookAt.lerp(_look, dt > 0 ? 1 - Math.exp(-dt * 10) : 1);
 
@@ -271,7 +308,7 @@ export class ChaseCamera {
     camera.lookAt(this.#lookAt);
 
     const targetFov =
-      Math.min(baseFov, SNAP_FOV + 2) + Math.min(6, speed * 0.09) + this.#airBlend * 2;
+      Math.min(baseFov, SNAP_FOV + 1.5) + Math.min(4.5, speed * 0.07) + this.#airBlend * 1.5;
     this.#fov = dt > 0 ? THREE.MathUtils.damp(this.#fov, targetFov, 6, dt) : targetFov;
     camera.fov = this.#fov;
     camera.near = CAM_NEAR;
@@ -281,7 +318,7 @@ export class ChaseCamera {
 
   /**
    * Hard-place behind the rider for `run:start` / course load.
-   * Rider sits lower-third; look into near corridor / optional path aim on terrain.
+   * Rider sits lower-third; look into near corridor / wall mass / path aim.
    */
   snap(
     rider: RiderState,
