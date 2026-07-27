@@ -71,19 +71,73 @@ function envelope01(t: number, start: number, end: number): number {
   return Math.sin(u * Math.PI);
 }
 
-/** Alpine silhouette: discrete peaks + ridgeline noise. */
+/**
+ * Alpine ridgeline profile — continuous mass with summit accents.
+ * Floor keeps silhouettes connected (no cardboard spikes over empty void).
+ */
 function ridgeSilhouette(u: number, seed: number, peakCount: number, jagged: number): number {
   const phase = valueNoise(u * 3.1, seed * 0.001, seed + 7) * Math.PI * 2;
   const wave = Math.sin(u * Math.PI * peakCount + phase);
   const peak = Math.pow(Math.max(0, wave), jagged);
-  const secondary = Math.pow(Math.max(0, Math.sin(u * Math.PI * (peakCount * 1.7) - phase)), jagged * 1.2);
+  const secondary = Math.pow(
+    Math.max(0, Math.sin(u * Math.PI * (peakCount * 1.7) - phase)),
+    jagged * 1.2
+  );
   const rumble = fbm(u * 6.5, seed * 0.02, seed + 41, 3);
-  return peak * 0.72 + secondary * 0.28 + (rumble - 0.5) * 0.22;
+  const accents = peak * 0.55 + secondary * 0.22 + (rumble - 0.5) * 0.12;
+  // Connected floor (~0.38) so mid-ridge never collapses to empty sky.
+  return THREE.MathUtils.clamp(0.38 + accents, 0.28, 1.15);
+}
+
+const SNOW_POWDER_TINT: [number, number, number] = [0.93, 0.96, 1.0];
+const SNOW_PACKED_TINT: [number, number, number] = [0.86, 0.9, 0.94];
+const ROCK_TINT: [number, number, number] = [0.45, 0.44, 0.42];
+/** Soft haze lean toward scene FogExp2 horizon (lighting owns fog density). */
+const HAZE_TINT: [number, number, number] = [0.72, 0.66, 0.56];
+
+function paintAlpineVert(
+  out: number[],
+  rise: number,
+  peakHeight: number,
+  crest: number,
+  mist: number,
+  rockBias: number
+): void {
+  const snowAmt = THREE.MathUtils.clamp(rise / Math.max(40, peakHeight * 0.55), 0, 1);
+  const steep = THREE.MathUtils.clamp(rockBias, 0, 1);
+  // Steep mid-faces → rock; high gentle crests → powder; foothills → packed.
+  let br: number;
+  let bg: number;
+  let bb: number;
+  if (steep > 0.55 && snowAmt > 0.2 && snowAmt < 0.85) {
+    const k = (steep - 0.55) / 0.45;
+    br = THREE.MathUtils.lerp(SNOW_PACKED_TINT[0], ROCK_TINT[0], k);
+    bg = THREE.MathUtils.lerp(SNOW_PACKED_TINT[1], ROCK_TINT[1], k);
+    bb = THREE.MathUtils.lerp(SNOW_PACKED_TINT[2], ROCK_TINT[2], k);
+  } else if (snowAmt > 0.62 && crest > 0.45) {
+    br = SNOW_POWDER_TINT[0];
+    bg = SNOW_POWDER_TINT[1];
+    bb = SNOW_POWDER_TINT[2];
+  } else {
+    br = SNOW_PACKED_TINT[0];
+    bg = SNOW_PACKED_TINT[1];
+    bb = SNOW_PACKED_TINT[2];
+  }
+  // Aerial perspective toward fog horizon — coordinates with B11 without owning fog.
+  const m = THREE.MathUtils.clamp(mist, 0, 0.55);
+  out.push(
+    br * (1 - m) + HAZE_TINT[0] * m,
+    bg * (1 - m) + HAZE_TINT[1] * m,
+    bb * (1 - m) + HAZE_TINT[2] * m
+  );
 }
 
 interface RidgelineLayer {
   name: string;
-  /** Metres beyond race+apron half-width. */
+  /**
+   * Metres beyond race+apron half-width at the *inner* skirt.
+   * Negative = overlap playable apron so foothills ground into snow (no void gap).
+   */
   lateralPad: number;
   /** Depth of the mountain mass outward, metres. */
   massDepth: number;
@@ -91,9 +145,13 @@ interface RidgelineLayer {
   peakHeight: number;
   /** Soft foothill pedestal under peaks, metres. */
   foothill: number;
+  /**
+   * Height at the apron join (inner edge), metres above path Y.
+   * Must meet terrain catch-berm so peaks don't float over clear-color.
+   */
+  apronJoin: number;
   peakCount: number;
   jagged: number;
-  tint: [number, number, number];
   roughness: number;
   alongSamples: number;
   depthSamples: number;
@@ -102,11 +160,14 @@ interface RidgelineLayer {
   t1: number;
   /** +1 = rider right, -1 = rider left. */
   side: 1 | -1;
+  /** Extra haze for far layers (B11 coordination). */
+  mistBias: number;
 }
 
 /**
  * Visual-only multi-layer alpine peaks / ridgelines.
- * Sits outside the playable apron so the horizon reads as mountains, not empty sky.
+ * Overlaps apron skirts + stacked amphitheater walls so course_start midfield
+ * reads as a connected mountain mass, not floating cardboard on clear-color void.
  * Never included in the Rapier trimesh.
  */
 export function buildAlpineBackdrop(
@@ -120,116 +181,173 @@ export function buildAlpineBackdrop(
   if (backdrop?.enabled === false) return root;
 
   const peakHeight = backdrop?.peakHeight ?? 280;
-  const nearOffset = backdrop?.nearOffset ?? 40;
+  const nearOffset = backdrop?.nearOffset ?? 0;
   const farOffset = backdrop?.farOffset ?? 220;
+
+  // Apron catch berm ~ pathY+45–70 at the mesh lip — join skirts there.
+  const apronJoinNear = 48;
+  const apronJoinMid = 62;
 
   const layers: RidgelineLayer[] = [
     {
       name: 'foothill-right',
-      lateralPad: nearOffset,
-      massDepth: 90,
-      peakHeight: peakHeight * 0.28,
-      foothill: 18,
+      lateralPad: nearOffset - 18,
+      massDepth: 130,
+      peakHeight: peakHeight * 0.32,
+      foothill: 28,
+      apronJoin: apronJoinNear,
       peakCount: 5,
-      jagged: 1.6,
-      tint: [0.86, 0.9, 0.94],
+      jagged: 1.55,
       roughness: 0.94,
-      alongSamples: 48,
-      depthSamples: 5,
-      t0: -0.08,
-      t1: 1.12,
+      alongSamples: 56,
+      depthSamples: 9,
+      t0: -0.14,
+      t1: 1.16,
       side: 1,
+      mistBias: 0.06,
     },
     {
       name: 'foothill-left',
-      lateralPad: nearOffset,
-      massDepth: 90,
-      peakHeight: peakHeight * 0.3,
-      foothill: 20,
+      lateralPad: nearOffset - 18,
+      massDepth: 130,
+      peakHeight: peakHeight * 0.34,
+      foothill: 30,
+      apronJoin: apronJoinNear,
       peakCount: 5,
-      jagged: 1.55,
-      tint: [0.84, 0.89, 0.93],
+      jagged: 1.5,
       roughness: 0.94,
-      alongSamples: 48,
-      depthSamples: 5,
-      t0: -0.08,
-      t1: 1.12,
+      alongSamples: 56,
+      depthSamples: 9,
+      t0: -0.14,
+      t1: 1.16,
       side: -1,
+      mistBias: 0.06,
     },
     {
       name: 'mid-ridge-right',
-      lateralPad: farOffset * 0.55,
-      massDepth: 160,
-      peakHeight: peakHeight * 0.62,
-      foothill: 40,
+      lateralPad: farOffset * 0.35,
+      massDepth: 200,
+      peakHeight: peakHeight * 0.68,
+      foothill: 48,
+      apronJoin: apronJoinMid,
       peakCount: 4,
-      jagged: 2.1,
-      tint: [0.78, 0.84, 0.9],
+      jagged: 2.0,
       roughness: 0.96,
-      alongSamples: 40,
-      depthSamples: 4,
-      t0: -0.05,
-      t1: 1.18,
+      alongSamples: 48,
+      depthSamples: 8,
+      t0: -0.1,
+      t1: 1.22,
       side: 1,
+      mistBias: 0.14,
     },
     {
       name: 'mid-ridge-left',
-      lateralPad: farOffset * 0.55,
-      massDepth: 160,
-      peakHeight: peakHeight * 0.66,
-      foothill: 42,
+      lateralPad: farOffset * 0.35,
+      massDepth: 200,
+      peakHeight: peakHeight * 0.72,
+      foothill: 50,
+      apronJoin: apronJoinMid,
       peakCount: 4,
-      jagged: 2.2,
-      tint: [0.76, 0.82, 0.89],
+      jagged: 2.05,
       roughness: 0.96,
-      alongSamples: 40,
-      depthSamples: 4,
-      t0: -0.05,
-      t1: 1.18,
+      alongSamples: 48,
+      depthSamples: 8,
+      t0: -0.1,
+      t1: 1.22,
       side: -1,
+      mistBias: 0.14,
     },
     {
       name: 'far-peaks-right',
-      lateralPad: farOffset,
-      massDepth: 260,
+      lateralPad: farOffset * 0.85,
+      massDepth: 320,
       peakHeight,
-      foothill: 55,
+      foothill: 70,
+      apronJoin: 78,
       peakCount: 3,
-      jagged: 2.8,
-      tint: [0.68, 0.76, 0.86],
+      jagged: 2.55,
       roughness: 0.98,
-      alongSamples: 36,
-      depthSamples: 4,
-      t0: 0.05,
-      t1: 1.25,
+      alongSamples: 42,
+      depthSamples: 8,
+      t0: -0.02,
+      t1: 1.28,
       side: 1,
+      mistBias: 0.28,
     },
     {
       name: 'far-peaks-left',
-      lateralPad: farOffset,
-      massDepth: 260,
-      peakHeight: peakHeight * 1.05,
-      foothill: 58,
+      lateralPad: farOffset * 0.85,
+      massDepth: 320,
+      peakHeight: peakHeight * 1.08,
+      foothill: 74,
+      apronJoin: 80,
       peakCount: 3,
-      jagged: 2.9,
-      tint: [0.66, 0.74, 0.85],
+      jagged: 2.65,
       roughness: 0.98,
-      alongSamples: 36,
-      depthSamples: 4,
-      t0: 0.05,
-      t1: 1.25,
+      alongSamples: 42,
+      depthSamples: 8,
+      t0: -0.02,
+      t1: 1.28,
       side: -1,
+      mistBias: 0.28,
     },
   ];
 
-  // Horizon wall ahead of the finish — fills empty sky when looking downhill.
+  // Stacked amphitheater walls — fill center midfield void from course_start onward.
+  // Near wall sits in the view cone early; mid/far add depth for aerial haze.
+  const span = meshHalfWidth + farOffset + 480;
   root.add(
     buildHorizonPeakWall(path, seed, {
-      peakHeight: peakHeight * 1.15,
-      lateralSpan: meshHalfWidth + farOffset + 420,
-      depth: 220,
-      tint: [0.62, 0.72, 0.84],
-      aheadT: 1.18,
+      name: 'horizon-near',
+      peakHeight: peakHeight * 0.55,
+      lateralSpan: span * 0.78,
+      depth: 160,
+      aheadT: 0.38,
+      baseRise: 42,
+      mistBias: 0.12,
+      peakCount: 6,
+      seedOff: 211,
+    })
+  );
+  root.add(
+    buildHorizonPeakWall(path, seed, {
+      name: 'horizon-mid',
+      peakHeight: peakHeight * 0.88,
+      lateralSpan: span * 0.95,
+      depth: 200,
+      aheadT: 0.72,
+      baseRise: 55,
+      mistBias: 0.22,
+      peakCount: 5,
+      seedOff: 503,
+    })
+  );
+  root.add(
+    buildHorizonPeakWall(path, seed, {
+      name: 'horizon-far',
+      peakHeight: peakHeight * 1.2,
+      lateralSpan: span * 1.15,
+      depth: 260,
+      aheadT: 1.2,
+      baseRise: 70,
+      mistBias: 0.34,
+      peakCount: 4,
+      seedOff: 791,
+    })
+  );
+  // Behind-start wrap — kills blank sky when chase looks slightly uphill / start framing.
+  root.add(
+    buildHorizonPeakWall(path, seed, {
+      name: 'horizon-start',
+      peakHeight: peakHeight * 0.62,
+      lateralSpan: span * 0.85,
+      depth: 140,
+      aheadT: -0.12,
+      baseRise: 50,
+      mistBias: 0.16,
+      peakCount: 5,
+      seedOff: 1009,
+      alongTangent: -1,
     })
   );
 
@@ -251,7 +369,6 @@ function buildRidgelineStrip(
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
-  const [cr, cg, cb] = layer.tint;
 
   for (let i = 0; i < alongN; i++) {
     const u = i / (alongN - 1);
@@ -261,6 +378,13 @@ function buildRidgelineStrip(
     path.right(featureT, _right);
 
     const sil = ridgeSilhouette(u, seed + layer.side * 97, layer.peakCount, layer.jagged);
+    const silNext = ridgeSilhouette(
+      Math.min(1, u + 1 / Math.max(1, alongN - 1)),
+      seed + layer.side * 97,
+      layer.peakCount,
+      layer.jagged
+    );
+    const rockBias = Math.abs(silNext - sil) * 4.5 + sil * 0.15;
     const pathY = _sample.y;
 
     for (let d = 0; d < depthN; d++) {
@@ -270,21 +394,22 @@ function buildRidgelineStrip(
       const wx = _sample.x + _right.x * lateral;
       const wz = _sample.z + _right.z * lateral;
 
-      // Rise toward the outer crest, then soft backslope so silhouettes read as mass.
+      // Inner skirt locked to apron join; crest carries continuous ridgeline + summits.
       const crest = Math.sin(du * Math.PI);
-      const back = du > 0.55 ? (du - 0.55) / 0.45 : 0;
+      const back = du > 0.58 ? (du - 0.58) / 0.42 : 0;
+      const skirt = THREE.MathUtils.lerp(layer.apronJoin, layer.foothill * 0.85, Math.min(1, du * 1.35));
       const rise =
-        layer.foothill * (0.35 + 0.65 * crest) +
-        layer.peakHeight * sil * (0.45 + 0.55 * crest) -
-        back * back * layer.peakHeight * 0.22;
+        skirt +
+        layer.foothill * 0.45 * crest +
+        layer.peakHeight * sil * (0.2 + 0.8 * crest) -
+        back * back * layer.peakHeight * 0.18;
 
-      const micro = (fbm(wx * 0.012, wz * 0.012, seed + 211, 3) - 0.5) * layer.peakHeight * 0.08;
+      const micro = (fbm(wx * 0.012, wz * 0.012, seed + 211, 3) - 0.5) * layer.peakHeight * 0.07;
       const y = pathY + rise + micro;
 
       positions.push(wx, y, wz);
-      // Cooler / mistier toward outer mass for aerial perspective.
-      const mist = 0.08 + du * 0.14;
-      colors.push(cr * (1 - mist) + 0.55 * mist, cg * (1 - mist) + 0.62 * mist, cb * (1 - mist) + 0.72 * mist);
+      const mist = layer.mistBias + du * 0.16;
+      paintAlpineVert(colors, rise, layer.peakHeight, crest, mist, rockBias * (0.35 + crest));
     }
   }
 
@@ -321,51 +446,67 @@ function buildRidgelineStrip(
   return mesh;
 }
 
-/** Far downhill peak wall — fills horizon when chase looks along the fall line. */
+/** Full-span amphitheater wall — kills empty midfield when looking along the fall line. */
 function buildHorizonPeakWall(
   path: SplinePath,
   seed: number,
   opts: {
+    name: string;
     peakHeight: number;
     lateralSpan: number;
     depth: number;
-    tint: [number, number, number];
     aheadT: number;
+    baseRise: number;
+    mistBias: number;
+    peakCount: number;
+    seedOff: number;
+    /** +1 = downhill along tangent, -1 = uphill behind start. */
+    alongTangent?: 1 | -1;
   }
 ): THREE.Mesh {
-  const acrossN = 56;
-  const depthN = 5;
+  const acrossN = 64;
+  const depthN = 8;
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
-  const [cr, cg, cb] = opts.tint;
+  const dir = opts.alongTangent ?? 1;
 
+  const featureT = THREE.MathUtils.clamp(opts.aheadT, 0, 1);
   path.sampleExtended(opts.aheadT, _sample);
-  path.tangent(1, _tan);
-  path.right(1, _right);
+  path.tangent(featureT, _tan);
+  path.right(featureT, _right);
 
   for (let i = 0; i < acrossN; i++) {
     const u = i / (acrossN - 1);
     const lateral = (u - 0.5) * 2 * opts.lateralSpan;
-    const sil = ridgeSilhouette(u, seed + 503, 5, 2.6);
-    // Emphasize a few dominant summits like the alpine groom ref.
-    const hero = Math.pow(Math.max(0, Math.sin(u * Math.PI * 2.2 + 0.4)), 3.2);
+    const sil = ridgeSilhouette(u, seed + opts.seedOff, opts.peakCount, 2.4);
+    // Dominant summits like alpine groom ref — still sit on continuous floor.
+    const hero = Math.pow(Math.max(0, Math.sin(u * Math.PI * 2.15 + 0.35)), 2.8);
+    const silNext = ridgeSilhouette(
+      Math.min(1, u + 1 / Math.max(1, acrossN - 1)),
+      seed + opts.seedOff,
+      opts.peakCount,
+      2.4
+    );
+    const rockBias = Math.abs(silNext - sil) * 5 + hero * 0.55;
 
     for (let d = 0; d < depthN; d++) {
       const du = d / Math.max(1, depthN - 1);
-      const ahead = du * opts.depth;
+      const ahead = dir * du * opts.depth;
       const wx = _sample.x + _right.x * lateral + _tan.x * ahead;
       const wz = _sample.z + _right.z * lateral + _tan.z * ahead;
-      const crest = Math.sin(Math.min(1, du * 1.15) * Math.PI);
-      const y =
-        _sample.y +
-        35 +
-        opts.peakHeight * (sil * 0.7 + hero * 0.55) * (0.4 + 0.6 * crest) +
-        (fbm(wx * 0.01, wz * 0.01, seed + 77, 3) - 0.5) * opts.peakHeight * 0.1;
+      const crest = Math.sin(Math.min(1, du * 1.12) * Math.PI);
+      const back = du > 0.6 ? (du - 0.6) / 0.4 : 0;
+      const profile = sil * 0.72 + hero * 0.48;
+      const rise =
+        opts.baseRise * (0.55 + 0.45 * (1 - du * 0.35)) +
+        opts.peakHeight * profile * (0.28 + 0.72 * crest) -
+        back * back * opts.peakHeight * 0.2 +
+        (fbm(wx * 0.01, wz * 0.01, seed + 77, 3) - 0.5) * opts.peakHeight * 0.08;
 
-      positions.push(wx, y, wz);
-      const mist = 0.12 + du * 0.18;
-      colors.push(cr * (1 - mist) + 0.58 * mist, cg * (1 - mist) + 0.66 * mist, cb * (1 - mist) + 0.78 * mist);
+      positions.push(wx, _sample.y + rise, wz);
+      const mist = opts.mistBias + du * 0.18;
+      paintAlpineVert(colors, rise, opts.peakHeight, crest, mist, rockBias * (0.4 + crest));
     }
   }
 
@@ -375,7 +516,8 @@ function buildHorizonPeakWall(
       const b = a + 1;
       const c = a + depthN;
       const e = c + 1;
-      indices.push(a, b, c, b, e, c);
+      if (dir > 0) indices.push(a, b, c, b, e, c);
+      else indices.push(a, c, b, b, c, e);
     }
   }
 
@@ -387,13 +529,13 @@ function buildHorizonPeakWall(
 
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: 0.98,
+    roughness: 0.97,
     metalness: 0.01,
     flatShading: false,
   });
 
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = 'backdrop-horizon-peaks';
+  mesh.name = `backdrop-${opts.name}`;
   mesh.receiveShadow = true;
   mesh.castShadow = false;
   return mesh;
@@ -500,25 +642,25 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       if (apronNorm > 0) {
         const shelf = Math.sin(Math.min(1, apronNorm) * Math.PI);
         y -= shelf * (2.8 + shelfNoise * 2.2) * (0.55 + profile.roughness * 0.5) * reliefScale;
-        // Rise into foothills toward apron edge — joins visual backdrop mass.
-        y += apronNorm * apronNorm * 28 * (0.45 + profile.roughness * 0.55) * reliefScale;
-        y += shelfNoise * 4.2 * apronNorm * reliefScale;
+        // Rise into foothills toward apron edge — joins visual backdrop mass (~48m at lip).
+        y += apronNorm * apronNorm * 42 * (0.5 + profile.roughness * 0.5) * reliefScale;
+        y += shelfNoise * 5.5 * apronNorm * reliefScale;
         // Mid-apron ridgelines break the flat powder sheet.
-        if (apronNorm > 0.28) {
-          const ridgeU = (apronNorm - 0.28) / 0.72;
+        if (apronNorm > 0.22) {
+          const ridgeU = (apronNorm - 0.22) / 0.78;
           y +=
-            Math.pow(ridgeU, 1.35) *
+            Math.pow(ridgeU, 1.25) *
             flankRidge *
-            26 *
+            32 *
             (0.55 + profile.roughness * 0.6) *
             reliefScale;
         }
       }
 
-      // Catch berm / foothill lip at the absolute mesh border.
-      if (meshDistNorm > 0.82) {
-        const lip = meshDistNorm - 0.82;
-        y += lip * lip * 85 * (0.75 + profile.roughness * 0.4) * reliefScale;
+      // Catch berm / foothill lip — grounds backdrop skirts (no clear-color void at apron).
+      if (meshDistNorm > 0.72) {
+        const lip = meshDistNorm - 0.72;
+        y += lip * lip * 145 * (0.8 + profile.roughness * 0.35) * reliefScale;
       }
 
       // Halfpipe depression (race corridor features only).

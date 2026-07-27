@@ -113,7 +113,10 @@ export interface TerrainProfile {
     enabled?: boolean;
     /** Far-layer peak rise above path Y, metres. */
     peakHeight?: number;
-    /** Near foothill offset beyond apron edge, metres. */
+    /**
+     * Inner foothill offset beyond apron edge, metres.
+     * Prefer 0 (or small) so skirts overlap the apron lip — avoids floating peaks.
+     */
     nearOffset?: number;
     /** Far ridgeline offset beyond apron edge, metres. */
     farOffset?: number;
