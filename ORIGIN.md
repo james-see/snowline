@@ -21,6 +21,7 @@ Third-party **game** screenshots are not committed. Fetch local critic refs with
 5. **Scope:** Alpine Flow slice → Timberline + Summit Drop + modes.
 6. **Engine:** `GameModule` + EventBus + 120 Hz sim + `window.__snowline`.
 7. **Physics:** Arcade kinematic board + multi-ray sensing; Rapier for world solidity.
+8. **Snow volume:** Smooth groomed race PATH (no mesh moguls). Volume via corduroy normals, cheap POM, wrap SSS, and anisotropic sparkles on MeshPhysicalMaterial (`onBeforeCompile`). Poly Haven `snow_floor` → `snow_groom` with procedural corduroy bake.
 
 ## Critic lessons
 

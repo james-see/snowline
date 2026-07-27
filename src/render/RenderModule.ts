@@ -88,6 +88,7 @@ export class RenderModule implements GameModule {
     if (!rider) return;
 
     const p = rider.state.position;
+    this.#materials?.setBoardContact(p);
     this.#sun.target.position.set(p.x, p.y, p.z);
     // Keep the light within the shadow camera far plane (prior bug: offset ~275m vs far ~140).
     this.#sun.position.set(

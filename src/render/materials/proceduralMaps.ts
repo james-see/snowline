@@ -231,15 +231,14 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
       if (pal.corduroy > 0) {
         // Soft groomed ridges along V — multi-freq + macro wander kills wallpaper.
         cord = corduroyWave(v + nMacro * 0.045, nMacro);
-        const w = Math.min(0.78, 0.54 * pal.corduroy);
+        const w = Math.min(0.72, 0.5 * pal.corduroy);
         h = h * (1 - w) + cord * w;
       }
 
       if (isPowder) {
-        // Broad wind ripples + soft mound noise — powder volume, not flat fill.
+        // Wind ripples + micro height for POM — shader supplies pillowy volume.
         const rip = Math.sin(u * Math.PI * 6 + nMacro * 2.4) * 0.5 + 0.5;
-        const mound = fbm(u * 5.5, v * 5.5, seed + 23, 4);
-        h = h * 0.78 + rip * 0.14 + mound * 0.1 + nMacro * 0.05 + nMicro * 0.04;
+        h = h * 0.84 + rip * 0.12 + nMacro * 0.05 + nMicro * 0.05;
       }
 
       height[y * size + x] = h;
@@ -338,19 +337,20 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
       orm[i] = Math.floor(ao * 255);
       orm[i + 1] = Math.floor(rough * 255);
       orm[i + 2] = Math.floor(metal * 255);
-      orm[i + 3] = 255;
+      // A = height for cheap POM (DataTexture; JPEG CC0 ORM has no alpha).
+      orm[i + 3] = Math.floor(Math.min(1, Math.max(0, h)) * 255);
     }
   }
 
-  // Sobel → tangent-space normal from height (groom grooves + powder micro-bumps).
+  // Sobel → tangent-space normal (soft corduroy + powder micro for POM/SSS).
   const strength = id.startsWith('ice_')
     ? 1.8
     : id.startsWith('rock_')
       ? 2.4
       : isGroom
-        ? 3.15
+        ? 2.65
         : isPowder
-          ? 2.25
+          ? 2.4
           : 2.85;
   writeNormalsFromHeight(height, normal, size, strength);
 
@@ -532,11 +532,11 @@ export function bakeCorduroyGroom(
       orm[i] = Math.floor(Math.min(1, Math.max(0.28, ao)) * 255);
       orm[i + 1] = Math.floor(Math.min(0.95, Math.max(0.18, rough)) * 255);
       orm[i + 2] = Math.floor(Math.min(0.2, metal) * 255);
-      orm[i + 3] = 255;
+      orm[i + 3] = Math.floor(Math.min(1, Math.max(0, h)) * 255);
     }
   }
 
-  writeNormalsFromHeight(height, normal, size, 2.75 * strength);
+  writeNormalsFromHeight(height, normal, size, 2.35 * strength);
 
   const albedoTex = toDataTex(albedo, size, true);
   const normalTex = toDataTex(normal, size, false);
