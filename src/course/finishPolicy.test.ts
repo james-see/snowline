@@ -9,7 +9,7 @@ describe('shouldCompleteRun', () => {
     pathT: 0.5,
     finishT: 0.97,
     distanceToFinish: 0,
-    finishRadius: 45,
+    finishRadius: 80,
   };
 
   it('does not finish mid-course', () => {
@@ -23,35 +23,34 @@ describe('shouldCompleteRun', () => {
     );
   });
 
-  it('finishes when near the arch past approachT', () => {
+  it('finishes when pathT crosses finish.t even far from arch (void / overshoot)', () => {
     assert.equal(
-      shouldCompleteRun({ ...base, pathT: 0.97, distanceToFinish: 5 }),
+      shouldCompleteRun({ ...base, pathT: 0.97, distanceToFinish: 60 }),
       true
     );
     assert.equal(
-      shouldCompleteRun({ ...base, pathT: 0.94, distanceToFinish: 12 }),
+      shouldCompleteRun({ ...base, pathT: 1, distanceToFinish: 120 }),
       true
     );
   });
 
-  it('finishes on pathT past finish even with large bogus spline lateral (via radius)', () => {
-    // Terrain/spline Y divergence used to inflate lateral and block completion.
+  it('finishes in approach plaza before finish.t when close enough', () => {
     assert.equal(
-      shouldCompleteRun({ ...base, pathT: 0.99, distanceToFinish: 20 }),
+      shouldCompleteRun({ ...base, pathT: 0.94, distanceToFinish: 50, approachT: 0.89 }),
       true
+    );
+  });
+
+  it('does not finish in approach band when still far from arch', () => {
+    assert.equal(
+      shouldCompleteRun({ ...base, pathT: 0.94, distanceToFinish: 200, approachT: 0.89 }),
+      false
     );
   });
 
   it('does not finish near arch when still early on the path', () => {
     assert.equal(
       shouldCompleteRun({ ...base, pathT: 0.5, distanceToFinish: 5 }),
-      false
-    );
-  });
-
-  it('does not finish past finish.t when far from the arch', () => {
-    assert.equal(
-      shouldCompleteRun({ ...base, pathT: 0.99, distanceToFinish: 80 }),
       false
     );
   });
