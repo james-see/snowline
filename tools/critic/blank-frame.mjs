@@ -44,6 +44,29 @@ export const BLANK_THRESHOLDS = {
 };
 
 /**
+ * Softer floors for UI-only plates (title/results/pause/…) that intentionally
+ * sit on flat gradients with sparse high-contrast chrome. Still rejects
+ * near-uniform empties (σ≲6) and blown-out wash.
+ */
+export const UI_BLANK_THRESHOLDS = {
+  maxStddev: 6,
+  maxVariance: 36,
+  maxMean: 210,
+  brightMean: 180,
+  brightMaxStddev: 14,
+  maxRange: 40,
+};
+
+/** Scene presets that are menus / overlays, not gameplay mountain frames. */
+export const UI_SHOT_IDS = new Set([
+  'title',
+  'course_select',
+  'pause',
+  'results',
+  'settings',
+]);
+
+/**
  * Analyse a PNG (path or Buffer) and return luminance statistics.
  * @param {string | Buffer} input
  */

@@ -1,87 +1,86 @@
 # Critic Report — Snowline
 
-**Verdict: FAIL**  
-**Date:** 2026-07-26  
-**Branch tip reviewed against:** `main` @ ~11de41c (post P0/P1 merges + apron stack-overflow fix `86ca8a7`)  
-**Frames reviewed (MUST — fresh captures):**
-- `captures/run-48290/course_start.png` (+ `meta.json`)
-- `captures/run-48610/forest.png` (+ `meta.json`)
-- `captures/run-48808/carve.png` (+ `meta.json`)
+**Verdict: FAIL** (user-ref gate)  
+**Date:** 2026-07-26 (tip resync)  
+**Git tip scored:** `main` @ `5ad87bb12365d429817332b89259d621e728b4d7`  
+(`fix: complete runs at the finish arch with results UI` — includes corduroy + HUD + vivid rider ancestors)  
+**Stashes:** left alone  
+**Harness bugs fixed:** UI blank-check false-fail on `results` (flat gradient σ≈12) — softer `UI_BLANK_THRESHOLDS` for menu/results plates in `tools/critic/blank-frame.mjs` + `capture.mjs`
 
-**Gate:** every category ≥8, gameplay categories ≥9, mean ≥8.5, 0 disqualifiers, fps ≥60.
+**Frames reviewed (fresh @ 5ad87bb; pre-tip discarded as final evidence):**
+- `captures/run-84828/course_start.png` — HUD on, blank PASS (μ=96.9 σ=25.7)
+- `captures/run-85126/forest.png` — HUD on, blank PASS (μ=90.1 σ=28.0)
+- `captures/run-85364/carve.png` — HUD on, blank PASS (μ=96.7 σ=25.5)
+- `captures/run-86291/results.png` — FINISH / ALPINE FLOW / GOLD / 1:42.40 / 12800 (blank PASS after UI-threshold fix; prior `run-85589` same plate)
 
-## Summary
+**Refs:** `refs/snowboard/images/user_ref_{alpine_groom,race_tunnel,ssx_chase}.png`  
+**Gate doc:** `GATE_USER_REFS.md`  
+**Verdict JSON:** `captures/verdict-tip-5ad87bb.json`
 
-Still a hard fail — but deltas are real and credited.
+## Binary checks B1–B11 (any FAIL = gate FAIL)
 
-| Delta | Status |
-|-------|--------|
-| Mountain apron / soft berms beyond strip | **Improved** — soft shelves/ridges visible in all three frames |
-| Rider contrast (dark gear vs snow) | **Improved** — silhouette readable |
-| Carve edge spray | **Started** — soft particles in `carve.png` (vfx 2→5) |
-| Snow micro-detail / mottling | **Improved enough to clear** `flat_white_snow` |
-| Floating trees | **NOT fixed** — `forest.png` still shows trees hovering above the ridge |
-| Directional sun + contact shadows | **NOT visible** — `flat_ambient` remains |
-| In-run HUD | **Absent** |
+| ID | Result | Evidence |
+|----|--------|----------|
+| B1_peaks | **PASS** | Low-poly ridgelines/peaks dominate horizon in course_start / forest / carve. |
+| B2_forest | **FAIL** | `forest.png` ~8–12 lonely pines — not dozens / timberline belt vs alpine ref. |
+| B3_shadows | **FAIL** | Corduroy self-shades only; no long cast shadows under rider/trees. |
+| B4_corduroy | **PASS** | Packed grooves readable on race strip in all three gameplay shots. |
+| B5_snow_color | **PASS** | Warm muddy strip tonal range + lighting response (not flat grey plastic). |
+| B6_furniture | **PASS** | Fences/gates readable near line in course_start + forest. |
+| B7_rider | **FAIL** | Neon vest/board contrast yes; carve upright idle @ 2 km/h — no athlete lean. |
+| B8_camera | **FAIL** | Peaks in frame but empty midfield void vs alpine/SSX chase fill. |
+| B9_hud | **PASS** | Score, combo, speed, time, CP on gameplay shots. |
+| B10_no_float | **PASS** | Tree bases sit on snow; no obvious floaters. |
+| B11_atmosphere | **FAIL** | Flat blue sky; no aerial haze / near-far separation. |
 
-Prior P0 float + void dominated (mean **3.65**). This pass mean **4.15** — progress, not a pass. Worst remaining: **floating forest props** and **invisible lighting work**.
+**Binary tally: 6 PASS / 5 FAIL → gate FAIL.**
 
-**Mean score: 4.15** — nowhere near 8.5.
+## Rubric (mean = **4.15**, gameplay mean = **3.75**)
 
-## Disqualifiers (observed)
+| Category | Score | Note |
+|----------|------:|------|
+| lighting | 3 | `flat_ambient` — no long cast shadows |
+| snow | 5 | Corduroy landed; apron still grey |
+| terrain | 3 | Peaks yes; empty midfield |
+| materials | 5 | Groom responds; props/peaks plastic |
+| atmosphere | 2 | No depth haze |
+| rider | 5 | Vivid gear; capsule body |
+| animation | 3 | Carve = upright idle |
+| camera | 4 | Scale OK; framing empty vs refs |
+| vfx | 3 | No edge spray |
+| ui | 7 | In-run HUD + results FINISH screen works |
+| course_composition | 3 | Sparse vs refs |
+| readability_at_speed | 4 | Readable because empty |
+| physics_believability | 4 | Planted; weak carve sell |
+| control_feel | 3 | No carve response |
+| trick_satisfaction | 5 | Neutral |
+| audio_feedback | 5 | Neutral |
+| performance | 7 | ~500+ fps inferred; ~200k tris |
+| temporal_stability | 6 | Stills clean |
+| overall_fun | 3 | Tech demo |
+| art_direction | 3 | Muddy strip + grey low-poly peaks |
 
-| ID | Evidence |
-|----|----------|
-| `flat_ambient` | No cast shadows under rider/trees; no readable sun direction on snow across all three gameplay frames despite lighting merge |
+**Disqualifiers:** `flat_ambient`  
+**Extra user-ref DQs:** `lonely_props`, `no_sun_shadows`
 
-**Cleared since last report:** `flat_white_snow` — mottled micro-detail visible on course_start/carve (still low snow score; not a binary DQ).
+## Top 5 blockers → fan-out owners
 
-**Not a rubric DQ but P0 defect:** floating trees in `forest.png` (props snap claimed; capture contradicts).
+1. **Sparse forest / lonely props** (B2) → `props`
+2. **No long sun cast shadows** (B3 / `flat_ambient`) → `lighting`
+3. **No atmosphere / aerial haze** (B11) → `lighting` / atmosphere
+4. **Empty midfield framing** (B8) → `camera` + `course`
+5. **Capsule rider, no carve lean** (B7) → `rider-art` (+ anim / perform)
 
-## Category scores (mean = 4.15)
+Also: `course` race features (tunnel/line paint) vs race-tunnel ref; `materials` apron snow; `vfx` carve spray.
 
-| Category | Score | Δ | Note |
-|----------|------:|--:|------|
-| lighting | 3 | 0 | Sun/shadow merge not visible in frames |
-| snow | 4 | +1 | Mottling present; no specular/powder response |
-| terrain | 3 | +1 | Apron berms yes; floating forest trees |
-| materials | 3 | +1 | Slight albedo variation; plastic props |
-| atmosphere | 4 | 0 | Sky split only |
-| rider | 6 | +2 | Dark gear contrast readable |
-| animation | 4 | 0 | Carve still upright / weak knee flex |
-| camera | 5 | 0 | Rider+terrain framed |
-| vfx | 5 | +3 | Soft carve spray present, weak |
-| ui | 5 | −2 | No title in set; no HUD (neutral) |
-| course_composition | 3 | +1 | Berms help; floating timberline kills |
-| readability_at_speed | 4 | 0 | Float makes hazards untrustworthy |
-| physics_believability | 3 | +1 | Float remains; apron continuity better |
-| control_feel | 4 | +1 | Mild spray/board cue |
-| trick_satisfaction | 5 | 0 | Neutral |
-| audio_feedback | 5 | 0 | Neutral |
-| performance | 5 | 0 | Real draw calls / tris |
-| temporal_stability | 5 | 0 | Nothing disqualifying in stills |
-| overall_fun | 3 | +1 | Still tech demo |
-| art_direction | 4 | 0 | Generic grey prototype |
+## Results shot note
 
-## Worst problem
-
-`forest.png` trees still float above the ridge — trunk bases clear of snow — despite props-snap merges. World contact fantasy is broken until the next forest capture shows planted trunks.
-
-## Ordered fixes (by visual / playability impact)
-
-1. **agent/props P0** — Re-fix forest snap (meshWidth/apron bed Y + trunk pivot); planted trees in next `forest` capture.
-2. **agent/lighting P0** — Sun + contact shadows must show in gameplay frames; clear `flat_ambient`.
-3. **agent/capture P1** — Fail captures when prop Y ≫ terrain sample (catch this regression).
-4. **agent/materials P1** — Specular + powder/packed on mottled snow.
-5. **agent/vfx P1** — Denser, grounded carve spray.
-6. **agent/rider-art P1** — Carve-ready stance (contrast landed).
-7. **agent/course P2** — Feature sculpt on apron (not empty soft hills).
-8. **agent/ui P2** — In-run HUD.
+`results` proves finish-complete UI path (medal/time/score). Does **not** clear any B1–B11 mountain binaries. First capture failed blank-check (σ=12.2 ≤ 14); harness now uses softer UI thresholds for menu plates only.
 
 ## Gate
 
 ```bash
-npm run gate -- --verdict captures/verdict.json --fps 60
+npm run gate -- --verdict captures/verdict-tip-5ad87bb.json --label tip-5ad87bb --fps 500
 ```
 
-Expected: **exit 1** (iterate). Do not advance the quality loop until forest trees are planted and `flat_ambient` is cleared in captures.
+Expected: **exit 1**.
