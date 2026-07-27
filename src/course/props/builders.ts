@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { mats } from '@/course/props/materials.ts';
 import { cloneTreePrototype } from '@/course/props/treePrototypes.ts';
+import {
+  buildFoliageCardGeometry,
+  buildLayeredCanopyShells,
+} from '@/course/props/foliageCanopy.ts';
 
 function shadow(mesh: THREE.Mesh): THREE.Mesh {
   mesh.castShadow = true;
@@ -53,24 +57,27 @@ export function buildProceduralTree(variant: number): THREE.Group {
   g.add(trunk);
 
   const canopyMat = mats.canopy[variant % mats.canopy.length]!;
-  // Overlapping soft cones — denser radial segments kill Minecraft pyramid read.
-  const tiers = [
-    { y: trunkH + 0.15, r: 2.85, h: 2.75, seg: 14 },
-    { y: trunkH + 1.2, r: 2.25, h: 2.35, seg: 14 },
-    { y: trunkH + 2.15, r: 1.65, h: 2.05, seg: 12 },
-    { y: trunkH + 2.95, r: 1.05, h: 1.55, seg: 12 },
-    { y: trunkH + 3.55, r: 0.55, h: 1.05, seg: 10 },
-  ];
-  for (let i = 0; i < tiers.length; i++) {
-    const tier = tiers[i]!;
-    const yaw = (variant * 0.37 + i * 0.51) % (Math.PI * 2);
-    const cone = shadow(
-      new THREE.Mesh(new THREE.ConeGeometry(tier.r, tier.h, tier.seg), canopyMat)
-    );
-    cone.position.set(Math.sin(yaw) * 0.08, tier.y, Math.cos(yaw) * 0.08);
-    cone.rotation.y = yaw;
-    g.add(cone);
-  }
+  const cardMat = mats.canopyCard[variant % mats.canopyCard.length]!;
+  const volume = {
+    minY: trunkH + 0.05,
+    maxY: trunkH + 4.15,
+    radius: 2.75 + (variant % 3) * 0.12,
+    centerX: 0,
+    centerZ: 0,
+  };
+
+  // Dense layered shells + alpha needle cards (same recipe as Kenney path).
+  const shells = shadow(new THREE.Mesh(buildLayeredCanopyShells(volume, variant), canopyMat));
+  shells.name = `leafs-shell-${variant}`;
+  g.add(shells);
+  const cards = shadow(
+    new THREE.Mesh(
+      buildFoliageCardGeometry({ ...volume, radius: volume.radius * 1.06 }, variant),
+      cardMat
+    )
+  );
+  cards.name = `leafs-cards-${variant}`;
+  g.add(cards);
 
   const snow = shadow(new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.65, 10), mats.snowCap));
   snow.position.y = trunkH + 4.05;

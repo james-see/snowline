@@ -141,7 +141,7 @@
       "variant": 0,
       "scale": 5.5,
       "source": {
-        "name": "tree_pine_0",
+        "name": "tree_pineTallB_detailed",
         "author": "Kenney",
         "license": "CC0-1.0",
         "url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip"
@@ -154,7 +154,7 @@
       "variant": 1,
       "scale": 5.5,
       "source": {
-        "name": "tree_pine_1",
+        "name": "tree_pineTallC_detailed",
         "author": "Kenney",
         "license": "CC0-1.0",
         "url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip"
@@ -167,7 +167,7 @@
       "variant": 2,
       "scale": 5.5,
       "source": {
-        "name": "tree_pine_2",
+        "name": "tree_pineTallD_detailed",
         "author": "Kenney",
         "license": "CC0-1.0",
         "url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip"

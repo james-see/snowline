@@ -60,9 +60,10 @@ public/basis/                        Basis Universal transcoder, copied from thr
 
 ### Trees
 
-Kenney `tree_pineDefaultA` / `TallA` / `RoundA` → GLB via `obj2gltf` (devDependency).
+Kenney `tree_pineTall{B,C,D}_detailed` → GLB via `obj2gltf` (devDependency).
 Runtime scale ×5.5. `Resources.preload` loads `manifest.models`; `buildTree` uses them
-for instancing (bark + leafs → separate `InstancedMesh`es), falling back to procedural cones.
+for instancing (bark + layered shells + needle cards → separate `InstancedMesh`es),
+falling back to procedural layered canopies.
 
 ### ORM packing
 

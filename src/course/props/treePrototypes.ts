@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mats } from '@/course/props/materials.ts';
+import {
+  buildFoliageCardGeometry,
+  buildLayeredCanopyShells,
+  canopyVolumeFromGeometries,
+} from '@/course/props/foliageCanopy.ts';
 
 export interface TreeModelManifestEntry {
   id: string;
@@ -95,6 +100,7 @@ function flattenTreeGroup(scene: THREE.Object3D, variant: number, scale: number)
   g.userData.authoredTree = true;
 
   const canopyMat = mats.canopy[variant % mats.canopy.length]!;
+  const cardMat = mats.canopyCard[variant % mats.canopyCard.length]!;
   const barkMat = variant % 2 === 0 ? mats.trunk : mats.trunkDark;
 
   scene.updateMatrixWorld(true);
@@ -156,14 +162,41 @@ function flattenTreeGroup(scene: THREE.Object3D, variant: number, scale: number)
     g.add(trunk);
   }
 
+  const volume = canopyVolumeFromGeometries(canopyGeos);
+
+  // Soft layered shells — denser needle mass than raw Kenney facets alone.
+  const shells = buildLayeredCanopyShells(volume, variant);
+  const shellMesh = new THREE.Mesh(shells, canopyMat);
+  shellMesh.name = `leafs-shell-${variant}`;
+  shellMesh.castShadow = true;
+  shellMesh.receiveShadow = true;
+  g.add(shellMesh);
+
+  // Keep a shrunk Kenney canopy as inner fill (cheap density).
   for (let i = 0; i < canopyGeos.length; i++) {
     const baked = canopyGeos[i]!;
+    shrinkCanopyTowardAxis(baked, volume, 0.82);
     const part = new THREE.Mesh(baked, canopyMat);
-    part.name = `leafs-${variant}`;
+    part.name = `leafs-core-${variant}`;
     part.castShadow = true;
     part.receiveShadow = true;
     g.add(part);
   }
+
+  // Alpha needle cards — outer silhouette + gaps so forest belts stay playable.
+  const cards = buildFoliageCardGeometry(
+    {
+      ...volume,
+      radius: volume.radius * 1.08,
+      minY: volume.minY + (volume.maxY - volume.minY) * 0.04,
+    },
+    variant
+  );
+  const cardMesh = new THREE.Mesh(cards, cardMat);
+  cardMesh.name = `leafs-cards-${variant}`;
+  cardMesh.castShadow = true;
+  cardMesh.receiveShadow = true;
+  g.add(cardMesh);
 
   return g;
 }
@@ -188,6 +221,29 @@ function softenCanopyGeometry(geo: THREE.BufferGeometry, variant: number): void 
   pos.needsUpdate = true;
   geo.computeVertexNormals();
   ensureUv2(geo);
+}
+
+/** Pull Kenney core inward so layered shells + cards own the silhouette. */
+function shrinkCanopyTowardAxis(
+  geo: THREE.BufferGeometry,
+  volume: { centerX: number; centerZ: number },
+  factor: number
+): void {
+  const pos = geo.getAttribute('position');
+  if (!pos) return;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    pos.setXYZ(
+      i,
+      volume.centerX + (x - volume.centerX) * factor,
+      y,
+      volume.centerZ + (z - volume.centerZ) * factor
+    );
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
 }
 
 function ensureUv2(geo: THREE.BufferGeometry): void {

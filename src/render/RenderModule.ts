@@ -5,6 +5,7 @@ import type { CourseModule } from '@/course/CourseModule.ts';
 import type { MaterialLibrary } from '@/render/materials/index.ts';
 import { resolveLodBudgets } from '@/engine/Lod.ts';
 import { makeSkyGradientTexture } from '@/render/skyGradient.ts';
+import { tickCanopyWind } from '@/course/props/materials.ts';
 
 /** Late-afternoon key — warm amber, bright enough for alpine groom (not muddy). */
 const SUN_COLOR = 0xffd090;
@@ -84,6 +85,9 @@ export class RenderModule implements GameModule {
   }
 
   update(_dt: number, ctx: EngineContext): void {
+    // Lite canopy sway — visual props only (no physics).
+    tickCanopyWind(performance.now() * 0.001);
+
     const rider = ctx.getModule<RiderModule>('rider');
     if (!rider) return;
 

@@ -1,15 +1,55 @@
 import * as THREE from 'three';
 import type { MaterialLibrary } from '@/render/materials/MaterialLibrary.ts';
+import {
+  disposeNeedleCardTextures,
+  getNeedleCardTextures,
+} from '@/course/props/foliageCanopy.ts';
+
+/** Alpine canopy tints — multiply over needle albedo for forest density read. */
+const CANOPY_TINTS = [0x1a4a2a, 0x245c34, 0x2f6840, 0x173d24] as const;
+
+function makeCanopyMat(tint: number): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({
+    color: tint,
+    roughness: 0.92,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    // Soft green sheen ≈ cheap subsurface on needle mass under alpine key.
+    sheen: 0.42,
+    sheenRoughness: 0.72,
+    sheenColor: new THREE.Color(0x6aab68),
+    emissive: new THREE.Color(0x0a1a0c),
+    emissiveIntensity: 0.12,
+    envMapIntensity: 0.32,
+    flatShading: false,
+  });
+}
+
+function makeCanopyCardMat(tint: number): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({
+    color: tint,
+    roughness: 0.9,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    sheen: 0.5,
+    sheenRoughness: 0.65,
+    sheenColor: new THREE.Color(0x7cbc70),
+    emissive: new THREE.Color(0x081408),
+    emissiveIntensity: 0.1,
+    envMapIntensity: 0.28,
+    alphaTest: 0.38,
+    depthWrite: true,
+    flatShading: false,
+  });
+}
 
 export const mats = {
   trunk: new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 }),
   trunkDark: new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.92 }),
-  canopy: [
-    new THREE.MeshStandardMaterial({ color: 0x1a4a2a, roughness: 0.96, side: THREE.DoubleSide }),
-    new THREE.MeshStandardMaterial({ color: 0x245c34, roughness: 0.94, side: THREE.DoubleSide }),
-    new THREE.MeshStandardMaterial({ color: 0x2f6840, roughness: 0.93, side: THREE.DoubleSide }),
-    new THREE.MeshStandardMaterial({ color: 0x173d24, roughness: 0.97, side: THREE.DoubleSide }),
-  ],
+  /** Soft volume fill (Kenney shells / layered cones). */
+  canopy: CANOPY_TINTS.map((t) => makeCanopyMat(t)),
+  /** Alpha-tested needle cards — outer silhouette + see-through gaps. */
+  canopyCard: CANOPY_TINTS.map((t) => makeCanopyCardMat(t)),
   snowCap: new THREE.MeshStandardMaterial({
     color: 0xf2f6fa,
     roughness: 0.88,
@@ -100,9 +140,6 @@ export const mats = {
   }),
 };
 
-/** Alpine canopy tints — multiply over needle albedo for forest density read. */
-const CANOPY_TINTS = [0x1a4a2a, 0x245c34, 0x2f6840, 0x173d24] as const;
-
 /**
  * Copy bark / plank / fabric / foliage PBR from MaterialLibrary onto shared course mats.
  * Call after `resources.preload()` has bound vendored CC0 sets.
@@ -133,23 +170,97 @@ export function bindAuthoredPropMaps(library: MaterialLibrary): void {
   mats.snowDeck.envMapIntensity = 0.9;
   mats.snowDeckShade.envMapIntensity = 0.55;
 
-  // Kenney leaf meshes + procedural cones share mats.canopy (instancing-safe).
+  const needles = getNeedleCardTextures();
+
+  // Volume canopies — Poly Haven needle litter + soft sheen.
   for (let i = 0; i < mats.canopy.length; i++) {
     const canopy = mats.canopy[i]!;
     copyMaps(foliage, canopy, CANOPY_TINTS[i % CANOPY_TINTS.length]!);
     canopy.side = THREE.DoubleSide;
-    canopy.roughness = 0.96;
+    canopy.roughness = 0.92;
     canopy.metalness = 0;
-    // Soft normals — Kenney facets read less cubic under alpine key light.
-    canopy.normalScale.set(0.28, 0.28);
-    canopy.envMapIntensity = 0.28;
+    canopy.normalScale.set(0.55, 0.55);
+    canopy.envMapIntensity = 0.32;
+    canopy.sheen = 0.42;
+    canopy.sheenRoughness = 0.72;
+    canopy.sheenColor.setHex(0x6aab68);
+    canopy.emissive.setHex(0x0a1a0c);
+    canopy.emissiveIntensity = 0.12;
     canopy.flatShading = false;
+  }
+
+  // Needle cards — frayed alpha silhouette; albedo prefers CC0 litter when present.
+  for (let i = 0; i < mats.canopyCard.length; i++) {
+    const card = mats.canopyCard[i]!;
+    const tint = CANOPY_TINTS[i % CANOPY_TINTS.length]!;
+    if (foliage.map) {
+      copyMaps(foliage, card, tint);
+      // Keep litter grain but punch with procedural needle alpha.
+      card.alphaMap = needles.alphaMap;
+    } else {
+      card.map = needles.map;
+      card.alphaMap = needles.alphaMap;
+      card.color.setHex(tint);
+    }
+    card.side = THREE.DoubleSide;
+    card.roughness = 0.9;
+    card.metalness = 0;
+    card.normalScale.set(0.4, 0.4);
+    card.envMapIntensity = 0.28;
+    card.alphaTest = 0.38;
+    card.depthWrite = true;
+    card.sheen = 0.5;
+    card.sheenRoughness = 0.65;
+    card.sheenColor.setHex(0x7cbc70);
+    card.emissive.setHex(0x081408);
+    card.emissiveIntensity = 0.1;
+    card.flatShading = false;
+    // Mild wind-lite sway — uniforms ticked from RenderModule.
+    attachCanopyWind(card, 0.045 + i * 0.004);
+    card.needsUpdate = true;
+  }
+
+  for (const canopy of mats.canopy) {
+    attachCanopyWind(canopy, 0.018);
   }
 }
 
+const canopyWindTime = { value: 0 };
+
+function attachCanopyWind(mat: THREE.MeshPhysicalMaterial, amount: number): void {
+  const key = `canopy-wind-${amount.toFixed(3)}`;
+  mat.customProgramCacheKey = () => key;
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.canopyWindTime = canopyWindTime;
+    shader.uniforms.canopyWindAmt = { value: amount };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        /* glsl */ `#include <common>
+uniform float canopyWindTime;
+uniform float canopyWindAmt;`
+      )
+      .replace(
+        '#include <begin_vertex>',
+        /* glsl */ `#include <begin_vertex>
+{
+  float h = max( transformed.y, 0.0 );
+  float w = canopyWindAmt * h * 0.12;
+  transformed.x += sin( canopyWindTime * 1.1 + transformed.z * 0.35 + h * 0.4 ) * w;
+  transformed.z += cos( canopyWindTime * 0.9 + transformed.x * 0.3 ) * w * 0.65;
+}`
+      );
+  };
+}
+
+/** Advance shared canopy wind phase (call once per frame). */
+export function tickCanopyWind(timeSec: number): void {
+  canopyWindTime.value = timeSec;
+}
+
 function copyMaps(
-  src: THREE.MeshStandardMaterial,
-  dest: THREE.MeshStandardMaterial,
+  src: THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial,
+  dest: THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial,
   tint: number
 ): void {
   if (!src.map) return;
@@ -167,6 +278,8 @@ function copyMaps(
 }
 
 export function disposeSharedMaterials(): void {
+  disposeNeedleCardTextures();
+  canopyWindTime.value = 0;
   for (const value of Object.values(mats)) {
     if (Array.isArray(value)) value.forEach((m) => m.dispose());
     else value.dispose();
