@@ -8,10 +8,11 @@
  */
 
 import * as THREE from 'three';
-import type { LandingGrade, LandingResult, RiderSpawn, SurfaceKind } from '@/types/gameplay.ts';
+import type { LandingResult, RiderSpawn, SurfaceKind } from '@/types/gameplay.ts';
 import type { RiderInput } from '@/types/input.ts';
 import type { PhysicsWorld, RigidBodyHandle } from '@/types/physics.ts';
 import { CollisionGroup } from '@/types/physics.ts';
+import { evaluateLanding, landingSpeedKeep } from './LandingEvaluator.ts';
 import {
   ACCEL,
   AIR,
@@ -27,6 +28,11 @@ import {
   SURFACE,
   VOID,
 } from './tuning.ts';
+
+export interface BoardPhysicsStepOptions {
+  /** When true, widen landing grade windows slightly (settings.landingAssist). */
+  landingAssist?: boolean;
+}
 
 export interface BoardTransform {
   readonly position: THREE.Vector3;
@@ -142,6 +148,8 @@ export class BoardPhysics {
   #noHitAirTime = 0;
   /** Remaining soft powder wallow while recovering from void, s. */
   #voidWallow = 0;
+  /** Landing-assist flag for the current fixed step. */
+  #landingAssist = false;
   #samples: GroundSample[] = Array.from({ length: rayStationCount() }, () => ({
     hit: false,
     distance: JUMP.rayLength,
@@ -216,7 +224,13 @@ export class BoardPhysics {
     return { position: outPosition, quaternion: outQuaternion };
   }
 
-  fixedUpdate(dt: number, input: RiderInput, physics: PhysicsWorld): RiderPhysicsFrameResult {
+  fixedUpdate(
+    dt: number,
+    input: RiderInput,
+    physics: PhysicsWorld,
+    options: BoardPhysicsStepOptions = {},
+  ): RiderPhysicsFrameResult {
+    this.#landingAssist = options.landingAssist === true;
     const result: RiderPhysicsFrameResult = {
       jumped: false,
       jumpImpulse: 0,
@@ -523,8 +537,11 @@ export class BoardPhysics {
 
     if (input.spinLeft) this.boardYaw += AIR.spinRate * dt;
     if (input.spinRight) this.boardYaw -= AIR.spinRate * dt;
-    if (input.flipFront) this.boardPitch = clamp(this.boardPitch + AIR.flipRate * dt, -AIR.maxPitch, AIR.maxPitch);
-    if (input.flipBack) this.boardPitch = clamp(this.boardPitch - AIR.flipRate * dt, -AIR.maxPitch, AIR.maxPitch);
+    // Accumulate pitch freely while committed so ≥360° flips can finish.
+    // Soft-clamp only at a multi-rotation ceiling (not mid-flip ~243°).
+    if (input.flipFront) this.boardPitch += AIR.flipRate * dt;
+    if (input.flipBack) this.boardPitch -= AIR.flipRate * dt;
+    this.boardPitch = clamp(this.boardPitch, -AIR.maxPitch, AIR.maxPitch);
 
     this.boardRoll = approach(this.boardRoll, this.edgeAngle * 0.85, AIR.edgeRollCarry * dt);
 
@@ -569,45 +586,35 @@ export class BoardPhysics {
   #resolveLanding(): LandingResult {
     this.#composeBoardUp(this.#boardUp);
     const alignment = clamp(this.#boardUp.dot(this.#groundNormal), -1, 1);
-    const impactSpeed = Math.max(0, -this.velocity.y);
-    let grade: LandingGrade = 'bail';
+    // Closing speed into the contact plane — not world -Y — so slope landings
+    // and big air share one consistent impact measure.
+    const impactSpeed = Math.max(0, -this.velocity.dot(this.#groundNormal));
+    const graded = evaluateLanding({
+      alignment,
+      impactSpeed,
+      speed: horizontalSpeed(this.velocity),
+      surface: this.surfaceKind,
+      assist: this.#landingAssist,
+    });
 
-    if (impactSpeed >= LANDING.hardImpact) {
-      grade = 'bail';
-    } else if (alignment >= LANDING.perfectAlign && impactSpeed <= LANDING.softImpact) {
-      grade = 'perfect';
-    } else if (alignment >= LANDING.goodAlign) {
-      grade = 'good';
-    } else if (alignment >= LANDING.sketchyAlign) {
-      grade = 'sketchy';
+    // Remove only the into-ground component, then scale planar speed by grade.
+    // (Old path zeroed world Y + capped at SPEED.max*keep, which hard-braked
+    // clean big landings on slopes and ignored actual carry speed.)
+    const intoGround = this.velocity.dot(this.#groundNormal);
+    if (intoGround < 0) {
+      this.velocity.addScaledVector(this.#groundNormal, -intoGround);
     }
+    const keep = landingSpeedKeep(graded.grade);
+    this.velocity.multiplyScalar(keep);
 
-    let keep: number = LANDING.bailSpeedKeep;
-    switch (grade) {
-      case 'perfect':
-        keep = LANDING.perfectSpeedKeep;
-        break;
-      case 'good':
-        keep = LANDING.goodSpeedKeep;
-        break;
-      case 'sketchy':
-        keep = LANDING.sketchySpeedKeep;
-        break;
-      case 'bail':
-        keep = LANDING.bailSpeedKeep;
-        break;
-    }
-
-    clampHorizontalSpeed(this.velocity, SPEED.max * keep);
-    this.velocity.y = 0;
     this.boardPitch = approach(this.boardPitch, 0, 8 * 0.016);
     this.boardRoll = approach(this.boardRoll, this.edgeAngle * 0.5, 8 * 0.016);
     this.#wasAirborne = false;
 
     return {
-      grade,
-      alignment,
-      impactSpeed,
+      grade: graded.grade,
+      alignment: graded.alignment,
+      impactSpeed: graded.impactSpeed,
       speed: horizontalSpeed(this.velocity),
       surface: this.surfaceKind,
     };

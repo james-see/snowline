@@ -102,12 +102,15 @@ export const JUMP = {
   boardHalfWidth: 0.14,
 } as const;
 
-/** Air rotation limits, rad/s. */
+/** Air rotation rates, rad/s. */
 export const AIR = {
   spinRate: 7.5,
   flipRate: 6.8,
-  /** Pitch clamp while inverted, radians from level. */
-  maxPitch: Math.PI * 1.35,
+  /**
+   * Soft ceiling on |boardPitch| while flipping (radians).
+   * Must allow ≥ one full rotation (2π); previously 1.35π stalled flips mid-air.
+   */
+  maxPitch: Math.PI * 6,
   /** Roll from edge carry into air, rad/s per rad of edge angle. */
   edgeRollCarry: 0.8,
   /** Align board slightly toward velocity while airborne. */
@@ -116,22 +119,33 @@ export const AIR = {
 
 /** Landing thresholds. */
 export const LANDING = {
-  /** Impact speed below this always counts as perfect alignment permitting. */
-  softImpact: 6,
-  /** Impact speed above this is a hard crash regardless of alignment. */
-  hardImpact: 18,
-  /** Alignment dot product above this is perfect. */
+  /**
+   * Closing speed (m/s into ground normal) that may still grade perfect when
+   * alignment is high. Sized for arcade big-air — soft knees, not bunny hops only.
+   */
+  softImpact: 11,
+  /**
+   * Closing speed that forces a bail even when upright. Below this, clean
+   * alignment can still ride out a firm landing without a hard crash stop.
+   */
+  hardImpact: 28,
+  /** Alignment dot product above this is perfect (with soft impact). */
   perfectAlign: 0.92,
   /** Alignment above this is good. */
   goodAlign: 0.78,
   /** Alignment above this is sketchy; below is bail. */
   sketchyAlign: 0.55,
-  /** Speed retained after a perfect landing, fraction in [0,1]. */
+  /**
+   * Board-up · ground-normal below this is inverted / on-edge — always bail.
+   * Prevents upside-down contacts from scoring as clean landings.
+   */
+  uprightMin: 0.25,
+  /** Speed retained after a perfect landing, fraction of planar speed in [0,1]. */
   perfectSpeedKeep: 0.98,
-  goodSpeedKeep: 0.9,
-  sketchySpeedKeep: 0.72,
+  goodSpeedKeep: 0.93,
+  sketchySpeedKeep: 0.68,
   /** Speed multiplier applied after a bail before crash state. */
-  bailSpeedKeep: 0.35,
+  bailSpeedKeep: 0.32,
 } as const;
 
 /** Crash and recovery. */

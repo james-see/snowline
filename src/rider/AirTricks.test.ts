@@ -65,23 +65,54 @@ describe('LandingEvaluator', () => {
   });
 
   it('assist widens the perfect window', () => {
+    const align = LANDING_THRESHOLDS.perfectAlign - LANDING_THRESHOLDS.assistAlignBonus * 0.5;
+    const impact = LANDING_THRESHOLDS.softImpact + 1;
     const harsh = evaluateLanding({
-      alignment: LANDING_THRESHOLDS.perfectAlign - 0.05,
-      impactSpeed: LANDING_THRESHOLDS.softImpact + 1,
+      alignment: align,
+      impactSpeed: impact,
       assist: false,
     });
     const soft = evaluateLanding({
-      alignment: LANDING_THRESHOLDS.perfectAlign - 0.05,
-      impactSpeed: LANDING_THRESHOLDS.softImpact + 1,
+      alignment: align,
+      impactSpeed: impact,
       assist: true,
     });
     assert.notEqual(harsh.grade, 'perfect');
     assert.equal(soft.grade, 'perfect');
   });
 
+  it('never grades upside-down / inverted contacts as perfect', () => {
+    assert.equal(
+      evaluateLanding({ alignment: -1, impactSpeed: 2, assist: true }).grade,
+      'bail',
+    );
+    assert.equal(
+      evaluateLanding({
+        alignment: LANDING_THRESHOLDS.uprightMin - 0.01,
+        impactSpeed: 3,
+        assist: false,
+      }).grade,
+      'bail',
+    );
+    assert.notEqual(
+      evaluateLanding({ alignment: -0.2, impactSpeed: 1, assist: true }).grade,
+      'perfect',
+    );
+  });
+
+  it('firm upright landings are good, not perfect', () => {
+    assert.equal(
+      evaluateLanding({
+        alignment: 1,
+        impactSpeed: LANDING_THRESHOLDS.softImpact + 3,
+      }).grade,
+      'good',
+    );
+  });
+
   it('exposes landing score multipliers', () => {
     assert.equal(landingScoreMultiplier('perfect'), 1.25);
-    assert.equal(landingScoreMultiplier('bail'), 0.25);
+    assert.equal(landingScoreMultiplier('bail'), 0);
   });
 });
 

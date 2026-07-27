@@ -2,8 +2,8 @@
  * Landing grade evaluation with documented thresholds.
  *
  * Grades: perfect → good → sketchy → bail.
- * Alignment is board-up · ground-normal (1 = flat base). Impact is downward
- * contact speed in m/s.
+ * Alignment is board-up · ground-normal (1 = flat base). Impact is closing
+ * speed into the ground normal in m/s.
  */
 
 import type { LandingGrade, LandingResult, SurfaceKind } from '@/types/gameplay.ts';
@@ -21,17 +21,19 @@ export const LANDING_THRESHOLDS = {
   goodAlign: LANDING.goodAlign,
   /** Alignment ≥ this → sketchy; below → bail. */
   sketchyAlign: LANDING.sketchyAlign,
-  /** Assist relaxes align/impact gates by this fraction of the gap. */
-  assistAlignBonus: 0.08,
-  assistImpactBonus: 3,
+  /** Alignment below this is inverted / edge — always bail. */
+  uprightMin: LANDING.uprightMin,
+  /** Assist relaxes align/impact gates slightly (not enough to perfect a slap). */
+  assistAlignBonus: 0.04,
+  assistImpactBonus: 2,
 } as const;
 
 export interface LandingEvalInput {
   /** Board-up · ground-normal, typically in [-1, 1]. */
   alignment: number;
-  /** Downward impact speed at contact, m/s. */
+  /** Closing impact speed at contact, m/s. */
   impactSpeed: number;
-  /** Horizontal speed retained after contact, m/s (pass-through). */
+  /** Horizontal/planar speed retained after contact, m/s (pass-through). */
   speed?: number;
   surface?: SurfaceKind;
   /** When true, widen perfect/good/sketchy windows slightly. */
@@ -43,16 +45,17 @@ export interface LandingEvalInput {
  *
  * | Grade    | Alignment (no assist) | Impact                          |
  * |----------|-----------------------|---------------------------------|
- * | perfect  | ≥ 0.92                | ≤ 6 m/s                         |
- * | good     | ≥ 0.78                | < 18 m/s                        |
- * | sketchy  | ≥ 0.55                | < 18 m/s                        |
- * | bail     | < 0.55 or hard impact | ≥ 18 m/s forces bail            |
+ * | perfect  | ≥ 0.92                | ≤ softImpact                    |
+ * | good     | ≥ 0.78                | < hardImpact                    |
+ * | sketchy  | ≥ 0.55                | < hardImpact                    |
+ * | bail     | < uprightMin / hard   | inverted, edge, or hard impact  |
  */
 export function evaluateLanding(input: LandingEvalInput): LandingResult {
   const assist = input.assist === true;
   const perfectAlign = LANDING_THRESHOLDS.perfectAlign - (assist ? LANDING_THRESHOLDS.assistAlignBonus : 0);
   const goodAlign = LANDING_THRESHOLDS.goodAlign - (assist ? LANDING_THRESHOLDS.assistAlignBonus : 0);
   const sketchyAlign = LANDING_THRESHOLDS.sketchyAlign - (assist ? LANDING_THRESHOLDS.assistAlignBonus : 0);
+  const uprightMin = LANDING_THRESHOLDS.uprightMin - (assist ? 0.04 : 0);
   const softImpact = LANDING_THRESHOLDS.softImpact + (assist ? LANDING_THRESHOLDS.assistImpactBonus : 0);
   const hardImpact = LANDING_THRESHOLDS.hardImpact + (assist ? LANDING_THRESHOLDS.assistImpactBonus : 0);
 
@@ -60,10 +63,14 @@ export function evaluateLanding(input: LandingEvalInput): LandingResult {
   const impactSpeed = Math.max(0, input.impactSpeed);
 
   let grade: LandingGrade = 'bail';
-  if (impactSpeed >= hardImpact) {
+  if (alignment < uprightMin || impactSpeed >= hardImpact) {
+    // Upside-down / rolled / spike impact — never perfect, always fail hard.
     grade = 'bail';
   } else if (alignment >= perfectAlign && impactSpeed <= softImpact) {
     grade = 'perfect';
+  } else if (alignment >= perfectAlign) {
+    // Upright but firm — clean ride-out, not a perfect sticker.
+    grade = 'good';
   } else if (alignment >= goodAlign) {
     grade = 'good';
   } else if (alignment >= sketchyAlign) {
@@ -87,13 +94,13 @@ export function landingScoreMultiplier(grade: LandingGrade): number {
     case 'good':
       return 1;
     case 'sketchy':
-      return 0.65;
+      return 0.55;
     case 'bail':
-      return 0.25;
+      return 0;
   }
 }
 
-/** Horizontal speed keep fraction after landing (physics apply separately). */
+/** Planar speed keep fraction after landing (physics apply separately). */
 export function landingSpeedKeep(grade: LandingGrade): number {
   switch (grade) {
     case 'perfect':

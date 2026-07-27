@@ -307,8 +307,64 @@ describe('BoardPhysics', () => {
     const bailAlign = landWith(1.35, -8);
     assert.equal(bailAlign.grade, 'bail');
 
+    const upsideDown = landWith(Math.PI, -4);
+    assert.equal(upsideDown.grade, 'bail');
+    assert.ok(upsideDown.alignment < LANDING.uprightMin);
+
     const bailImpact = landWith(0, -(LANDING.hardImpact + 1));
     assert.equal(bailImpact.grade, 'bail');
+  });
+
+  it('preserves speed on clean landings after bigger air', () => {
+    const physics = flatGroundPhysics(0);
+    const board = new BoardPhysics();
+    enterAir(board, physics, 3.5);
+    board.boardPitch = 0;
+    board.boardRoll = 0;
+    const carry = 22;
+    // Firm but under hardImpact — previously hard-braked / bailed clean air.
+    board.velocity.set(carry, -16, 0);
+    board.position.y = JUMP.rideHeight + 0.04;
+
+    let landed = null as ReturnType<BoardPhysics['fixedUpdate']>['landed'];
+    for (let i = 0; i < 12; i++) {
+      const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+      if (frame.landed) {
+        landed = frame.landed;
+        break;
+      }
+      board.position.y = JUMP.rideHeight + 0.02;
+      board.velocity.set(carry, -16, 0);
+      board.boardPitch = 0;
+    }
+    assert.ok(landed, 'expected a landing result');
+    assert.notEqual(landed.grade, 'bail');
+    assert.ok(
+      landed.grade === 'perfect' || landed.grade === 'good',
+      `expected clean grade, got ${landed.grade}`,
+    );
+    const speed = Math.hypot(board.velocity.x, board.velocity.z);
+    assert.ok(speed > carry * 0.85, `speed dump too hard: ${speed} from ${carry}`);
+    assert.equal(board.crashed, false);
+  });
+
+  it('allows a held flip to complete a full 360° rotation', () => {
+    const physics = flatGroundPhysics(0);
+    const board = new BoardPhysics();
+    enterAir(board, physics, 6);
+    board.velocity.set(8, 10, 0);
+    board.boardPitch = 0;
+
+    let peakPitch = 0;
+    for (let i = 0; i < 90; i++) {
+      board.fixedUpdate(1 / 60, idleInput({ flipFront: true }), physics);
+      peakPitch = Math.max(peakPitch, Math.abs(board.boardPitch));
+      if (board.grounded) break;
+    }
+    assert.ok(
+      peakPitch >= Math.PI * 2 - 0.05,
+      `flip stalled below 360°: ${(peakPitch * 180) / Math.PI}°`,
+    );
   });
 
   it('recovers from crash after recoveryTime', () => {

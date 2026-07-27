@@ -9,7 +9,6 @@ import { readRiderInput } from '@/types/input.ts';
 import { AirTricks } from './AirTricks.ts';
 import { BoardPhysics } from './BoardPhysics.ts';
 import { GrindSystem } from './GrindSystem.ts';
-import { evaluateLanding } from './LandingEvaluator.ts';
 import { RiderVisual } from './visual/RiderVisual.ts';
 
 const DEFAULT_SPAWN: RiderSpawn = {
@@ -114,7 +113,11 @@ export class RiderModule implements GameModule {
     if (ctx.input.lockedOut && !ctx.input.isDown('pause')) return;
 
     const input = readRiderInput(ctx.input);
-    const frame = this.board.fixedUpdate(dt, input, ctx.physics);
+    // Grade landings once in physics (same assist flag as HUD/score) so speed
+    // keep and "PERFECT" popups cannot diverge.
+    const frame = this.board.fixedUpdate(dt, input, ctx.physics, {
+      landingAssist: ctx.settings.landingAssist,
+    });
     const pose = { boardYaw: this.board.boardYaw, boardPitch: this.board.boardPitch };
 
     if (!this.#wasAirborne && this.board.airborne) {
@@ -132,18 +135,11 @@ export class RiderModule implements GameModule {
     }
 
     if (frame.landed) {
-      const graded = evaluateLanding({
-        alignment: frame.landed.alignment,
-        impactSpeed: frame.landed.impactSpeed,
-        speed: frame.landed.speed,
-        surface: frame.landed.surface,
-        assist: ctx.settings.landingAssist,
-      });
       ctx.events.emit('rider:landing', {
-        grade: graded.grade,
-        impact: graded.impactSpeed,
+        grade: frame.landed.grade,
+        impact: frame.landed.impactSpeed,
       });
-      const trick = this.tricks.resolveLanding(graded.grade);
+      const trick = this.tricks.resolveLanding(frame.landed.grade);
       if (trick) {
         ctx.events.emit('rider:trick', trick);
       } else {
