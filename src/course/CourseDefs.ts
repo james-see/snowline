@@ -45,7 +45,8 @@ export const ALPINE_FLOW: CourseDef = {
     roughness: 0.38,
     reliefScale: 1.25,
     // nearOffset 0 → foothill skirts overlap apron lip (no floating void gap).
-    backdrop: { peakHeight: 340, nearOffset: 0, farOffset: 260 },
+    // Tall peaks + near amphitheater bowl fill course_start midfield mass.
+    backdrop: { peakHeight: 420, nearOffset: 0, farOffset: 240 },
     altLines: [
       // Left powder shelf — soft channel that rejoins before Sun Bowl.
       { startT: 0.2, endT: 0.5, lateral: -28, width: 26, depth: 1.6 },
@@ -155,7 +156,7 @@ export const TIMBERLINE: CourseDef = {
     pitchDeg: 16.5,
     roughness: 0.78,
     reliefScale: 1.35,
-    backdrop: { peakHeight: 320, nearOffset: 0, farOffset: 230 },
+    backdrop: { peakHeight: 400, nearOffset: 0, farOffset: 220 },
     altLines: [
       // Glade shortcut — left channel after the tunnel, merges at cp4.
       { startT: 0.42, endT: 0.76, lateral: -12, width: 14, depth: 2.0 },
@@ -278,7 +279,7 @@ export const SUMMIT_DROP: CourseDef = {
     pitchDeg: 19,
     roughness: 0.74,
     reliefScale: 1.3,
-    backdrop: { peakHeight: 380, nearOffset: 0, farOffset: 280 },
+    backdrop: { peakHeight: 460, nearOffset: 0, farOffset: 260 },
     halfpipe: { startT: 0.52, endT: 0.7, depth: 5.2, width: 36 },
     canyon: { startT: 0.76, endT: 0.99, depth: 11 },
     altLines: [
