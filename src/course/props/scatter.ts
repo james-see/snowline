@@ -186,7 +186,7 @@ function scatterInsetFrustumTrees(
       rotationY: rng.range(0, Math.PI * 2),
       variant: rng.int(0, 3),
       scale,
-      recovery: true,
+      // Mid-corridor pines are ride hazards (light scrub) — not recovery pass-through.
     });
   }
 
@@ -248,7 +248,7 @@ function scatterAheadFrustumFill(
       variant: rng.int(0, 3),
       // Larger near-row rocks sell midfield mass in stills.
       scale: 1.15 + rng.range(0, 1.55) + (row <= 1 ? 0.55 : 0),
-      recovery: true,
+      // Solid Prop boxes — recovery:true would skip colliders and leave boulders ghostly.
     });
   }
 
@@ -392,6 +392,7 @@ function scatterForestBelt(
       : mid
         ? 1.9 + rng.range(0, 1.1) // 1.9–3.0
         : 1.35 + rng.range(0, 0.9); // 1.35–2.25 understory seal
+    // Far apron canopy stays ghost so deep powder bailouts stay fair; lip/mid scrub.
     const far = Math.abs(lateral) > raceHalf + 16;
 
     out.push({
@@ -402,7 +403,7 @@ function scatterForestBelt(
       // Mix Kenney variants for silhouette variety without thinning count.
       variant: rng.int(0, 3),
       scale,
-      recovery: far || courseId === 'alpine' || lip || mid,
+      recovery: far,
     });
   }
 

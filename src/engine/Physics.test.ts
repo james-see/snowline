@@ -3,6 +3,26 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { RapierPhysics } from './Physics.ts';
 import { CollisionGroup } from '@/types/physics.ts';
+import { registerPropsPhysics, tagPropRoot } from '@/course/props/physics.ts';
+import { BoardPhysics } from '@/rider/BoardPhysics.ts';
+import { HAZARD, JUMP } from '@/rider/tuning.ts';
+import type { PropPlacement } from '@/types/course.ts';
+import type { RiderInput } from '@/types/input.ts';
+
+const idleInput = (): RiderInput => ({
+  steer: 0,
+  lean: 0,
+  accelerate: false,
+  brake: false,
+  boost: false,
+  jump: false,
+  jumpPressed: false,
+  spinLeft: false,
+  spinRight: false,
+  flipFront: false,
+  flipBack: false,
+  grind: false,
+});
 
 describe('RapierPhysics sensors', () => {
   const physics = new RapierPhysics();
@@ -86,5 +106,88 @@ describe('RapierPhysics sensors', () => {
     assert.equal(hit.surface, 'rock');
     assert.ok(hit.distance > 0.5 && hit.distance < 3.5, `distance=${hit.distance}`);
     assert.ok(hit.normal.x < -0.5, 'normal should face the cast');
+  });
+});
+
+describe('prop hazard integration', () => {
+  const physics = new RapierPhysics();
+
+  before(async () => {
+    await physics.init(new THREE.Vector3(0, -28, 0));
+  });
+
+  after(() => {
+    physics.dispose();
+  });
+
+  it('registerPropsPhysics rock shapeCast hits and BoardPhysics scrubs', () => {
+    physics.clearWorld();
+
+    const verts = new Float32Array([-40, 0, -40, 40, 0, -40, 40, 0, 40, -40, 0, 40]);
+    const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+    physics.createTrimesh(verts, indices, new THREE.Vector3(0, 0, 0), 'packed', 'terrain');
+
+    const placement: PropPlacement = {
+      id: 'frustum-rock-alpine-0',
+      kind: 'rock',
+      position: [0, 0, 4],
+      scale: 1.5,
+      variant: 1,
+    };
+    const root = new THREE.Group();
+    const obj = new THREE.Group();
+    obj.position.set(...placement.position);
+    tagPropRoot(obj, placement);
+    root.add(obj);
+    registerPropsPhysics(physics, [placement], root);
+
+    // Finish sensor in the sweep path — must not steal the cast or relaunch.
+    physics.createStaticBox(
+      new THREE.Vector3(6, 3.5, 0.8),
+      new THREE.Vector3(0, 1.2, 2),
+      new THREE.Quaternion(),
+      'packed',
+      'finish',
+      true
+    );
+
+    for (let i = 0; i < 3; i++) {
+      physics.beginTick();
+      physics.step(1 / 60);
+    }
+
+    const cast = physics.shapeCast({
+      origin: new THREE.Vector3(0, HAZARD.castLift, 0),
+      direction: new THREE.Vector3(0, 0, 1),
+      maxDistance: 6,
+      radius: HAZARD.radius,
+      groups: CollisionGroup.Prop,
+      exclude: ['rider'],
+    });
+    assert.ok(cast, 'expected registered rock hit');
+    assert.equal(cast.actorId, 'frustum-rock-alpine-0');
+    assert.equal(cast.surface, 'rock');
+    assert.ok(cast.normal.y < HAZARD.rideableNormalY, 'side hit, not rideable top');
+
+    const board = new BoardPhysics();
+    board.attachBody(physics);
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(0, 0, 18);
+
+    let scrubbed = false;
+    let stunned = false;
+    for (let i = 0; i < 90; i++) {
+      physics.beginTick();
+      physics.step(1 / 60);
+      const before = board.velocity.length();
+      const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+      if (frame.crashReason === 'obstacle') stunned = true;
+      if (board.velocity.length() < before * 0.75) {
+        scrubbed = true;
+        break;
+      }
+    }
+    assert.ok(scrubbed, 'BoardPhysics must scrub speed on rock contact');
+    assert.ok(stunned, 'hard rock slap should stun at speed');
   });
 });

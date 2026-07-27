@@ -200,6 +200,15 @@ describe('expandCourseProps', () => {
 
     const rocks = props.filter((p) => p.kind === 'rock' && p.id.startsWith('frustum-rock-'));
     assert.ok(rocks.length >= 40, `expected forward-frustum rocks, got ${rocks.length}`);
+    // Ghost recovery flag was why cafda3d never scrubbed — keep rocks solid.
+    assert.ok(
+      rocks.every((r) => !r.recovery),
+      'frustum rocks must register Prop colliders (not recovery pass-through)'
+    );
+    assert.ok(
+      inset.every((t) => !t.recovery),
+      'inset frustum trees must light-scrub (not recovery pass-through)'
+    );
     let rockFrontMid = 0;
     for (const rock of rocks) {
       pos.set(...rock.position);

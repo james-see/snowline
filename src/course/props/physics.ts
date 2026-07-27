@@ -69,7 +69,9 @@ function registerSensorVolume(
 
 /**
  * Register solid colliders / trigger sensors for authored props.
- * Recovery-tagged props skip solid collision so bailout lines stay fair.
+ * Recovery-tagged props skip solid collision so deep bailout lines stay fair.
+ * Mid-corridor frustum rocks/trees must NOT be recovery — otherwise shapeCast
+ * never sees them and the kinematic board ghost-phases through scenery.
  */
 export function registerPropsPhysics(
   physics: PhysicsWorld,
@@ -203,11 +205,20 @@ export function registerPropsPhysics(
   }
 
   // Instanced trees: trunk boxes from placements (skip recovery).
+  // Scale with visual trunk — fixed 0.45 half-width missed large inset pines.
   for (const placement of placements) {
     if (placement.kind !== 'tree' || placement.recovery) continue;
+    const s =
+      typeof placement.scale === 'number'
+        ? placement.scale
+        : placement.scale
+          ? (placement.scale[0] + placement.scale[2]) * 0.5
+          : 1;
+    const trunkR = Math.max(0.55, 0.42 * s);
+    const trunkH = Math.max(1.9, 1.55 * s);
     physics.createStaticBox(
-      new THREE.Vector3(0.45, 2.1, 0.45),
-      new THREE.Vector3(...placement.position).add(new THREE.Vector3(0, 2.1, 0)),
+      new THREE.Vector3(trunkR, trunkH, trunkR),
+      new THREE.Vector3(...placement.position).add(new THREE.Vector3(0, trunkH, 0)),
       yawQuat(placement.rotationY ?? 0),
       placement.surface ?? 'wood',
       placement.id

@@ -182,11 +182,14 @@ describe('registerPropsPhysics', () => {
       id: 'belt-tree-alpine-1',
       kind: 'tree',
       position: [3, 5, 8],
+      scale: 2.4,
     };
     // Trees are instanced — physics registers from placements, not scene roots.
     registerPropsPhysics(physics, [placement], new THREE.Group());
     assert.equal(physics.boxes.length, 1);
     assert.equal(physics.boxes[0]!.actorId, 'belt-tree-alpine-1');
     assert.equal(physics.boxes[0]!.surface, 'wood');
+    // Scaled trunks — thin fixed boxes miss inset/lip pines.
+    assert.ok(physics.boxes[0]!.half.x >= 0.9, `trunk half=${physics.boxes[0]!.half.x}`);
   });
 });
