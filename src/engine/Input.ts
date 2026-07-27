@@ -1,5 +1,10 @@
 import type { InputAction, InputState } from '@/types/input.ts';
 import type { EventBus } from '@/types/events.ts';
+import {
+  edgeSets,
+  pickConnectedGamepad,
+  sampleStandardGamepad,
+} from '@/engine/gamepadMap.ts';
 
 const DEFAULT_BINDINGS: Record<InputAction, string> = {
   steerLeft: 'KeyA',
@@ -23,14 +28,19 @@ const DEFAULT_BINDINGS: Record<InputAction, string> = {
 };
 
 const LOCKOUT_EXEMPT: readonly InputAction[] = ['pause', 'confirm', 'back'];
-const GAMEPAD_DEADZONE = 0.18;
 
 export class Input implements InputState {
   #down = new Set<string>();
   #pressed = new Set<string>();
   #released = new Set<string>();
   #bindings = new Map<InputAction, string>();
+  /** Capture / synthetic holds — never cleared by gamepad sampling. */
   #injected = new Set<InputAction>();
+
+  #padIndex: number | null = null;
+  #padHeld = new Set<InputAction>();
+  #padPressed = new Set<InputAction>();
+  #padReleased = new Set<InputAction>();
 
   #lookX = 0;
   #lookY = 0;
@@ -54,7 +64,7 @@ export class Input implements InputState {
     for (const [action, code] of Object.entries(DEFAULT_BINDINGS)) {
       this.rebind(action as InputAction, code);
     }
-    // Secondary lean binding
+    // Secondary lean binding (isDown checks both keys)
     this.#bindings.set('lean', 'KeyE');
     this.#attach();
   }
@@ -65,6 +75,11 @@ export class Input implements InputState {
 
   get lockedOut(): boolean {
     return this.#lockedOut;
+  }
+
+  /** Active gamepad index, or null when none connected. */
+  get gamepadIndex(): number | null {
+    return this.#padIndex;
   }
 
   #attach(): void {
@@ -89,6 +104,16 @@ export class Input implements InputState {
     };
     const onBlur = (): void => {
       this.#down.clear();
+      this.#clearPadEdges();
+    };
+    const onPadConnected = (e: GamepadEvent): void => {
+      if (this.#padIndex === null) this.#padIndex = e.gamepad.index;
+    };
+    const onPadDisconnected = (e: GamepadEvent): void => {
+      if (this.#padIndex === e.gamepad.index) {
+        this.#padIndex = null;
+        this.#clearPadEdges();
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -97,6 +122,8 @@ export class Input implements InputState {
     window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('blur', onBlur);
+    window.addEventListener('gamepadconnected', onPadConnected);
+    window.addEventListener('gamepaddisconnected', onPadDisconnected);
     document.addEventListener('pointerlockchange', onPointerLockChange);
     this.#element.addEventListener('contextmenu', onContextMenu);
 
@@ -107,9 +134,17 @@ export class Input implements InputState {
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('blur', onBlur);
+      window.removeEventListener('gamepadconnected', onPadConnected);
+      window.removeEventListener('gamepaddisconnected', onPadDisconnected);
       document.removeEventListener('pointerlockchange', onPointerLockChange);
       this.#element.removeEventListener('contextmenu', onContextMenu);
     });
+  }
+
+  #clearPadEdges(): void {
+    this.#padHeld.clear();
+    this.#padPressed.clear();
+    this.#padReleased.clear();
   }
 
   #press(code: string): void {
@@ -142,44 +177,41 @@ export class Input implements InputState {
 
     this.move.x = this.#lockedOut ? 0 : Math.max(-1, Math.min(1, mx));
     this.move.y = 0;
-
-    // Q or E for lean
-    if (this.#down.has('KeyQ') || this.#down.has('KeyE')) {
-      this.#injected.add('lean');
-    }
   }
 
   #readGamepad(): { x: number; lookX: number; lookY: number } {
-    const pads = navigator.getGamepads?.() ?? [];
-    const gp = pads[0];
-    if (!gp) return { x: 0, lookX: 0, lookY: 0 };
-    const dz = (v: number): number => (Math.abs(v) < GAMEPAD_DEADZONE ? 0 : v);
-    const x = dz(gp.axes[0] ?? 0);
-    const lookX = -dz(gp.axes[2] ?? 0) * 0.08;
-    const lookY = dz(gp.axes[3] ?? 0) * 0.05;
-
-    if (gp.buttons[0]?.pressed) this.#injected.add('jump');
-    else this.#injected.delete('jump');
-    if (gp.buttons[1]?.pressed) this.#injected.add('brake');
-    else this.#injected.delete('brake');
-    if (gp.buttons[2]?.pressed) this.#injected.add('grabIndy');
-    else this.#injected.delete('grabIndy');
-    if (gp.buttons[4]?.pressed || (gp.buttons[7]?.value ?? 0) > 0.3) this.#injected.add('boost');
-    else this.#injected.delete('boost');
-    if ((gp.buttons[6]?.value ?? 0) > 0.3) this.#injected.add('lean');
-    else if (!this.#down.has('KeyQ') && !this.#down.has('KeyE')) this.#injected.delete('lean');
-    if (gp.buttons[9]?.pressed && !this.#down.has('Escape')) {
-      this.#pressed.add('Escape');
-      this.#down.add('Escape');
+    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
+    const list = Array.from(pads);
+    const gp = pickConnectedGamepad(list, this.#padIndex);
+    if (!gp) {
+      if (this.#padHeld.size > 0) {
+        const { released } = edgeSets(this.#padHeld, new Set());
+        this.#padPressed.clear();
+        this.#padReleased = released;
+        this.#padHeld.clear();
+      } else {
+        this.#padPressed.clear();
+        this.#padReleased.clear();
+      }
+      this.#padIndex = null;
+      return { x: 0, lookX: 0, lookY: 0 };
     }
 
-    return { x, lookX, lookY };
+    this.#padIndex = gp.index;
+    const sample = sampleStandardGamepad(gp);
+    const { pressed, released } = edgeSets(this.#padHeld, sample.held);
+    this.#padHeld = sample.held;
+    this.#padPressed = pressed;
+    this.#padReleased = released;
+
+    return { x: sample.steer, lookX: sample.lookX, lookY: sample.lookY };
   }
 
   endFrame(): void {
     this.#pressed.clear();
     this.#released.clear();
-    // Clear edge-triggered injects that aren't held by pad this frame is handled in beginFrame
+    this.#padPressed.clear();
+    this.#padReleased.clear();
   }
 
   setLockout(locked: boolean, exempt: readonly InputAction[] = LOCKOUT_EXEMPT): void {
@@ -191,18 +223,15 @@ export class Input implements InputState {
     return this.#lockedOut && !this.#exempt.has(action);
   }
 
-  isDown(action: InputAction): boolean {
-    if (this.#suppressed(action)) return false;
-    if (this.#injected.has(action)) return true;
+  #keyboardDown(action: InputAction): boolean {
     if (action === 'lean') {
-      return this.#down.has('KeyQ') || this.#down.has('KeyE') || this.#injected.has('lean');
+      return this.#down.has('KeyQ') || this.#down.has('KeyE');
     }
     const code = this.#bindings.get(action);
     return code !== undefined && this.#down.has(code);
   }
 
-  wasPressed(action: InputAction): boolean {
-    if (this.#suppressed(action)) return false;
+  #keyboardPressed(action: InputAction): boolean {
     if (action === 'lean') {
       return this.#pressed.has('KeyQ') || this.#pressed.has('KeyE');
     }
@@ -210,10 +239,29 @@ export class Input implements InputState {
     return code !== undefined && this.#pressed.has(code);
   }
 
-  wasReleased(action: InputAction): boolean {
-    if (this.#suppressed(action)) return false;
+  #keyboardReleased(action: InputAction): boolean {
+    if (action === 'lean') {
+      return this.#released.has('KeyQ') || this.#released.has('KeyE');
+    }
     const code = this.#bindings.get(action);
     return code !== undefined && this.#released.has(code);
+  }
+
+  isDown(action: InputAction): boolean {
+    if (this.#suppressed(action)) return false;
+    return (
+      this.#injected.has(action) || this.#padHeld.has(action) || this.#keyboardDown(action)
+    );
+  }
+
+  wasPressed(action: InputAction): boolean {
+    if (this.#suppressed(action)) return false;
+    return this.#padPressed.has(action) || this.#keyboardPressed(action);
+  }
+
+  wasReleased(action: InputAction): boolean {
+    if (this.#suppressed(action)) return false;
+    return this.#padReleased.has(action) || this.#keyboardReleased(action);
   }
 
   pressed(action: InputAction): boolean {
@@ -250,5 +298,6 @@ export class Input implements InputState {
   dispose(): void {
     for (const d of this.#disposers) d();
     this.#disposers = [];
+    this.#clearPadEdges();
   }
 }
