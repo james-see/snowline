@@ -115,7 +115,8 @@ export interface TerrainProfile {
     peakHeight?: number;
     /**
      * Inner foothill offset beyond apron edge, metres.
-     * Prefer 0 (or small) so skirts overlap the apron lip — avoids floating peaks.
+     * Prefer 0 (or small / negative via generator) so skirts overlap the apron
+     * lip — avoids floating cardboard peaks over clear-color void.
      */
     nearOffset?: number;
     /** Far ridgeline offset beyond apron edge, metres. */

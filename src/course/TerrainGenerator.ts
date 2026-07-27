@@ -73,7 +73,7 @@ function envelope01(t: number, start: number, end: number): number {
 
 /**
  * Alpine ridgeline profile — continuous mass with summit accents.
- * Floor keeps silhouettes connected (no cardboard spikes over empty void).
+ * High floor so mid-ridge stays a mountain wall, not cardboard spikes over void.
  */
 function ridgeSilhouette(u: number, seed: number, peakCount: number, jagged: number): number {
   const phase = valueNoise(u * 3.1, seed * 0.001, seed + 7) * Math.PI * 2;
@@ -84,16 +84,23 @@ function ridgeSilhouette(u: number, seed: number, peakCount: number, jagged: num
     jagged * 1.2
   );
   const rumble = fbm(u * 6.5, seed * 0.02, seed + 41, 3);
-  const accents = peak * 0.55 + secondary * 0.22 + (rumble - 0.5) * 0.12;
-  // Connected floor (~0.38) so mid-ridge never collapses to empty sky.
-  return THREE.MathUtils.clamp(0.38 + accents, 0.28, 1.15);
+  const accents = peak * 0.5 + secondary * 0.24 + (rumble - 0.5) * 0.1;
+  // Raised floor (~0.48) — amphitheater walls stay connected mass through fog.
+  return THREE.MathUtils.clamp(0.48 + accents, 0.4, 1.22);
 }
 
-const SNOW_POWDER_TINT: [number, number, number] = [0.93, 0.96, 1.0];
-const SNOW_PACKED_TINT: [number, number, number] = [0.86, 0.9, 0.94];
-const ROCK_TINT: [number, number, number] = [0.45, 0.44, 0.42];
+/**
+ * Grounded alpine palette — dark rock + muddy snow so FogExp2 milk cannot
+ * bleach peaks into floating cardboard cutouts (critic B1 @ 770258a).
+ * Haze lean stays warm to coordinate with lighting's SKY_HORIZON; we own chroma.
+ */
+const SNOW_POWDER_TINT: [number, number, number] = [0.7, 0.74, 0.8];
+const SNOW_PACKED_TINT: [number, number, number] = [0.58, 0.61, 0.66];
+const SCREE_TINT: [number, number, number] = [0.42, 0.4, 0.38];
+const ROCK_TINT: [number, number, number] = [0.26, 0.25, 0.24];
+const ROCK_CLIFF_TINT: [number, number, number] = [0.32, 0.3, 0.28];
 /** Soft haze lean toward scene FogExp2 horizon (lighting owns fog density). */
-const HAZE_TINT: [number, number, number] = [0.72, 0.66, 0.56];
+const HAZE_TINT: [number, number, number] = [0.68, 0.62, 0.54];
 
 function paintAlpineVert(
   out: number[],
@@ -103,28 +110,47 @@ function paintAlpineVert(
   mist: number,
   rockBias: number
 ): void {
-  const snowAmt = THREE.MathUtils.clamp(rise / Math.max(40, peakHeight * 0.55), 0, 1);
+  const snowAmt = THREE.MathUtils.clamp(rise / Math.max(50, peakHeight * 0.5), 0, 1);
   const steep = THREE.MathUtils.clamp(rockBias, 0, 1);
-  // Steep mid-faces → rock; high gentle crests → powder; foothills → packed.
+  // Foothill / apron join darkens so mass grounds into the playable sheet.
+  const footing = THREE.MathUtils.clamp(1 - snowAmt * 1.15, 0, 1);
+
   let br: number;
   let bg: number;
   let bb: number;
-  if (steep > 0.55 && snowAmt > 0.2 && snowAmt < 0.85) {
-    const k = (steep - 0.55) / 0.45;
-    br = THREE.MathUtils.lerp(SNOW_PACKED_TINT[0], ROCK_TINT[0], k);
-    bg = THREE.MathUtils.lerp(SNOW_PACKED_TINT[1], ROCK_TINT[1], k);
-    bb = THREE.MathUtils.lerp(SNOW_PACKED_TINT[2], ROCK_TINT[2], k);
-  } else if (snowAmt > 0.62 && crest > 0.45) {
+  if (steep > 0.32 && snowAmt > 0.12 && snowAmt < 0.92) {
+    // Broad rock band on mid-faces — silhouette against milk sky.
+    const k = THREE.MathUtils.clamp((steep - 0.32) / 0.55, 0, 1);
+    const rockR = THREE.MathUtils.lerp(ROCK_CLIFF_TINT[0], ROCK_TINT[0], k);
+    const rockG = THREE.MathUtils.lerp(ROCK_CLIFF_TINT[1], ROCK_TINT[1], k);
+    const rockB = THREE.MathUtils.lerp(ROCK_CLIFF_TINT[2], ROCK_TINT[2], k);
+    const snowMix = THREE.MathUtils.clamp((snowAmt - 0.55) * 1.6, 0, 0.55) * (1 - k * 0.7);
+    br = THREE.MathUtils.lerp(rockR, SNOW_PACKED_TINT[0], snowMix);
+    bg = THREE.MathUtils.lerp(rockG, SNOW_PACKED_TINT[1], snowMix);
+    bb = THREE.MathUtils.lerp(rockB, SNOW_PACKED_TINT[2], snowMix);
+  } else if (snowAmt > 0.7 && crest > 0.5 && steep < 0.45) {
     br = SNOW_POWDER_TINT[0];
     bg = SNOW_POWDER_TINT[1];
     bb = SNOW_POWDER_TINT[2];
+  } else if (footing > 0.35) {
+    const k = THREE.MathUtils.clamp(footing, 0, 1);
+    br = THREE.MathUtils.lerp(SNOW_PACKED_TINT[0], SCREE_TINT[0], k);
+    bg = THREE.MathUtils.lerp(SNOW_PACKED_TINT[1], SCREE_TINT[1], k);
+    bb = THREE.MathUtils.lerp(SNOW_PACKED_TINT[2], SCREE_TINT[2], k);
   } else {
     br = SNOW_PACKED_TINT[0];
     bg = SNOW_PACKED_TINT[1];
     bb = SNOW_PACKED_TINT[2];
   }
-  // Aerial perspective toward fog horizon — coordinates with B11 without owning fog.
-  const m = THREE.MathUtils.clamp(mist, 0, 0.55);
+
+  // Shadow under crest folds — breaks flat cardboard read without owning lighting.
+  const fold = THREE.MathUtils.clamp(steep * 0.22 + (1 - crest) * 0.12, 0, 0.28);
+  br *= 1 - fold;
+  bg *= 1 - fold;
+  bb *= 1 - fold;
+
+  // Aerial perspective — near layers keep chroma; far layers lean warm haze.
+  const m = THREE.MathUtils.clamp(mist, 0, 0.42);
   out.push(
     br * (1 - m) + HAZE_TINT[0] * m,
     bg * (1 - m) + HAZE_TINT[1] * m,
@@ -166,8 +192,8 @@ interface RidgelineLayer {
 
 /**
  * Visual-only multi-layer alpine peaks / ridgelines.
- * Overlaps apron skirts + stacked amphitheater walls so course_start midfield
- * reads as a connected mountain mass, not floating cardboard on clear-color void.
+ * Overlaps apron skirts + near amphitheater bowl so course_start midfield
+ * reads as connected mountain mass (not milk-void cardboard cutouts).
  * Never included in the Rapier trimesh.
  */
 export function buildAlpineBackdrop(
@@ -184,127 +210,140 @@ export function buildAlpineBackdrop(
   const nearOffset = backdrop?.nearOffset ?? 0;
   const farOffset = backdrop?.farOffset ?? 220;
 
-  // Apron catch berm ~ pathY+45–70 at the mesh lip — join skirts there.
-  const apronJoinNear = 48;
-  const apronJoinMid = 62;
+  // Catch berm at apron lip ~ pathY+70–95 — join skirts flush (no float gap).
+  const apronJoinNear = 72;
+  const apronJoinMid = 88;
 
   const layers: RidgelineLayer[] = [
     {
       name: 'foothill-right',
-      lateralPad: nearOffset - 18,
-      massDepth: 130,
-      peakHeight: peakHeight * 0.32,
-      foothill: 28,
+      // Deep apron overlap — side mass grows out of playable powder.
+      lateralPad: nearOffset - 42,
+      massDepth: 160,
+      peakHeight: peakHeight * 0.38,
+      foothill: 42,
       apronJoin: apronJoinNear,
-      peakCount: 5,
-      jagged: 1.55,
-      roughness: 0.94,
-      alongSamples: 56,
-      depthSamples: 9,
-      t0: -0.14,
-      t1: 1.16,
+      peakCount: 6,
+      jagged: 1.45,
+      roughness: 0.93,
+      alongSamples: 64,
+      depthSamples: 11,
+      t0: -0.16,
+      t1: 1.18,
       side: 1,
-      mistBias: 0.06,
+      mistBias: 0.02,
     },
     {
       name: 'foothill-left',
-      lateralPad: nearOffset - 18,
-      massDepth: 130,
-      peakHeight: peakHeight * 0.34,
-      foothill: 30,
+      lateralPad: nearOffset - 42,
+      massDepth: 160,
+      peakHeight: peakHeight * 0.4,
+      foothill: 44,
       apronJoin: apronJoinNear,
-      peakCount: 5,
-      jagged: 1.5,
-      roughness: 0.94,
-      alongSamples: 56,
-      depthSamples: 9,
-      t0: -0.14,
-      t1: 1.16,
+      peakCount: 6,
+      jagged: 1.4,
+      roughness: 0.93,
+      alongSamples: 64,
+      depthSamples: 11,
+      t0: -0.16,
+      t1: 1.18,
       side: -1,
-      mistBias: 0.06,
+      mistBias: 0.02,
     },
     {
       name: 'mid-ridge-right',
-      lateralPad: farOffset * 0.35,
-      massDepth: 200,
-      peakHeight: peakHeight * 0.68,
-      foothill: 48,
+      lateralPad: farOffset * 0.22,
+      massDepth: 240,
+      peakHeight: peakHeight * 0.78,
+      foothill: 62,
       apronJoin: apronJoinMid,
-      peakCount: 4,
-      jagged: 2.0,
-      roughness: 0.96,
-      alongSamples: 48,
-      depthSamples: 8,
-      t0: -0.1,
-      t1: 1.22,
+      peakCount: 5,
+      jagged: 1.85,
+      roughness: 0.95,
+      alongSamples: 56,
+      depthSamples: 10,
+      t0: -0.12,
+      t1: 1.24,
       side: 1,
-      mistBias: 0.14,
+      mistBias: 0.08,
     },
     {
       name: 'mid-ridge-left',
-      lateralPad: farOffset * 0.35,
-      massDepth: 200,
-      peakHeight: peakHeight * 0.72,
-      foothill: 50,
+      lateralPad: farOffset * 0.22,
+      massDepth: 240,
+      peakHeight: peakHeight * 0.82,
+      foothill: 64,
       apronJoin: apronJoinMid,
-      peakCount: 4,
-      jagged: 2.05,
-      roughness: 0.96,
-      alongSamples: 48,
-      depthSamples: 8,
-      t0: -0.1,
-      t1: 1.22,
+      peakCount: 5,
+      jagged: 1.9,
+      roughness: 0.95,
+      alongSamples: 56,
+      depthSamples: 10,
+      t0: -0.12,
+      t1: 1.24,
       side: -1,
-      mistBias: 0.14,
+      mistBias: 0.08,
     },
     {
       name: 'far-peaks-right',
-      lateralPad: farOffset * 0.85,
-      massDepth: 320,
-      peakHeight,
-      foothill: 70,
-      apronJoin: 78,
-      peakCount: 3,
-      jagged: 2.55,
-      roughness: 0.98,
-      alongSamples: 42,
-      depthSamples: 8,
-      t0: -0.02,
-      t1: 1.28,
+      lateralPad: farOffset * 0.72,
+      massDepth: 360,
+      peakHeight: peakHeight * 1.08,
+      foothill: 88,
+      apronJoin: 98,
+      peakCount: 4,
+      jagged: 2.35,
+      roughness: 0.97,
+      alongSamples: 48,
+      depthSamples: 9,
+      t0: -0.04,
+      t1: 1.3,
       side: 1,
-      mistBias: 0.28,
+      mistBias: 0.2,
     },
     {
       name: 'far-peaks-left',
-      lateralPad: farOffset * 0.85,
-      massDepth: 320,
-      peakHeight: peakHeight * 1.08,
-      foothill: 74,
-      apronJoin: 80,
-      peakCount: 3,
-      jagged: 2.65,
-      roughness: 0.98,
-      alongSamples: 42,
-      depthSamples: 8,
-      t0: -0.02,
-      t1: 1.28,
+      lateralPad: farOffset * 0.72,
+      massDepth: 360,
+      peakHeight: peakHeight * 1.16,
+      foothill: 92,
+      apronJoin: 100,
+      peakCount: 4,
+      jagged: 2.4,
+      roughness: 0.97,
+      alongSamples: 48,
+      depthSamples: 9,
+      t0: -0.04,
+      t1: 1.3,
       side: -1,
-      mistBias: 0.28,
+      mistBias: 0.2,
     },
   ];
 
-  // Stacked amphitheater walls — fill center midfield void from course_start onward.
-  // Near wall sits in the view cone early; mid/far add depth for aerial haze.
-  const span = meshHalfWidth + farOffset + 480;
+  // Near amphitheater — fills course_start midfield void (B8) before fog eats depth.
+  const span = meshHalfWidth + farOffset + 520;
+  root.add(
+    buildAmphitheaterBowl(path, meshHalfWidth, seed, {
+      name: 'amphitheater-bowl',
+      peakHeight: peakHeight * 0.48,
+      lateralSpan: span * 0.72,
+      depth: 220,
+      aheadT: 0.08,
+      baseRise: 58,
+      mistBias: 0.04,
+      peakCount: 7,
+      seedOff: 131,
+    })
+  );
   root.add(
     buildHorizonPeakWall(path, seed, {
       name: 'horizon-near',
-      peakHeight: peakHeight * 0.55,
-      lateralSpan: span * 0.78,
-      depth: 160,
-      aheadT: 0.38,
-      baseRise: 42,
-      mistBias: 0.12,
+      peakHeight: peakHeight * 0.72,
+      lateralSpan: span * 0.82,
+      depth: 180,
+      aheadT: 0.22,
+      baseRise: 78,
+      mistBias: 0.06,
       peakCount: 6,
       seedOff: 211,
     })
@@ -312,12 +351,12 @@ export function buildAlpineBackdrop(
   root.add(
     buildHorizonPeakWall(path, seed, {
       name: 'horizon-mid',
-      peakHeight: peakHeight * 0.88,
-      lateralSpan: span * 0.95,
-      depth: 200,
-      aheadT: 0.72,
-      baseRise: 55,
-      mistBias: 0.22,
+      peakHeight: peakHeight * 0.98,
+      lateralSpan: span * 0.98,
+      depth: 220,
+      aheadT: 0.48,
+      baseRise: 72,
+      mistBias: 0.14,
       peakCount: 5,
       seedOff: 503,
     })
@@ -325,12 +364,12 @@ export function buildAlpineBackdrop(
   root.add(
     buildHorizonPeakWall(path, seed, {
       name: 'horizon-far',
-      peakHeight: peakHeight * 1.2,
-      lateralSpan: span * 1.15,
-      depth: 260,
-      aheadT: 1.2,
-      baseRise: 70,
-      mistBias: 0.34,
+      peakHeight: peakHeight * 1.28,
+      lateralSpan: span * 1.18,
+      depth: 280,
+      aheadT: 0.95,
+      baseRise: 85,
+      mistBias: 0.26,
       peakCount: 4,
       seedOff: 791,
     })
@@ -339,12 +378,12 @@ export function buildAlpineBackdrop(
   root.add(
     buildHorizonPeakWall(path, seed, {
       name: 'horizon-start',
-      peakHeight: peakHeight * 0.62,
-      lateralSpan: span * 0.85,
-      depth: 140,
-      aheadT: -0.12,
-      baseRise: 50,
-      mistBias: 0.16,
+      peakHeight: peakHeight * 0.7,
+      lateralSpan: span * 0.9,
+      depth: 160,
+      aheadT: -0.1,
+      baseRise: 68,
+      mistBias: 0.1,
       peakCount: 5,
       seedOff: 1009,
       alongTangent: -1,
@@ -384,7 +423,8 @@ function buildRidgelineStrip(
       layer.peakCount,
       layer.jagged
     );
-    const rockBias = Math.abs(silNext - sil) * 4.5 + sil * 0.15;
+    // Stronger slope proxy → rock faces read through haze.
+    const rockBias = Math.abs(silNext - sil) * 6.5 + sil * 0.28;
     const pathY = _sample.y;
 
     for (let d = 0; d < depthN; d++) {
@@ -397,19 +437,19 @@ function buildRidgelineStrip(
       // Inner skirt locked to apron join; crest carries continuous ridgeline + summits.
       const crest = Math.sin(du * Math.PI);
       const back = du > 0.58 ? (du - 0.58) / 0.42 : 0;
-      const skirt = THREE.MathUtils.lerp(layer.apronJoin, layer.foothill * 0.85, Math.min(1, du * 1.35));
+      const skirt = THREE.MathUtils.lerp(layer.apronJoin, layer.foothill * 0.95, Math.min(1, du * 1.2));
       const rise =
         skirt +
-        layer.foothill * 0.45 * crest +
-        layer.peakHeight * sil * (0.2 + 0.8 * crest) -
-        back * back * layer.peakHeight * 0.18;
+        layer.foothill * 0.55 * crest +
+        layer.peakHeight * sil * (0.28 + 0.72 * crest) -
+        back * back * layer.peakHeight * 0.16;
 
-      const micro = (fbm(wx * 0.012, wz * 0.012, seed + 211, 3) - 0.5) * layer.peakHeight * 0.07;
+      const micro = (fbm(wx * 0.012, wz * 0.012, seed + 211, 3) - 0.5) * layer.peakHeight * 0.09;
       const y = pathY + rise + micro;
 
       positions.push(wx, y, wz);
-      const mist = layer.mistBias + du * 0.16;
-      paintAlpineVert(colors, rise, layer.peakHeight, crest, mist, rockBias * (0.35 + crest));
+      const mist = layer.mistBias + du * 0.1;
+      paintAlpineVert(colors, rise, layer.peakHeight, crest, mist, rockBias * (0.45 + crest * 0.7));
     }
   }
 
@@ -434,7 +474,7 @@ function buildRidgelineStrip(
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: layer.roughness,
-    metalness: 0.01,
+    metalness: 0.02,
     flatShading: false,
   });
 
@@ -446,7 +486,108 @@ function buildRidgelineStrip(
   return mesh;
 }
 
-/** Full-span amphitheater wall — kills empty midfield when looking along the fall line. */
+/**
+ * Near-field amphitheater bowl — continuous sloping mass from apron into
+ * the view cone so course_start midfield is mountain, not empty milk void.
+ */
+function buildAmphitheaterBowl(
+  path: SplinePath,
+  meshHalfWidth: number,
+  seed: number,
+  opts: {
+    name: string;
+    peakHeight: number;
+    lateralSpan: number;
+    depth: number;
+    aheadT: number;
+    baseRise: number;
+    mistBias: number;
+    peakCount: number;
+    seedOff: number;
+  }
+): THREE.Mesh {
+  const acrossN = 72;
+  const depthN = 12;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+
+  const featureT = THREE.MathUtils.clamp(opts.aheadT, 0, 1);
+  path.sampleExtended(opts.aheadT, _sample);
+  path.tangent(featureT, _tan);
+  path.right(featureT, _right);
+
+  for (let i = 0; i < acrossN; i++) {
+    const u = i / (acrossN - 1);
+    const lateral = (u - 0.5) * 2 * opts.lateralSpan;
+    // Soft U-bowl: low at corridor center, rises into flanks joining side ridges.
+    const flank = Math.pow(Math.abs(u - 0.5) * 2, 1.35);
+    const sil = ridgeSilhouette(u, seed + opts.seedOff, opts.peakCount, 1.8);
+    const silNext = ridgeSilhouette(
+      Math.min(1, u + 1 / Math.max(1, acrossN - 1)),
+      seed + opts.seedOff,
+      opts.peakCount,
+      1.8
+    );
+    const rockBias = Math.abs(silNext - sil) * 5.5 + flank * 0.65;
+
+    for (let d = 0; d < depthN; d++) {
+      const du = d / Math.max(1, depthN - 1);
+      const ahead = du * opts.depth;
+      const wx = _sample.x + _right.x * lateral + _tan.x * ahead;
+      const wz = _sample.z + _right.z * lateral + _tan.z * ahead;
+
+      // Front edge meets apron catch berm; rear climbs into near horizon wall.
+      const frontJoin = opts.baseRise * (0.55 + flank * 0.55);
+      const rearMass =
+        opts.baseRise * (0.85 + flank * 0.4) +
+        opts.peakHeight * sil * (0.35 + 0.55 * flank) * (0.4 + 0.6 * du);
+      const rise =
+        THREE.MathUtils.lerp(frontJoin, rearMass, Math.pow(du, 0.85)) +
+        (fbm(wx * 0.014, wz * 0.014, seed + 44, 3) - 0.5) * opts.peakHeight * 0.07;
+
+      // Keep a soft saddle over the race line so the corridor stays readable.
+      const corridorClear = Math.max(0, 1 - Math.abs(lateral) / Math.max(28, meshHalfWidth * 0.55));
+      const cleared = rise - corridorClear * corridorClear * opts.baseRise * 0.22;
+
+      positions.push(wx, _sample.y + cleared, wz);
+      const crest = THREE.MathUtils.clamp(flank * 0.7 + du * 0.45, 0, 1);
+      const mist = opts.mistBias + du * 0.08 + corridorClear * 0.04;
+      paintAlpineVert(colors, cleared, opts.peakHeight, crest, mist, rockBias * (0.5 + flank));
+    }
+  }
+
+  for (let i = 0; i < acrossN - 1; i++) {
+    for (let d = 0; d < depthN - 1; d++) {
+      const a = i * depthN + d;
+      const b = a + 1;
+      const c = a + depthN;
+      const e = c + 1;
+      indices.push(a, b, c, b, e, c);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.94,
+    metalness: 0.02,
+    flatShading: false,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = `backdrop-${opts.name}`;
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  return mesh;
+}
+
+/** Full-span amphitheater wall — stacked depth behind the near bowl. */
 function buildHorizonPeakWall(
   path: SplinePath,
   seed: number,
@@ -464,8 +605,8 @@ function buildHorizonPeakWall(
     alongTangent?: 1 | -1;
   }
 ): THREE.Mesh {
-  const acrossN = 64;
-  const depthN = 8;
+  const acrossN = 72;
+  const depthN = 10;
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
@@ -479,16 +620,16 @@ function buildHorizonPeakWall(
   for (let i = 0; i < acrossN; i++) {
     const u = i / (acrossN - 1);
     const lateral = (u - 0.5) * 2 * opts.lateralSpan;
-    const sil = ridgeSilhouette(u, seed + opts.seedOff, opts.peakCount, 2.4);
+    const sil = ridgeSilhouette(u, seed + opts.seedOff, opts.peakCount, 2.2);
     // Dominant summits like alpine groom ref — still sit on continuous floor.
-    const hero = Math.pow(Math.max(0, Math.sin(u * Math.PI * 2.15 + 0.35)), 2.8);
+    const hero = Math.pow(Math.max(0, Math.sin(u * Math.PI * 2.15 + 0.35)), 2.6);
     const silNext = ridgeSilhouette(
       Math.min(1, u + 1 / Math.max(1, acrossN - 1)),
       seed + opts.seedOff,
       opts.peakCount,
-      2.4
+      2.2
     );
-    const rockBias = Math.abs(silNext - sil) * 5 + hero * 0.55;
+    const rockBias = Math.abs(silNext - sil) * 6.2 + hero * 0.7;
 
     for (let d = 0; d < depthN; d++) {
       const du = d / Math.max(1, depthN - 1);
@@ -497,16 +638,16 @@ function buildHorizonPeakWall(
       const wz = _sample.z + _right.z * lateral + _tan.z * ahead;
       const crest = Math.sin(Math.min(1, du * 1.12) * Math.PI);
       const back = du > 0.6 ? (du - 0.6) / 0.4 : 0;
-      const profile = sil * 0.72 + hero * 0.48;
+      const profile = sil * 0.68 + hero * 0.55;
       const rise =
-        opts.baseRise * (0.55 + 0.45 * (1 - du * 0.35)) +
-        opts.peakHeight * profile * (0.28 + 0.72 * crest) -
-        back * back * opts.peakHeight * 0.2 +
-        (fbm(wx * 0.01, wz * 0.01, seed + 77, 3) - 0.5) * opts.peakHeight * 0.08;
+        opts.baseRise * (0.65 + 0.35 * (1 - du * 0.3)) +
+        opts.peakHeight * profile * (0.32 + 0.68 * crest) -
+        back * back * opts.peakHeight * 0.18 +
+        (fbm(wx * 0.01, wz * 0.01, seed + 77, 3) - 0.5) * opts.peakHeight * 0.1;
 
       positions.push(wx, _sample.y + rise, wz);
-      const mist = opts.mistBias + du * 0.18;
-      paintAlpineVert(colors, rise, opts.peakHeight, crest, mist, rockBias * (0.4 + crest));
+      const mist = opts.mistBias + du * 0.12;
+      paintAlpineVert(colors, rise, opts.peakHeight, crest, mist, rockBias * (0.5 + crest));
     }
   }
 
@@ -529,8 +670,8 @@ function buildHorizonPeakWall(
 
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: 0.97,
-    metalness: 0.01,
+    roughness: 0.96,
+    metalness: 0.02,
     flatShading: false,
   });
 
@@ -642,25 +783,25 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       if (apronNorm > 0) {
         const shelf = Math.sin(Math.min(1, apronNorm) * Math.PI);
         y -= shelf * (2.8 + shelfNoise * 2.2) * (0.55 + profile.roughness * 0.5) * reliefScale;
-        // Rise into foothills toward apron edge — joins visual backdrop mass (~48m at lip).
-        y += apronNorm * apronNorm * 42 * (0.5 + profile.roughness * 0.5) * reliefScale;
-        y += shelfNoise * 5.5 * apronNorm * reliefScale;
+        // Rise into foothills toward apron edge — joins visual backdrop mass (~72m at lip).
+        y += apronNorm * apronNorm * 58 * (0.55 + profile.roughness * 0.5) * reliefScale;
+        y += shelfNoise * 6.5 * apronNorm * reliefScale;
         // Mid-apron ridgelines break the flat powder sheet.
-        if (apronNorm > 0.22) {
-          const ridgeU = (apronNorm - 0.22) / 0.78;
+        if (apronNorm > 0.18) {
+          const ridgeU = (apronNorm - 0.18) / 0.82;
           y +=
-            Math.pow(ridgeU, 1.25) *
+            Math.pow(ridgeU, 1.15) *
             flankRidge *
-            32 *
+            40 *
             (0.55 + profile.roughness * 0.6) *
             reliefScale;
         }
       }
 
       // Catch berm / foothill lip — grounds backdrop skirts (no clear-color void at apron).
-      if (meshDistNorm > 0.72) {
-        const lip = meshDistNorm - 0.72;
-        y += lip * lip * 145 * (0.8 + profile.roughness * 0.35) * reliefScale;
+      if (meshDistNorm > 0.68) {
+        const lip = meshDistNorm - 0.68;
+        y += lip * lip * 195 * (0.85 + profile.roughness * 0.35) * reliefScale;
       }
 
       // Halfpipe depression (race corridor features only).
