@@ -54,6 +54,7 @@ public/basis/                        Basis Universal transcoder, copied from thr
 | `rock_face` / `rock_scree` | Cliffs / scree |
 | `ice_glass` / `ice_frost` | Race ice / frost (`snow_02` / `snow_03`) |
 | `wood_bark` | Trunks / timber (`pine_bark`) |
+| `foliage_pine` | Canopy needle albedo (`forrest_ground_03`) |
 | `wood_plank` | Ramps / furniture (`brown_planks_07`) |
 | `fabric_banner` | Banners / flags (`hessian_230`) |
 

@@ -32,6 +32,8 @@ export const DEFAULT_TILE_SCALE: Record<PbrSetId, number> = {
   ice_glass: 3.2,
   ice_frost: 2.8,
   wood_bark: 2,
+  /** Dense needle microdetail on low-poly Kenney / cone canopies. */
+  foliage_pine: 1.25,
   wood_plank: 2,
   fabric_banner: 1.5,
 };

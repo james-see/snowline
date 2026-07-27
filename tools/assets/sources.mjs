@@ -71,6 +71,12 @@ export const MATERIALS = [
     note: 'Pine bark for tree trunks and timber props. Vertical grain tiles on cylinders.',
   },
   {
+    id: 'foliage_pine',
+    slug: 'forrest_ground_03',
+    tileScale: 1.25,
+    note: 'Fallen pine-needle litter albedo for Kenney / procedural canopy — tinted alpine green at runtime.',
+  },
+  {
     id: 'wood_plank',
     slug: 'brown_planks_07',
     tileScale: 2,

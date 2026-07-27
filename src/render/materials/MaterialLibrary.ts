@@ -208,6 +208,19 @@ export class MaterialLibrary {
       });
       this.#bindPropSet(mat, 'wood_bark', { repeatU: 1.5, repeatV: 2.5 }, 'wood');
       mat.name = 'prop-wood';
+    } else if (id === 'foliage') {
+      mat = new THREE.MeshStandardMaterial({
+        color: 0x245c34,
+        roughness: 0.95,
+        metalness: 0.0,
+        envMapIntensity: 0.35,
+        side: THREE.DoubleSide,
+      });
+      // Dense UV repeat — Kenney leaf UVs are sparse; keep LOD cheap (soft normals).
+      this.#bindPropSet(mat, 'foliage_pine', { repeatU: 4.5, repeatV: 4.5 }, 'wood');
+      mat.normalScale.set(0.45, 0.45);
+      mat.aoMapIntensity = 0.85;
+      mat.name = 'prop-foliage';
     } else if (id === 'plank') {
       mat = new THREE.MeshStandardMaterial({
         color: 0x9a6a3c,

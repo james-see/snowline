@@ -5,10 +5,10 @@ export const mats = {
   trunk: new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 }),
   trunkDark: new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.92 }),
   canopy: [
-    new THREE.MeshStandardMaterial({ color: 0x1a4a2a, roughness: 0.96 }),
-    new THREE.MeshStandardMaterial({ color: 0x245c34, roughness: 0.94 }),
-    new THREE.MeshStandardMaterial({ color: 0x2f6840, roughness: 0.93 }),
-    new THREE.MeshStandardMaterial({ color: 0x173d24, roughness: 0.97 }),
+    new THREE.MeshStandardMaterial({ color: 0x1a4a2a, roughness: 0.96, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ color: 0x245c34, roughness: 0.94, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ color: 0x2f6840, roughness: 0.93, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ color: 0x173d24, roughness: 0.97, side: THREE.DoubleSide }),
   ],
   snowCap: new THREE.MeshStandardMaterial({
     color: 0xf2f6fa,
@@ -92,14 +92,18 @@ export const mats = {
   }),
 };
 
+/** Alpine canopy tints — multiply over needle albedo for forest density read. */
+const CANOPY_TINTS = [0x1a4a2a, 0x245c34, 0x2f6840, 0x173d24] as const;
+
 /**
- * Copy bark / plank / fabric PBR from MaterialLibrary onto shared course mats.
+ * Copy bark / plank / fabric / foliage PBR from MaterialLibrary onto shared course mats.
  * Call after `resources.preload()` has bound vendored CC0 sets.
  */
 export function bindAuthoredPropMaps(library: MaterialLibrary): void {
   const bark = library.prop('wood');
   const plank = library.prop('plank');
   const fabric = library.prop('fabric');
+  const foliage = library.prop('foliage');
 
   copyMaps(bark, mats.trunk, 0x8a6240);
   copyMaps(bark, mats.trunkDark, 0x6a4a30);
@@ -109,6 +113,17 @@ export function bindAuthoredPropMaps(library: MaterialLibrary): void {
   copyMaps(fabric, mats.finishBanner, 0xf2ebe0);
   copyMaps(fabric, mats.flag, 0xffe14a);
   mats.flag.normalScale.set(0.8, 0.8);
+
+  // Kenney leaf meshes + procedural cones share mats.canopy (instancing-safe).
+  for (let i = 0; i < mats.canopy.length; i++) {
+    const canopy = mats.canopy[i]!;
+    copyMaps(foliage, canopy, CANOPY_TINTS[i % CANOPY_TINTS.length]!);
+    canopy.side = THREE.DoubleSide;
+    canopy.roughness = 0.95;
+    canopy.metalness = 0;
+    canopy.normalScale.set(0.4, 0.4);
+    canopy.envMapIntensity = 0.35;
+  }
 }
 
 function copyMaps(

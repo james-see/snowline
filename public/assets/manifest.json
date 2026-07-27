@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T00:22:05.162Z",
+  "generatedAt": "2026-07-27T00:22:37.393Z",
   "materials": [
     {
       "id": "snow_groom",
@@ -91,6 +91,19 @@
         "author": "Dimitrios Savva",
         "license": "CC0-1.0",
         "url": "https://polyhaven.com/a/pine_bark"
+      }
+    },
+    {
+      "id": "foliage_pine",
+      "albedo": "/assets/textures/foliage_pine_albedo.webp",
+      "normal": "/assets/textures/foliage_pine_normal.jpg",
+      "orm": "/assets/textures/foliage_pine_orm.jpg",
+      "tileScale": 1.25,
+      "source": {
+        "name": "Forest Ground 03",
+        "author": "Rob Tuytel",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/forrest_ground_03"
       }
     },
     {
