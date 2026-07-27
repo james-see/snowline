@@ -31,20 +31,20 @@ Compare Snowline captures to:
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-26, tip `49db70e` — forest v5 `25ac690` — see `CRITIC_REPORT.md`)
+## Current score (2026-07-26, tip `bd1b721` — forward chase + forest v5 — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
 | B1_peaks | **PASS** — ridgelines behind timberline |
-| B2_forest | **PASS** — harsh; v5 ~960-tree near-solid lip walls (~408–411k tris) |
+| B2_forest | **PASS** — harsh; v5 near-solid lip walls (~409–427k tris) |
 | B3_shadows | **PASS** — long sun casts on corduroy |
 | B4_corduroy | **PASS** |
 | B5_snow_color | **PASS** — warm muddy strip |
-| B6_furniture | **PASS** — grind box on-camera + signs |
+| B6_furniture | **PASS** — fence/hut on gate; grind park sell weaker |
 | B7_rider | **PASS** — contrast kit |
-| B8_camera | **FAIL** — harsh; carve/start left apron / foreground corduroy void |
+| B8_camera | **FAIL** — harsh; forward chase restores fall line but mid/foreground corduroy void (playability > v4 cross-look) |
 | B9_hud | **PASS** |
 | B10_no_float | **PASS** |
 | B11_atmosphere | **PASS** — cool aerial; canopy depth |
 
-**Verdict: FAIL.** 10 PASS / 1 FAIL. Rubric mean ≈ **5.55** vs user refs.
+**Verdict: FAIL.** 10 PASS / 1 FAIL. Rubric mean ≈ **5.50** vs user refs.
