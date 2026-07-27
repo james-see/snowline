@@ -5,6 +5,7 @@ export type Difficulty = 'green' | 'blue' | 'black' | 'double-black';
 export type PropKind =
   | 'rail'
   | 'ramp'
+  | 'box'
   | 'tree'
   | 'rock'
   | 'flag'
@@ -32,12 +33,20 @@ export interface CheckpointDef {
 export interface PropPlacement {
   id: string;
   kind: PropKind;
+  /**
+   * World position. When `pathT` is set, expandCourseProps overwrites XZ
+   * (and Y placeholder) from the run spline before snap-to-terrain.
+   */
   position: [number, number, number];
+  /**
+   * Yaw in radians. With `pathT`, treated as offset from path-aligned default
+   * (ramps face fall line; rails/boxes align length to tangent).
+   */
   rotationY?: number;
   scale?: number | [number, number, number];
   surface?: SurfaceKind;
   variant?: number;
-  /** Rail span along local X, in metres. */
+  /** Rail / box span along local X, in metres. */
   length?: number;
   /** Ramp lip height, in metres. */
   lip?: number;
@@ -46,6 +55,10 @@ export interface PropPlacement {
   label?: string;
   /** Marks a forgiving bailout zone — props here stay off the main line. */
   recovery?: boolean;
+  /** Normalised path distance; when set, world XZ is resolved from the spline. */
+  pathT?: number;
+  /** Lateral offset from centerline in metres (+ = rider's right). Used with pathT. */
+  lateral?: number;
 }
 
 export interface MedalThresholds {

@@ -536,7 +536,7 @@ export class BoardPhysics {
   }
 
   #tryStartGrind(): void {
-    if (this.surfaceKind !== 'rail') return;
+    if (!isGrindableSurface(this.surfaceKind)) return;
     const center = this.#samples[centerSampleIndex()];
     if (!center?.hit) return;
     if (center.contactGap > GRIND.latchDistance) return;
@@ -628,7 +628,12 @@ export class BoardPhysics {
           origin: _v1,
           direction: WORLD_DOWN,
           maxDistance: JUMP.rayLength,
-          groups: CollisionGroup.Terrain | CollisionGroup.Trigger | CollisionGroup.Rail,
+          // Prop = ramps / boxes / rocks; Rail = grind bars.
+          groups:
+            CollisionGroup.Terrain |
+            CollisionGroup.Trigger |
+            CollisionGroup.Rail |
+            CollisionGroup.Prop,
           exclude: ['rider'],
         });
 
@@ -681,7 +686,7 @@ export class BoardPhysics {
       this.surfaceKind = 'packed';
     }
 
-    if (this.grinding && this.surfaceKind !== 'rail') {
+    if (this.grinding && !isGrindableSurface(this.surfaceKind)) {
       this.grinding = false;
     }
   }
@@ -779,4 +784,9 @@ function majoritySurface(counts: Record<SurfaceKind, number>, fallback: SurfaceK
     }
   }
   return best;
+}
+
+/** Rails + wood park boxes latch grind; packed ramps stay launch-only. */
+function isGrindableSurface(kind: SurfaceKind): boolean {
+  return kind === 'rail' || kind === 'wood';
 }

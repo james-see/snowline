@@ -10,6 +10,7 @@ import { lateralToU, sampleTerrainAt } from '@/course/TerrainGenerator.ts';
 import { presetBudgets, type LodBudgets } from '@/engine/Lod.ts';
 import {
   buildBanner,
+  buildBox,
   buildCheckpointGate,
   buildFence,
   buildFinishArch,
@@ -51,6 +52,7 @@ export interface TreeInstanceBase {
 export const SUPPORTED_PROP_KINDS: readonly PropKind[] = [
   'rail',
   'ramp',
+  'box',
   'tree',
   'rock',
   'flag',
@@ -129,6 +131,8 @@ function buildPropObject(placement: PropPlacement): THREE.Object3D | null {
       return buildRail(placement.length ?? 12);
     case 'ramp':
       return buildRamp(placement.lip ?? 2.4);
+    case 'box':
+      return buildBox(placement.length ?? 10);
     case 'checkpoint_gate':
       return buildCheckpointGate(14);
     case 'finish_arch':
