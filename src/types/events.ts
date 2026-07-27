@@ -6,6 +6,8 @@ export type EventMap = {
   'engine:pointer-lock': { locked: boolean };
   'ui:navigate': { screen: string };
   'run:start': { courseId: CourseId; mode: GameModeId };
+  /** Mode → run course boot — UI loading bar subscribes here. */
+  'run:load-progress': { fraction: number; status: string };
   'run:checkpoint': { index: number; total: number };
   'run:finish': {
     courseId: CourseId;

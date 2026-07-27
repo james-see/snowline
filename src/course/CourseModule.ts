@@ -98,6 +98,61 @@ export class CourseModule implements GameModule {
   }
 
   loadCourse(id: CourseId, physics?: PhysicsWorld): CourseDef {
+    return this.#assembleCourse(id, physics);
+  }
+
+  /**
+   * Build course with rAF yields so the mode→run loading bar can paint between phases.
+   */
+  async loadCourseAsync(
+    id: CourseId,
+    physics?: PhysicsWorld,
+    onProgress?: (p: { fraction: number; status: string }) => void
+  ): Promise<CourseDef> {
+    const report = async (fraction: number, status: string): Promise<void> => {
+      onProgress?.({ fraction, status });
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    };
+
+    await report(0.04, 'Clearing world');
+    const ctx = this.#ctx;
+    const world = physics ?? ctx?.physics;
+    this.#clearVisual();
+    world?.clearWorld();
+
+    await report(0.12, 'Laying terrain');
+    const def = structuredClone(getCourseDef(id));
+    const path = new SplinePath(def.controlPoints);
+    const rng = new SeededRng(def.seed);
+    const terrain = buildTerrain({ course: def, path, rng });
+
+    await report(0.45, 'Growing forest');
+    const budgets = ctx ? resolveLodBudgets(ctx.settings) : presetBudgets('high');
+    def.props = expandCourseProps(def, path, {
+      maxTreeInstances: budgets.maxTreeInstances,
+    });
+    const props = buildCourseProps(def.props, path, def.checkpoints, budgets);
+
+    await report(0.7, 'Snapping to snow');
+    snapPropsToTerrain(props, terrain, path, terrain.meshWidth, def.props);
+    this.#snapMarkersToTerrain(def, path, terrain, props);
+    this.#applySpawn(def, path, terrain);
+
+    this.#root.add(terrain.mesh);
+    this.#root.add(terrain.backdrop);
+    this.#root.add(props.root);
+
+    await report(0.84, 'Baking physics');
+    this.#registerPhysics(world, def, terrain, props);
+
+    await report(0.95, 'Staging run');
+    this.#commitCourse(def, path, terrain, props);
+
+    await report(1, 'Ready');
+    return def;
+  }
+
+  #assembleCourse(id: CourseId, physics?: PhysicsWorld): CourseDef {
     const ctx = this.#ctx;
     const world = physics ?? ctx?.physics;
     this.#clearVisual();
@@ -119,8 +174,18 @@ export class CourseModule implements GameModule {
     snapPropsToTerrain(props, terrain, path, terrain.meshWidth, def.props);
     // Snap gates/finish onto the visual mesh before physics registration.
     this.#snapMarkersToTerrain(def, path, terrain, props);
+    this.#applySpawn(def, path, terrain);
 
-    // Spawn on generated terrain at path.sample(~0.02), not authored Y.
+    this.#root.add(terrain.mesh);
+    this.#root.add(terrain.backdrop);
+    this.#root.add(props.root);
+
+    this.#registerPhysics(world, def, terrain, props);
+    this.#commitCourse(def, path, terrain, props);
+    return def;
+  }
+
+  #applySpawn(def: CourseDef, path: SplinePath, terrain: TerrainBuildResult): void {
     const bed = sampleTerrainAt(terrain, SPAWN_PATH_T, 0.5, _spawnBed);
     const tan = path.tangent(SPAWN_PATH_T);
     def.spawn = {
@@ -128,32 +193,41 @@ export class CourseModule implements GameModule {
       position: [bed.x, bed.y + SPAWN_HOVER, bed.z],
       yaw: Math.atan2(-tan.x, -tan.z),
     };
+  }
 
-    this.#root.add(terrain.mesh);
-    this.#root.add(terrain.backdrop);
-    this.#root.add(props.root);
-
-    if (world?.ready) {
-      // Trimesh from the authored visual mesh — more reliable than heightfield
-      // parameter conventions across Rapier versions, and matches the slope
-      // the player sees.
-      const geo = terrain.mesh.geometry;
-      const posAttr = geo.getAttribute('position');
-      const idx = geo.getIndex();
-      if (posAttr && idx) {
-        const vertices = new Float32Array(posAttr.array as ArrayLike<number>);
-        const indices = new Uint32Array(idx.array as ArrayLike<number>);
-        this.#terrainBody = world.createTrimesh(
-          vertices,
-          indices,
-          new THREE.Vector3(0, 0, 0),
-          'packed',
-          'terrain'
-        );
-      }
-      registerPropsPhysics(world, def.props, props.root);
+  #registerPhysics(
+    world: PhysicsWorld | undefined,
+    def: CourseDef,
+    terrain: TerrainBuildResult,
+    props: PropsBuildResult
+  ): void {
+    if (!world?.ready) return;
+    // Trimesh from the authored visual mesh — more reliable than heightfield
+    // parameter conventions across Rapier versions, and matches the slope
+    // the player sees.
+    const geo = terrain.mesh.geometry;
+    const posAttr = geo.getAttribute('position');
+    const idx = geo.getIndex();
+    if (posAttr && idx) {
+      const vertices = new Float32Array(posAttr.array as ArrayLike<number>);
+      const indices = new Uint32Array(idx.array as ArrayLike<number>);
+      this.#terrainBody = world.createTrimesh(
+        vertices,
+        indices,
+        new THREE.Vector3(0, 0, 0),
+        'packed',
+        'terrain'
+      );
     }
+    registerPropsPhysics(world, def.props, props.root);
+  }
 
+  #commitCourse(
+    def: CourseDef,
+    path: SplinePath,
+    terrain: TerrainBuildResult,
+    props: PropsBuildResult
+  ): void {
     this.#def = def;
     this.#path = path;
     this.#terrain = terrain;
@@ -162,13 +236,11 @@ export class CourseModule implements GameModule {
     this.#root.visible = true;
     this.resetRun();
 
-    ctx?.events.emit('course:loaded', {
+    this.#ctx?.events.emit('course:loaded', {
       courseId: def.id,
       name: def.name,
       length: def.length,
     });
-
-    return def;
   }
 
   getProgress(): CourseProgress {

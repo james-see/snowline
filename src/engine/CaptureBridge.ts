@@ -30,9 +30,9 @@ export interface CaptureApi {
   perform(actions: string[], frames: number, settleFrames?: number): void;
   setHud(visible: boolean): void;
   setSetting(key: string, value: unknown): void;
-  startRun(courseId?: CourseId, mode?: GameModeId): void;
+  startRun(courseId?: CourseId, mode?: GameModeId): Promise<void>;
   /** Place rider at the finish arch and step until results (or timeout). */
-  finishRun(maxFrames?: number): { finished: boolean; frames: number; screen: string };
+  finishRun(maxFrames?: number): Promise<{ finished: boolean; frames: number; screen: string }>;
   /** Dump connected pads / axes / buttons + Input pad state for live verify. */
   gamepadDebug(): ReturnType<Engine['input']['gamepadDebug']>;
   readonly version: string;
@@ -98,11 +98,11 @@ export class CaptureBridge {
       setSetting: (key, value) => {
         (this.#engine.settings as unknown as Record<string, unknown>)[key] = value;
       },
-      startRun: (courseId = 'alpine', mode = 'freeride') => {
+      startRun: async (courseId = 'alpine', mode = 'freeride') => {
         const flow = this.#engine.ctx.getModule<GameFlowModule>('flow');
         if (!flow) return;
         flow.courseId = courseId;
-        flow.startRun(mode);
+        await flow.startRun(mode);
         this.#engine.setTimeScale(1);
       },
       finishRun: (maxFrames = 90) => this.#finishRun(maxFrames),
@@ -164,7 +164,9 @@ export class CaptureBridge {
    * Smoke path: teleport onto the finish bed and step until GameFlow hits results.
    * Proves course:finish → run:finish → timeScale 0 without riding the full line.
    */
-  #finishRun(maxFrames: number): { finished: boolean; frames: number; screen: string } {
+  async #finishRun(
+    maxFrames: number
+  ): Promise<{ finished: boolean; frames: number; screen: string }> {
     const ctx = this.#engine.ctx;
     const flow = ctx.getModule<GameFlowModule>('flow');
     const course = ctx.getModule<CourseModule>('course');
@@ -175,7 +177,7 @@ export class CaptureBridge {
 
     if (flow.screen !== 'playing' && flow.screen !== 'paused') {
       flow.courseId = flow.courseId || 'alpine';
-      flow.startRun(flow.mode || 'freeride');
+      await flow.startRun(flow.mode || 'freeride');
     }
 
     const def = course.getDefinition();
@@ -335,7 +337,7 @@ export class CaptureBridge {
     const run = async (course: CourseId = 'alpine'): Promise<void> => {
       const flow = this.#engine.ctx.getModule<GameFlowModule>('flow')!;
       flow.courseId = course;
-      flow.startRun('freeride');
+      await flow.startRun('freeride');
       this.#engine.setTimeScale(1);
       for (let i = 0; i < 90; i++) this.#engine.stepManual(1 / 60);
       // Lock midfield-fill chase (B8) after settle — avoid empty far-corridor drift.
