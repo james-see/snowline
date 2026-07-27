@@ -5,26 +5,32 @@ import { buildProceduralRig, type ProceduralRig } from './buildProceduralRig.ts'
 import { resolveCosmetics, type RiderCosmetics } from './cosmetics.ts';
 import { tryLoadRiderGltf, type LoadedRiderGltf } from './loadRiderGltf.ts';
 
-const LEAN_FOLLOW = 14;
-const LEAN_BODY = 0.78;
-const LEAN_HIP = 0.32;
+/** Fast into carve so steering reads immediately. */
+const LEAN_IN = 16;
+/** Slow exit so capture settle + converge still show athlete lean. */
+const LEAN_OUT = 1.35;
+const LEAN_BODY = 1.05;
+const LEAN_HIP = 0.48;
 const MENU_SCREENS = new Set(['title', 'course', 'mode', 'settings']);
+/** Below this speed + zero lean → treat as spawn/idle snap (m/s). */
+const IDLE_SNAP_SPEED = 0.08;
 
-// Carve-ready base pose (radians) — deep crouch, never upright idle.
+// SSX-style deep crouch base — readable athlete even when physics lean decays.
 const BASE = {
-  bodyX: 0.22,
-  torsoX: -0.28,
-  headX: -0.12,
-  leftLegX: 0.88,
-  rightLegX: 0.7,
-  leftShinX: -1.15,
-  rightShinX: -1.05,
-  leftArmX: 0.42,
-  rightArmX: 0.35,
+  bodyX: 0.38,
+  torsoX: -0.42,
+  headX: -0.18,
+  leftLegX: 1.05,
+  rightLegX: 0.92,
+  leftShinX: -1.38,
+  rightShinX: -1.28,
+  leftArmX: 0.55,
+  rightArmX: 0.48,
+  armSpread: 0.95,
 } as const;
 
-/** Neutral crouch floor used at spawn / after lean clears (matches sync carve=0). */
-const SPAWN_CROUCH = 0.14;
+/** Neutral crouch floor used at spawn / after lean clears (deep, not upright). */
+const SPAWN_CROUCH = 0.28;
 
 /**
  * Rider + board scene graph: glTF when present under public/assets, else
@@ -102,16 +108,26 @@ export class RiderVisual {
     this.root.rotation.set(board.boardPitch, board.boardYaw, board.boardRoll, 'YXZ');
 
     const target = board.lean;
-    const k = 1 - Math.exp(-LEAN_FOLLOW * Math.max(0, dt));
-    this.#lean += (target - this.#lean) * (dt > 0 ? k : 1);
+    if (dt > 0) {
+      const engaging = Math.abs(target) >= Math.abs(this.#lean) - 0.02;
+      const rate = engaging ? LEAN_IN : LEAN_OUT;
+      const k = 1 - Math.exp(-rate * dt);
+      this.#lean += (target - this.#lean) * k;
+    } else if (Math.abs(target) < 1e-4 && board.speed < IDLE_SNAP_SPEED) {
+      // Spawn / true idle — snap. Capture converge keeps speed > idle → hold lean.
+      this.#lean = 0;
+    }
+    // dt === 0 with residual speed: freeze silhouette for pin/converge stills.
 
-    // Extra knee load when edged and moving — strong carve compression in stills.
     const lean = this.#lean;
     const abs = Math.abs(lean);
-    const edge = Math.min(1, Math.abs(board.edgeAngle) / 0.45);
-    const speedN = Math.min(1, board.speed / 14);
-    const carve = board.grounded ? abs * 0.7 + edge * 0.45 * speedN : abs * 0.35;
-    const crouch = SPAWN_CROUCH + carve * 0.38;
+    const edge = Math.min(1, Math.abs(board.edgeAngle) / 0.4);
+    const roll = Math.min(1, Math.abs(board.boardRoll) / 0.35);
+    const speedN = Math.min(1, board.speed / 12);
+    const carve = board.grounded
+      ? Math.max(abs, edge * 0.85, roll * 0.7) * 0.75 + edge * 0.35 * Math.max(0.35, speedN)
+      : abs * 0.4;
+    const crouch = SPAWN_CROUCH + carve * 0.55;
 
     this.#applyStance(lean, crouch);
   }
@@ -122,44 +138,43 @@ export class RiderVisual {
 
     if (this.#procedural && !this.#usingGltf) {
       const p = this.#procedural;
-      p.body.rotation.set(BASE.bodyX + crouch * 0.55, 0, lean * LEAN_BODY);
-      p.body.position.set(-lean * 0.16, 0.02 - crouch * 0.07, -0.04 - abs * 0.05);
+      p.body.rotation.set(BASE.bodyX + crouch * 0.7, lean * 0.08, lean * LEAN_BODY);
+      p.body.position.set(-lean * 0.22, 0.01 - crouch * 0.1, -0.06 - abs * 0.08);
       p.hips.rotation.z = lean * LEAN_HIP;
-      p.hips.rotation.x = 0;
-      p.torso.rotation.z = lean * 0.22;
-      p.torso.rotation.x = BASE.torsoX - crouch * 0.32 - abs * 0.12;
-      p.head.rotation.z = -lean * 0.22;
-      p.head.rotation.x = BASE.headX - abs * 0.06;
+      p.hips.rotation.x = crouch * 0.15;
+      p.torso.rotation.z = lean * 0.35;
+      p.torso.rotation.x = BASE.torsoX - crouch * 0.45 - abs * 0.18;
+      p.head.rotation.z = -lean * 0.28;
+      p.head.rotation.x = BASE.headX - abs * 0.1;
 
       p.leftArm.rotation.set(
-        BASE.leftArmX + abs * 0.65 + crouch * 0.22,
-        0.18 * lean,
-        0.72 + lean * 0.55
+        BASE.leftArmX + abs * 0.85 + crouch * 0.3,
+        0.22 * lean,
+        BASE.armSpread + lean * 0.7
       );
       p.rightArm.rotation.set(
-        BASE.rightArmX + abs * 0.58 + crouch * 0.18,
-        0.18 * lean,
-        -0.62 + lean * 0.55
+        BASE.rightArmX + abs * 0.78 + crouch * 0.26,
+        0.22 * lean,
+        -BASE.armSpread + lean * 0.7
       );
 
-      // Hip flex + shin counter-rotation = loud knee bend on carve.
       p.leftLeg.rotation.set(
-        BASE.leftLegX + crouch * 0.85 + lean * 0.2,
-        0.12,
-        0.18 + lean * 0.14
+        BASE.leftLegX + crouch * 1.05 + lean * 0.28,
+        0.14,
+        0.22 + lean * 0.2
       );
       p.rightLeg.rotation.set(
-        BASE.rightLegX + crouch * 0.78 - lean * 0.2,
-        -0.1,
-        -0.16 + lean * 0.14
+        BASE.rightLegX + crouch * 0.98 - lean * 0.28,
+        -0.12,
+        -0.2 + lean * 0.2
       );
-      p.leftShin.rotation.x = BASE.leftShinX - crouch * 0.95 - Math.max(0, lean) * 0.22;
-      p.rightShin.rotation.x = BASE.rightShinX - crouch * 0.9 - Math.max(0, -lean) * 0.22;
+      p.leftShin.rotation.x = BASE.leftShinX - crouch * 1.15 - Math.max(0, lean) * 0.35;
+      p.rightShin.rotation.x = BASE.rightShinX - crouch * 1.1 - Math.max(0, -lean) * 0.35;
       return;
     }
 
-    this.#body.rotation.set(0.16 + crouch * 0.4, 0, lean * LEAN_BODY);
-    this.#body.position.set(-lean * 0.12, this.#body.position.y, this.#body.position.z);
+    this.#body.rotation.set(0.28 + crouch * 0.55, 0, lean * LEAN_BODY);
+    this.#body.position.set(-lean * 0.18, this.#body.position.y, this.#body.position.z);
   }
 
   dispose(ctx?: EngineContext): void {
