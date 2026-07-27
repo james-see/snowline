@@ -13,7 +13,7 @@ Procedural fallbacks (noise, synth audio, primitive props) keep the game offline
 
 | Kind | Strategy |
 |------|----------|
-| Snow/rock/ice/wood/fabric PBR | Poly Haven CC0 (`snow_floor`, `pine_bark`, `brown_planks_07`, `hessian_230`, …) |
+| Snow/rock/ice/wood/fabric PBR | Poly Haven CC0 (`snow_floor`, `snow_02`/`snow_03` ice, `pine_bark`, `brown_planks_07`, `hessian_230`, …) |
 | Tree meshes | Kenney Nature Kit CC0 pines → `public/assets/models/trees/*.glb` (~17 KB, ~230 tris) |
 | HDRI | Poly Haven CC0 |
 | Rider/board | Procedural meshes (original) |

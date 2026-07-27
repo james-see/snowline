@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T00:13:47.977Z",
+  "generatedAt": "2026-07-27T00:22:05.162Z",
   "materials": [
     {
       "id": "snow_groom",
@@ -61,10 +61,10 @@
       "orm": "/assets/textures/ice_glass_orm.jpg",
       "tileScale": 5,
       "source": {
-        "name": "ice_glass (placeholder)",
-        "author": "snowline-pipeline",
-        "license": "generated-placeholder",
-        "url": null
+        "name": "Snow 02",
+        "author": "Rob Tuytel",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/snow_02"
       }
     },
     {
@@ -74,10 +74,10 @@
       "orm": "/assets/textures/ice_frost_orm.jpg",
       "tileScale": 4,
       "source": {
-        "name": "ice_frost (placeholder)",
-        "author": "snowline-pipeline",
-        "license": "generated-placeholder",
-        "url": null
+        "name": "Snow 03",
+        "author": "Rob Tuytel",
+        "license": "CC0-1.0",
+        "url": "https://polyhaven.com/a/snow_03"
       }
     },
     {

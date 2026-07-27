@@ -53,16 +53,16 @@ export const MATERIALS = [
   },
   {
     id: 'ice_glass',
-    slug: 'ice_01',
+    slug: 'snow_02',
     tileScale: 5,
     metalness: 0.05,
-    note: 'Glazed ice patch for race lines and north-facing slopes. High gloss, low metalness.',
+    note: 'Smooth frosty snow (PH snow_02) for race ice — clearcoat/low roughness in MaterialLibrary. ice_01 gone 2026.',
   },
   {
     id: 'ice_frost',
-    slug: 'frozen_ground_01',
+    slug: 'snow_03',
     tileScale: 4,
-    note: 'Frosted ice transition at tree line. Softer than race ice, still reads cold.',
+    note: 'Trampled/dirty snow (PH snow_03) for frosted tree-line transition. frozen_ground_01 gone 2026.',
   },
   {
     id: 'wood_bark',
