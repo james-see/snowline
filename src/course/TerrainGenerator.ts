@@ -71,6 +71,334 @@ function envelope01(t: number, start: number, end: number): number {
   return Math.sin(u * Math.PI);
 }
 
+/** Alpine silhouette: discrete peaks + ridgeline noise. */
+function ridgeSilhouette(u: number, seed: number, peakCount: number, jagged: number): number {
+  const phase = valueNoise(u * 3.1, seed * 0.001, seed + 7) * Math.PI * 2;
+  const wave = Math.sin(u * Math.PI * peakCount + phase);
+  const peak = Math.pow(Math.max(0, wave), jagged);
+  const secondary = Math.pow(Math.max(0, Math.sin(u * Math.PI * (peakCount * 1.7) - phase)), jagged * 1.2);
+  const rumble = fbm(u * 6.5, seed * 0.02, seed + 41, 3);
+  return peak * 0.72 + secondary * 0.28 + (rumble - 0.5) * 0.22;
+}
+
+interface RidgelineLayer {
+  name: string;
+  /** Metres beyond race+apron half-width. */
+  lateralPad: number;
+  /** Depth of the mountain mass outward, metres. */
+  massDepth: number;
+  /** Peak rise above local path Y, metres. */
+  peakHeight: number;
+  /** Soft foothill pedestal under peaks, metres. */
+  foothill: number;
+  peakCount: number;
+  jagged: number;
+  tint: [number, number, number];
+  roughness: number;
+  alongSamples: number;
+  depthSamples: number;
+  /** Path-t span for the strip (can extend past [0,1]). */
+  t0: number;
+  t1: number;
+  /** +1 = rider right, -1 = rider left. */
+  side: 1 | -1;
+}
+
+/**
+ * Visual-only multi-layer alpine peaks / ridgelines.
+ * Sits outside the playable apron so the horizon reads as mountains, not empty sky.
+ * Never included in the Rapier trimesh.
+ */
+export function buildAlpineBackdrop(
+  path: SplinePath,
+  meshHalfWidth: number,
+  seed: number,
+  backdrop?: CourseDef['terrain']['backdrop']
+): THREE.Group {
+  const root = new THREE.Group();
+  root.name = 'alpine-backdrop';
+  if (backdrop?.enabled === false) return root;
+
+  const peakHeight = backdrop?.peakHeight ?? 280;
+  const nearOffset = backdrop?.nearOffset ?? 40;
+  const farOffset = backdrop?.farOffset ?? 220;
+
+  const layers: RidgelineLayer[] = [
+    {
+      name: 'foothill-right',
+      lateralPad: nearOffset,
+      massDepth: 90,
+      peakHeight: peakHeight * 0.28,
+      foothill: 18,
+      peakCount: 5,
+      jagged: 1.6,
+      tint: [0.86, 0.9, 0.94],
+      roughness: 0.94,
+      alongSamples: 48,
+      depthSamples: 5,
+      t0: -0.08,
+      t1: 1.12,
+      side: 1,
+    },
+    {
+      name: 'foothill-left',
+      lateralPad: nearOffset,
+      massDepth: 90,
+      peakHeight: peakHeight * 0.3,
+      foothill: 20,
+      peakCount: 5,
+      jagged: 1.55,
+      tint: [0.84, 0.89, 0.93],
+      roughness: 0.94,
+      alongSamples: 48,
+      depthSamples: 5,
+      t0: -0.08,
+      t1: 1.12,
+      side: -1,
+    },
+    {
+      name: 'mid-ridge-right',
+      lateralPad: farOffset * 0.55,
+      massDepth: 160,
+      peakHeight: peakHeight * 0.62,
+      foothill: 40,
+      peakCount: 4,
+      jagged: 2.1,
+      tint: [0.78, 0.84, 0.9],
+      roughness: 0.96,
+      alongSamples: 40,
+      depthSamples: 4,
+      t0: -0.05,
+      t1: 1.18,
+      side: 1,
+    },
+    {
+      name: 'mid-ridge-left',
+      lateralPad: farOffset * 0.55,
+      massDepth: 160,
+      peakHeight: peakHeight * 0.66,
+      foothill: 42,
+      peakCount: 4,
+      jagged: 2.2,
+      tint: [0.76, 0.82, 0.89],
+      roughness: 0.96,
+      alongSamples: 40,
+      depthSamples: 4,
+      t0: -0.05,
+      t1: 1.18,
+      side: -1,
+    },
+    {
+      name: 'far-peaks-right',
+      lateralPad: farOffset,
+      massDepth: 260,
+      peakHeight,
+      foothill: 55,
+      peakCount: 3,
+      jagged: 2.8,
+      tint: [0.68, 0.76, 0.86],
+      roughness: 0.98,
+      alongSamples: 36,
+      depthSamples: 4,
+      t0: 0.05,
+      t1: 1.25,
+      side: 1,
+    },
+    {
+      name: 'far-peaks-left',
+      lateralPad: farOffset,
+      massDepth: 260,
+      peakHeight: peakHeight * 1.05,
+      foothill: 58,
+      peakCount: 3,
+      jagged: 2.9,
+      tint: [0.66, 0.74, 0.85],
+      roughness: 0.98,
+      alongSamples: 36,
+      depthSamples: 4,
+      t0: 0.05,
+      t1: 1.25,
+      side: -1,
+    },
+  ];
+
+  // Horizon wall ahead of the finish — fills empty sky when looking downhill.
+  root.add(
+    buildHorizonPeakWall(path, seed, {
+      peakHeight: peakHeight * 1.15,
+      lateralSpan: meshHalfWidth + farOffset + 420,
+      depth: 220,
+      tint: [0.62, 0.72, 0.84],
+      aheadT: 1.18,
+    })
+  );
+
+  for (const layer of layers) {
+    root.add(buildRidgelineStrip(path, meshHalfWidth, seed, layer));
+  }
+
+  return root;
+}
+
+function buildRidgelineStrip(
+  path: SplinePath,
+  meshHalfWidth: number,
+  seed: number,
+  layer: RidgelineLayer
+): THREE.Mesh {
+  const alongN = layer.alongSamples;
+  const depthN = layer.depthSamples;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const [cr, cg, cb] = layer.tint;
+
+  for (let i = 0; i < alongN; i++) {
+    const u = i / (alongN - 1);
+    const pathT = THREE.MathUtils.lerp(layer.t0, layer.t1, u);
+    const featureT = THREE.MathUtils.clamp(pathT, 0, 1);
+    path.sampleExtended(pathT, _sample);
+    path.right(featureT, _right);
+
+    const sil = ridgeSilhouette(u, seed + layer.side * 97, layer.peakCount, layer.jagged);
+    const pathY = _sample.y;
+
+    for (let d = 0; d < depthN; d++) {
+      const du = d / Math.max(1, depthN - 1);
+      const outward = layer.lateralPad + du * layer.massDepth;
+      const lateral = layer.side * (meshHalfWidth + outward);
+      const wx = _sample.x + _right.x * lateral;
+      const wz = _sample.z + _right.z * lateral;
+
+      // Rise toward the outer crest, then soft backslope so silhouettes read as mass.
+      const crest = Math.sin(du * Math.PI);
+      const back = du > 0.55 ? (du - 0.55) / 0.45 : 0;
+      const rise =
+        layer.foothill * (0.35 + 0.65 * crest) +
+        layer.peakHeight * sil * (0.45 + 0.55 * crest) -
+        back * back * layer.peakHeight * 0.22;
+
+      const micro = (fbm(wx * 0.012, wz * 0.012, seed + 211, 3) - 0.5) * layer.peakHeight * 0.08;
+      const y = pathY + rise + micro;
+
+      positions.push(wx, y, wz);
+      // Cooler / mistier toward outer mass for aerial perspective.
+      const mist = 0.08 + du * 0.14;
+      colors.push(cr * (1 - mist) + 0.55 * mist, cg * (1 - mist) + 0.62 * mist, cb * (1 - mist) + 0.72 * mist);
+    }
+  }
+
+  for (let i = 0; i < alongN - 1; i++) {
+    for (let d = 0; d < depthN - 1; d++) {
+      const a = i * depthN + d;
+      const b = a + 1;
+      const c = a + depthN;
+      const e = c + 1;
+      // Wind outward so both flanks face the corridor.
+      if (layer.side > 0) indices.push(a, c, b, b, c, e);
+      else indices.push(a, b, c, b, e, c);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: layer.roughness,
+    metalness: 0.01,
+    flatShading: false,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = `backdrop-${layer.name}`;
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.frustumCulled = true;
+  return mesh;
+}
+
+/** Far downhill peak wall — fills horizon when chase looks along the fall line. */
+function buildHorizonPeakWall(
+  path: SplinePath,
+  seed: number,
+  opts: {
+    peakHeight: number;
+    lateralSpan: number;
+    depth: number;
+    tint: [number, number, number];
+    aheadT: number;
+  }
+): THREE.Mesh {
+  const acrossN = 56;
+  const depthN = 5;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const [cr, cg, cb] = opts.tint;
+
+  path.sampleExtended(opts.aheadT, _sample);
+  path.tangent(1, _tan);
+  path.right(1, _right);
+
+  for (let i = 0; i < acrossN; i++) {
+    const u = i / (acrossN - 1);
+    const lateral = (u - 0.5) * 2 * opts.lateralSpan;
+    const sil = ridgeSilhouette(u, seed + 503, 5, 2.6);
+    // Emphasize a few dominant summits like the alpine groom ref.
+    const hero = Math.pow(Math.max(0, Math.sin(u * Math.PI * 2.2 + 0.4)), 3.2);
+
+    for (let d = 0; d < depthN; d++) {
+      const du = d / Math.max(1, depthN - 1);
+      const ahead = du * opts.depth;
+      const wx = _sample.x + _right.x * lateral + _tan.x * ahead;
+      const wz = _sample.z + _right.z * lateral + _tan.z * ahead;
+      const crest = Math.sin(Math.min(1, du * 1.15) * Math.PI);
+      const y =
+        _sample.y +
+        35 +
+        opts.peakHeight * (sil * 0.7 + hero * 0.55) * (0.4 + 0.6 * crest) +
+        (fbm(wx * 0.01, wz * 0.01, seed + 77, 3) - 0.5) * opts.peakHeight * 0.1;
+
+      positions.push(wx, y, wz);
+      const mist = 0.12 + du * 0.18;
+      colors.push(cr * (1 - mist) + 0.58 * mist, cg * (1 - mist) + 0.66 * mist, cb * (1 - mist) + 0.78 * mist);
+    }
+  }
+
+  for (let i = 0; i < acrossN - 1; i++) {
+    for (let d = 0; d < depthN - 1; d++) {
+      const a = i * depthN + d;
+      const b = a + 1;
+      const c = a + depthN;
+      const e = c + 1;
+      indices.push(a, b, c, b, e, c);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.98,
+    metalness: 0.01,
+    flatShading: false,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'backdrop-horizon-peaks';
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  return mesh;
+}
+
 /**
  * Builds a downhill mountain meshed for rendering and Rapier trimesh.
  * Race corridor stays centered; wide powder flanks + nose/tail aprons keep
@@ -78,6 +406,7 @@ function envelope01(t: number, start: number, end: number): number {
  *
  * Visual mesh stays in world Y so spawn/props/path samples share one space.
  * The heightfield array is still origin-relative for the legacy API shape.
+ * Distant peak silhouettes live on a separate visual-only backdrop group.
  */
 export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResult {
   const { course, path } = options;
@@ -91,6 +420,7 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
   const meshHalfWidth = raceHalf + apronWidth;
   const meshWidth = meshHalfWidth * 2;
   const tSpan = 1 + 2 * apronT;
+  const reliefScale = profile.reliefScale ?? 1;
 
   const pathSamples = Math.max(
     32,
@@ -150,7 +480,9 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       const macro = fbm(wx * 0.018, wz * 0.018, seed, 4) - 0.5;
       const micro = fbm(wx * 0.09, wz * 0.09, seed + 17, 3) - 0.5;
       const shelfNoise = fbm(wx * 0.035, wz * 0.035, seed + 53, 3) - 0.5;
-      const rough = (macro * 6 + micro * 2.2) * profile.roughness;
+      const flankRidge = fbm(wx * 0.022, wz * 0.022, seed + 91, 4) - 0.5;
+      // Stronger near relief so the playable sheet isn't a flat card.
+      const rough = (macro * 9.5 + micro * 3.4) * profile.roughness * reliefScale;
 
       let y =
         corridorCenterY -
@@ -161,21 +493,32 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       // Soft berms at the race-corridor edge — readable line, not a wall.
       if (raceDistNorm > 0.78 && raceDistNorm < 1.15) {
         const edge = raceDistNorm - 0.78;
-        y += edge * edge * 14 * (0.35 + profile.roughness);
+        y += edge * edge * 18 * (0.35 + profile.roughness) * reliefScale;
       }
 
       // Off-piste powder shelves / soft berms continuing the mountain flanks.
       if (apronNorm > 0) {
         const shelf = Math.sin(Math.min(1, apronNorm) * Math.PI);
-        y -= shelf * (2.4 + shelfNoise * 1.8) * (0.55 + profile.roughness * 0.5);
-        y += apronNorm * apronNorm * 16 * (0.4 + profile.roughness * 0.6);
-        y += shelfNoise * 3.2 * apronNorm;
+        y -= shelf * (2.8 + shelfNoise * 2.2) * (0.55 + profile.roughness * 0.5) * reliefScale;
+        // Rise into foothills toward apron edge — joins visual backdrop mass.
+        y += apronNorm * apronNorm * 28 * (0.45 + profile.roughness * 0.55) * reliefScale;
+        y += shelfNoise * 4.2 * apronNorm * reliefScale;
+        // Mid-apron ridgelines break the flat powder sheet.
+        if (apronNorm > 0.28) {
+          const ridgeU = (apronNorm - 0.28) / 0.72;
+          y +=
+            Math.pow(ridgeU, 1.35) *
+            flankRidge *
+            26 *
+            (0.55 + profile.roughness * 0.6) *
+            reliefScale;
+        }
       }
 
-      // Gentle catch berm near the absolute mesh border.
-      if (meshDistNorm > 0.86) {
-        const lip = meshDistNorm - 0.86;
-        y += lip * lip * 55 * (0.7 + profile.roughness * 0.4);
+      // Catch berm / foothill lip at the absolute mesh border.
+      if (meshDistNorm > 0.82) {
+        const lip = meshDistNorm - 0.82;
+        y += lip * lip * 85 * (0.75 + profile.roughness * 0.4) * reliefScale;
       }
 
       // Halfpipe depression (race corridor features only).
@@ -298,8 +641,11 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
   mesh.receiveShadow = true;
   mesh.castShadow = false;
 
+  const backdrop = buildAlpineBackdrop(path, meshHalfWidth, seed, profile.backdrop);
+
   return {
     mesh,
+    backdrop,
     heightfield: {
       nrows,
       ncols,
