@@ -8,6 +8,8 @@ export type PropKind =
   | 'tree'
   | 'rock'
   | 'flag'
+  | 'banner'
+  | 'fence'
   | 'checkpoint_gate'
   | 'finish_arch'
   | 'tunnel';
@@ -40,6 +42,8 @@ export interface PropPlacement {
   /** Ramp lip height, in metres. */
   lip?: number;
   grindable?: boolean;
+  /** Banner board text (e.g. "SLOW DOWN"). */
+  label?: string;
   /** Marks a forgiving bailout zone — props here stay off the main line. */
   recovery?: boolean;
 }

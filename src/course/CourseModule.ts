@@ -13,12 +13,13 @@ import {
 import { getCourseDef } from '@/course/CourseDefs.ts';
 import {
   buildCourseProps,
+  expandCourseProps,
   registerPropsPhysics,
   snapPropsToTerrain,
   type PropTrigger,
   type PropsBuildResult,
 } from '@/course/Props.ts';
-import { resolveLodBudgets } from '@/engine/Lod.ts';
+import { resolveLodBudgets, presetBudgets } from '@/engine/Lod.ts';
 import type { RiderModule } from '@/rider/RiderModule.ts';
 
 const _playerPos = new THREE.Vector3();
@@ -76,10 +77,14 @@ export class CourseModule implements GameModule {
     const path = new SplinePath(def.controlPoints);
     const rng = new SeededRng(def.seed);
     const terrain = buildTerrain({ course: def, path, rng });
-    const budgets = ctx ? resolveLodBudgets(ctx.settings) : undefined;
+    const budgets = ctx ? resolveLodBudgets(ctx.settings) : presetBudgets('high');
+    // Apron forest belts + race banners/fencing; authored props keep priority.
+    def.props = expandCourseProps(def, path, {
+      maxTreeInstances: budgets.maxTreeInstances,
+    });
     const props = buildCourseProps(def.props, path, def.checkpoints, budgets);
 
-    // Snap trees/rocks/rails/etc. onto the visual mesh; sync placement Y for physics.
+    // Snap trees/rocks/rails/furniture onto the visual mesh; sync placement Y for physics.
     // Must use meshWidth (corridor + apron), not race corridor width — wrong U → floating Y.
     snapPropsToTerrain(props, terrain, path, terrain.meshWidth, def.props);
     // Snap gates/finish onto the visual mesh before physics registration.

@@ -68,6 +68,27 @@ export const mats = {
   }),
   tunnel: new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.9 }),
   tunnelSnow: new THREE.MeshStandardMaterial({ color: 0xe4ebf2, roughness: 0.86 }),
+  bannerBoard: new THREE.MeshStandardMaterial({
+    color: 0xf2f4f7,
+    roughness: 0.72,
+    side: THREE.DoubleSide,
+  }),
+  bannerFrame: new THREE.MeshStandardMaterial({
+    color: 0xc01820,
+    roughness: 0.55,
+    emissive: 0x3a0808,
+    emissiveIntensity: 0.25,
+  }),
+  fencePost: new THREE.MeshStandardMaterial({ color: 0x6a7180, metalness: 0.55, roughness: 0.45 }),
+  fenceRail: new THREE.MeshStandardMaterial({ color: 0x8a92a0, metalness: 0.4, roughness: 0.5 }),
+  fenceNet: new THREE.MeshStandardMaterial({
+    color: 0xd8dee8,
+    roughness: 0.85,
+    transparent: true,
+    opacity: 0.55,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  }),
 };
 
 export function disposeSharedMaterials(): void {

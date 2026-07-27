@@ -165,7 +165,9 @@ export function registerPropsPhysics(
         break;
       }
       case 'flag':
-        // Decorative — no solid collider.
+      case 'banner':
+      case 'fence':
+        // Decorative race furniture — no solid collider.
         break;
       default:
         break;
