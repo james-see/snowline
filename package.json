@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "assets:fetch": "node tools/assets/fetch.mjs",
     "assets:pack": "node tools/assets/pack.mjs",
     "assets:all": "npm run assets:fetch && npm run assets:pack",

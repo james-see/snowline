@@ -20,7 +20,7 @@ describe('resolveLodBudgets', () => {
   it('keeps High within 60fps instance/particle caps', () => {
     const b = resolveLodBudgets(fakeSettings({ preset: 'high' }));
     assert.ok(b.maxTreeInstances <= LOD_BUFFER_CAPS.trees);
-    assert.equal(b.maxTreeInstances, 320);
+    assert.equal(b.maxTreeInstances, 400);
     assert.ok(b.maxTreeShadowCasters <= b.maxTreeInstances);
     assert.ok(b.maxSnowParticles <= 2200);
     assert.ok(b.shadowDistance <= 140);

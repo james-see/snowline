@@ -11,7 +11,7 @@ const _tan = new THREE.Vector3();
 const FOREST_FILL: Record<CourseDef['id'], number> = {
   alpine: 1,
   timberline: 1,
-  summit: 0.35,
+  summit: 0.4,
 };
 
 const BANNER_LABELS = ['SLOW DOWN', 'CAUTION', 'STAY LEFT', 'GATE AHEAD'] as const;
@@ -61,44 +61,55 @@ function scatterForestBelt(
   const slots = Math.max(0, target - existing);
   if (slots === 0) return [];
 
-  // Dense multi-row apron wall — hug the race strip; do not spray loners across powder.
-  const inner = raceHalf + (courseId === 'timberline' ? 3.2 : courseId === 'summit' ? 5 : 4.5);
+  // Hug the race lip so canopies fill chase midfield — not amphitheater skyline loners.
+  // Keep corridor clear (tests: minDist >= raceHalf * 0.85).
+  const inner =
+    courseId === 'timberline'
+      ? raceHalf + 0.45
+      : courseId === 'summit'
+        ? raceHalf + 3.5
+        : raceHalf + 0.6;
+  // Shallow belt: pack overlapping rows beside the strip before foothill rise.
   const beltDepth =
     courseId === 'summit'
-      ? Math.min(apron * 0.28, 30)
+      ? Math.min(apron * 0.2, 24)
       : courseId === 'timberline'
-        ? Math.min(apron * 0.3, 34)
-        : Math.min(apron * 0.34, 48);
+        ? Math.min(apron * 0.16, 16)
+        : Math.min(apron * 0.14, 18);
   const outer = inner + beltDepth;
-  const rows = courseId === 'summit' ? 2 : courseId === 'timberline' ? 5 : 4;
-  // Front-weighted gallery so course_start / forest chase frames read as a belt.
-  const denseEnd = courseId === 'summit' ? 0.55 : 0.62;
-  const denseFrac = courseId === 'summit' ? 0.55 : 0.78;
+  // Hard front-weight: forest / course_start chase frames own most of the budget.
+  const denseEnd = courseId === 'summit' ? 0.5 : 0.48;
+  const denseFrac = courseId === 'summit' ? 0.6 : 0.9;
   const denseSlots = Math.floor(slots * denseFrac);
+  // latPow > 1 → mass near inner lip (pow < 1 sprayed outward — lonely skyline cones).
+  const latPow = courseId === 'timberline' ? 2.15 : courseId === 'summit' ? 1.35 : 1.95;
   const out: PropPlacement[] = [];
 
   for (let i = 0; i < slots; i++) {
     const inDense = i < denseSlots;
     const local = inDense ? i : i - denseSlots;
     const localCount = inDense ? denseSlots : Math.max(1, slots - denseSlots);
-    const t0 = inDense ? 0.03 : denseEnd;
+    const t0 = inDense ? 0.02 : denseEnd;
     const t1 = inDense ? denseEnd : 0.97;
-    // Stratified clumps: several trees share a path cell → wall read, not loners.
-    const clumpSize = courseId === 'summit' ? 2 : 3;
+    // Tight clumps → overlapping canopies (timberline wall, not loner cones).
+    const clumpSize = courseId === 'summit' ? 3 : 5;
     const clump = Math.floor(local / clumpSize);
     const clumpCount = Math.max(1, Math.ceil(localCount / clumpSize));
     const stratum = (clump + 0.5) / clumpCount;
+    const inClump = local % clumpSize;
     const t =
       t0 +
       stratum * (t1 - t0) +
-      (rng.next() - 0.5) * 0.01 +
-      ((local % clumpSize) - (clumpSize - 1) * 0.5) * 0.0035;
-    const tt = THREE.MathUtils.clamp(t, 0.02, 0.98);
+      (rng.next() - 0.5) * 0.012 +
+      (inClump - (clumpSize - 1) * 0.5) * 0.0045;
+    const tt = THREE.MathUtils.clamp(t, 0.015, 0.985);
     const side = local % 2 === 0 ? -1 : 1;
-    const row = Math.floor(local / 2) % rows;
-    const rowJitter = rng.range(0.08, 0.92);
-    const latNorm = Math.pow((row + rowJitter) / rows, courseId === 'timberline' ? 0.75 : 0.82);
-    const lateral = side * (inner + latNorm * Math.max(3, outer - inner));
+    // Stratified + power bias: most instances hug the race lip for midfield fill.
+    const u = (local * 0.6180339887) % 1;
+    const latNorm = Math.pow(u, latPow);
+    // Clump mates offset along-path more than lateral — canopy overlap, corridor safe.
+    const clumpLat = (inClump - (clumpSize - 1) * 0.5) * (courseId === 'timberline' ? 0.55 : 0.7);
+    const lateral = side * (inner + latNorm * Math.max(2.5, outer - inner) + clumpLat);
 
     path.sample(tt, _center);
     path.right(tt, _right);
@@ -108,8 +119,13 @@ function scatterForestBelt(
     const x = _center.x + _right.x * lateral;
     const z = _center.z + _right.z * lateral;
     const y = _center.y; // snapPropsToTerrain raycasts to bed
-    const scale = 0.68 + rng.range(0, 0.62);
-    const far = Math.abs(lateral) > raceHalf + 14;
+
+    // Scale variety: near wall taller / mid understory shorter → depth + overlap read.
+    const nearLip = Math.abs(lateral) < raceHalf + 8;
+    const scale = nearLip
+      ? 0.85 + rng.range(0, 0.95) // 0.85–1.8 looming midfield
+      : 0.55 + rng.range(0, 0.7); // 0.55–1.25 understory / far
+    const far = Math.abs(lateral) > raceHalf + 12;
 
     out.push({
       id: `belt-tree-${courseId}-${i}`,
@@ -118,7 +134,7 @@ function scatterForestBelt(
       rotationY: rng.range(0, Math.PI * 2),
       variant: rng.int(0, 3),
       scale,
-      recovery: far || courseId === 'alpine',
+      recovery: far || courseId === 'alpine' || nearLip,
     });
   }
 
@@ -138,13 +154,15 @@ function scatterCourseFurniture(
   }
 
   const out: PropPlacement[] = [];
-  const edge = raceHalf + 1.6;
-  // Race-tunnel language: banners + fence runs along both flanks (not a handful).
-  const bannerCount = courseId === 'timberline' ? 18 : 16;
-  const fenceCount = courseId === 'timberline' ? 36 : 32;
+  const edge = raceHalf + 1.35;
+  // Race-tunnel language: banners dense in chase midfield, fences along both flanks.
+  const bannerCount = courseId === 'timberline' ? 28 : 24;
+  const fenceCount = courseId === 'timberline' ? 44 : 40;
 
   for (let i = 0; i < bannerCount; i++) {
-    const t = 0.06 + (i / Math.max(1, bannerCount - 1)) * 0.86;
+    // Front-bias banners into forest / course_start frames.
+    const u = i / Math.max(1, bannerCount - 1);
+    const t = 0.04 + Math.pow(u, 0.72) * 0.88;
     const side = i % 2 === 0 ? -1 : 1;
     path.sample(t, _center);
     path.right(t, _right);
@@ -152,7 +170,7 @@ function scatterCourseFurniture(
     if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
     else _right.normalize();
     path.tangent(t, _tan);
-    const lateral = side * (edge + rng.range(0, 1.4));
+    const lateral = side * (edge + rng.range(0, 1.2));
     const x = _center.x + _right.x * lateral;
     const z = _center.z + _right.z * lateral;
     const yaw = Math.atan2(_tan.x, _tan.z) + (side > 0 ? -0.15 : 0.15);
@@ -167,7 +185,7 @@ function scatterCourseFurniture(
   }
 
   for (let i = 0; i < fenceCount; i++) {
-    const t = 0.04 + (i / Math.max(1, fenceCount - 1)) * 0.9;
+    const t = 0.03 + (i / Math.max(1, fenceCount - 1)) * 0.9;
     const side = i % 2 === 0 ? 1 : -1;
     path.sample(t, _center);
     path.right(t, _right);
@@ -175,7 +193,7 @@ function scatterCourseFurniture(
     if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
     else _right.normalize();
     path.tangent(t, _tan);
-    const lateral = side * (edge + 0.35 + (i % 3) * 0.15);
+    const lateral = side * (edge + 0.25 + (i % 3) * 0.12);
     const x = _center.x + _right.x * lateral;
     const z = _center.z + _right.z * lateral;
     const yaw = Math.atan2(_tan.x, _tan.z) + Math.PI * 0.5;
