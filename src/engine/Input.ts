@@ -161,11 +161,15 @@ export class Input implements InputState {
       this.#padSeenConnect = true;
       this.#padConnectCount += 1;
       this.#padLastConnectId = e.gamepad.id || `(slot ${e.gamepad.index})`;
-      // Warm the GamepadList — Chromium sometimes needs a getGamepads() call
-      // inside the connect handler before subsequent polls populate.
+      this.#padIndex = e.gamepad.index;
+      // Hot-plug / USB: clear awaiting-gesture as soon as Chrome fires connect.
+      // (getGamepads may lag one frame — warm it inside the handler.)
       readGamepadSlots();
-      if (this.#padIndex === null || gamepadHasActivity(e.gamepad)) {
-        this.#padIndex = e.gamepad.index;
+      this.#padActivated = true;
+      this.#padAwaitingGesture = false;
+      if (e.gamepad.id && gamepadHasActivity(e.gamepad)) {
+        this.#padToastId = e.gamepad.id;
+        this.#padPendingToast = e.gamepad.id;
       }
     };
     const onPadDisconnected = (e: GamepadEvent): void => {
