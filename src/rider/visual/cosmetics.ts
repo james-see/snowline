@@ -11,11 +11,20 @@ const DEFAULT_BOARD = 'board-azure';
 const DEFAULT_SUIT = 'suit-ivory';
 
 /**
- * Ivory / pale shells wash out on snow. Visual remap keeps save IDs intact
- * while ensuring a readable dark silhouette in gameplay frames.
+ * Pale / washed shells disappear on snow. Remap to vivid alpine race kit
+ * (ink shell; orange boards) while keeping save IDs intact.
  */
 const SUIT_SNOW_CONTRAST: Record<string, number> = {
-  'suit-ivory': 0x2a3344,
+  'suit-ivory': 0x0c1220,
+  'suit-ember': 0x1a0e08,
+};
+
+const BOARD_VIVID: Record<string, number> = {
+  'board-azure': 0xff5a12,
+  'board-carbon': 0xb8ff2e,
+  'board-alpine': 0xff6a14,
+  'board-timberline': 0xc8ff3a,
+  'board-summit': 0xff3d1a,
 };
 
 function luminance(hex: number): number {
@@ -27,10 +36,10 @@ function luminance(hex: number): number {
 
 /** Fallback for any custom pale suit that would disappear on snow. */
 function ensureSnowContrast(hex: number): number {
-  return luminance(hex) > 0.55 ? 0x2a3344 : hex;
+  return luminance(hex) > 0.45 ? 0x0c1220 : hex;
 }
 
-/** Pick equipped cosmetics from save; force suit colors that read on snow. */
+/** Pick equipped cosmetics from save; force suit/board colors that read on snow. */
 export function resolveCosmetics(save: SaveState = loadSave()): RiderCosmetics {
   const boardId = save.unlocks.includes(save.equippedBoard)
     ? save.equippedBoard
@@ -39,11 +48,13 @@ export function resolveCosmetics(save: SaveState = loadSave()): RiderCosmetics {
 
   const rawSuit = COSMETICS[suitId]?.color ?? COSMETICS[DEFAULT_SUIT]!.color;
   const suitColor = SUIT_SNOW_CONTRAST[suitId] ?? ensureSnowContrast(rawSuit);
+  const rawBoard = COSMETICS[boardId]?.color ?? COSMETICS[DEFAULT_BOARD]!.color;
+  const boardColor = BOARD_VIVID[boardId] ?? rawBoard;
 
   return {
     boardId,
     suitId,
-    boardColor: COSMETICS[boardId]?.color ?? COSMETICS[DEFAULT_BOARD]!.color,
+    boardColor,
     suitColor,
   };
 }
