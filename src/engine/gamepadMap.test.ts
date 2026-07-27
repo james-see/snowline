@@ -2,11 +2,17 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyDeadzone,
+  buttonDown,
+  dumpGamepads,
   edgeSets,
   GAMEPAD_DEADZONE,
+  gamepadsAwaitingGesture,
   GP,
+  normalizeTriggerAxis,
   pickConnectedGamepad,
   radialDeadzone,
+  resolveAxisLayout,
+  sampleGamepad,
   sampleStandardGamepad,
   triggerDown,
 } from '@/engine/gamepadMap.ts';
@@ -18,15 +24,17 @@ function fakeButton(pressed: boolean, value = pressed ? 1 : 0): GamepadButton {
 function fakePad(partial: {
   index?: number;
   connected?: boolean;
+  mapping?: GamepadMappingType;
+  id?: string;
   axes?: number[];
   buttons?: Array<GamepadButton | undefined>;
 }): Gamepad {
   const buttons = Array.from({ length: 16 }, (_, i) => partial.buttons?.[i] ?? fakeButton(false));
   return {
-    id: 'test-pad',
+    id: partial.id ?? 'test-pad',
     index: partial.index ?? 0,
     connected: partial.connected ?? true,
-    mapping: 'standard',
+    mapping: partial.mapping ?? 'standard',
     axes: partial.axes ?? [0, 0, 0, 0],
     buttons,
     timestamp: 0,
@@ -37,7 +45,7 @@ function fakePad(partial: {
 
 describe('gamepadMap', () => {
   it('applyDeadzone zeros small deflections', () => {
-    assert.equal(applyDeadzone(0.1), 0);
+    assert.equal(applyDeadzone(0.05), 0);
     assert.ok(Math.abs(applyDeadzone(0.5)) >= GAMEPAD_DEADZONE);
   });
 
@@ -59,9 +67,43 @@ describe('gamepadMap', () => {
     assert.equal(pickConnectedGamepad([a, null, null], null), null);
   });
 
+  it('gamepadsAwaitingGesture detects Chrome null slots', () => {
+    assert.equal(gamepadsAwaitingGesture([]), false);
+    assert.equal(gamepadsAwaitingGesture([null, null]), true);
+    assert.equal(gamepadsAwaitingGesture([null, fakePad({})]), false);
+  });
+
   it('triggerDown honors value threshold', () => {
     assert.equal(triggerDown([fakeButton(false, 0.5)], 0), true);
     assert.equal(triggerDown([fakeButton(false, 0.1)], 0), false);
+  });
+
+  it('buttonDown accepts value without pressed', () => {
+    assert.equal(buttonDown([fakeButton(false, 0.9)], 0), true);
+    assert.equal(buttonDown([fakeButton(false, 0.1)], 0), false);
+    assert.equal(buttonDown([fakeButton(true, 0)], 0), true);
+  });
+
+  it('resolveAxisLayout uses 6-axis BT fallback', () => {
+    const std = resolveAxisLayout({ mapping: 'standard', axes: [0, 0, 0, 0, 0, 0], id: 'x' });
+    assert.equal(std.rightX, 2);
+    assert.equal(std.ltAxis, null);
+
+    const bt = resolveAxisLayout({
+      mapping: '',
+      axes: [0, 0, 0, 0, 0, 0],
+      id: 'Wireless Controller',
+    });
+    assert.equal(bt.leftX, 0);
+    assert.equal(bt.rightX, 3);
+    assert.equal(bt.ltAxis, 2);
+    assert.equal(bt.rtAxis, 5);
+  });
+
+  it('normalizeTriggerAxis maps -1..1 rests', () => {
+    assert.equal(normalizeTriggerAxis(-1), 0);
+    assert.ok(normalizeTriggerAxis(1) > 0.9);
+    assert.ok(normalizeTriggerAxis(0.8) > 0.7);
   });
 
   it('sampleStandardGamepad maps stick / A / B / triggers / Start', () => {
@@ -79,12 +121,40 @@ describe('gamepadMap', () => {
 
     assert.ok(sample.steer > 0.5);
     assert.ok(sample.held.has('jump'));
+    assert.ok(sample.held.has('confirm'));
     assert.ok(sample.held.has('brake'));
     assert.ok(sample.held.has('lean'));
     assert.ok(sample.held.has('boost'));
     assert.ok(sample.held.has('pause'));
     assert.ok(sample.held.has('spinLeft'));
+    assert.ok(sample.held.has('steerRight'));
     assert.ok(!sample.held.has('grabIndy'));
+  });
+
+  it('sampleGamepad reads 6-axis non-standard Bluetooth layout', () => {
+    const buttons: GamepadButton[] = Array.from({ length: 16 }, () => fakeButton(false));
+    buttons[GP.A] = fakeButton(true);
+    // LX LY LT RX RY RT — left stick right, RT pulled via axis
+    const sample = sampleGamepad(
+      fakePad({
+        mapping: '',
+        axes: [0.95, 0.05, -1, 0.1, 0.2, 0.85],
+        buttons,
+      }),
+    );
+    assert.ok(sample.steer > 0.5);
+    assert.ok(sample.held.has('jump'));
+    assert.ok(sample.held.has('boost'));
+    assert.ok(!sample.held.has('lean'));
+  });
+
+  it('dumpGamepads snapshots live pads', () => {
+    const dump = dumpGamepads([null, fakePad({ index: 1, id: 'Pad One', axes: [0.2, 0] })]);
+    assert.equal(dump.slotCount, 2);
+    assert.equal(dump.awaitingGesture, false);
+    assert.equal(dump.pads.length, 1);
+    assert.equal(dump.pads[0]?.id, 'Pad One');
+    assert.equal(dump.pads[0]?.index, 1);
   });
 
   it('edgeSets reports press and release', () => {
