@@ -6,19 +6,19 @@ import type { MaterialLibrary } from '@/render/materials/index.ts';
 import { resolveLodBudgets } from '@/engine/Lod.ts';
 import { makeSkyGradientTexture } from '@/render/skyGradient.ts';
 
-/** Late-afternoon key — warm amber, not noon white. */
-const SUN_COLOR = 0xffc878;
+/** Late-afternoon key — warm amber, bright enough for alpine groom (not muddy). */
+const SUN_COLOR = 0xffd090;
 /** Deep navy zenith / cool mid-horizon — aerial silhouette, not milk whiteout. */
 const SKY_ZENITH = 0x2a5078;
 const SKY_HORIZON = 0x7a8fa8;
 /**
  * World-space sun direction (from ground toward sun).
- * ~14° elevation → long striped tree/rider casts on groom (alpine ref).
+ * ~14° elevation → long tree/rider casts on groom (alpine ref).
  * Keep ≥~13° so a single ortho map still resolves umbras (10–12° blew depth range).
  */
 const SUN_DIR = new THREE.Vector3(0.86, 0.24, 0.45).normalize();
 /** Scene FogExp2 — light cool wash; peaks must stay readable (B11 ≠ milk). */
-const FOG_DENSITY = 0.00034;
+const FOG_DENSITY = 0.00028;
 
 export class RenderModule implements GameModule {
   readonly name = 'render';
@@ -43,15 +43,15 @@ export class RenderModule implements GameModule {
     // Cool light FogExp2 — distance cue without corridor whiteout (B11).
     scene.fog = this.#fog = new THREE.FogExp2(SKY_HORIZON, FOG_DENSITY);
 
-    // Soft sky fill only — keep well under sun so shading is directional-led.
-    this.#hemi = new THREE.HemisphereLight(0x5a7a9a, 0xd0c4b4, 0.08);
+    // Soft sky + ground bounce — lifts shade so groom stays bright alpine, not night.
+    this.#hemi = new THREE.HemisphereLight(0x8aa8c4, 0xe8d8c4, 0.42);
     scene.add(this.#hemi);
 
     const budgets = resolveLodBudgets(settings);
     // Short follow keeps light→target inside shadow far under grazing sun.
     this.#sunFollow = Math.min(budgets.shadowDistance * 0.48, 88);
 
-    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 3.85);
+    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 4.55);
     this.#sun.position.copy(SUN_DIR).multiplyScalar(this.#sunFollow);
     this.#sun.castShadow = settings.shadowsEnabled;
     this.#configureShadow(ctx);
@@ -62,8 +62,8 @@ export class RenderModule implements GameModule {
     const env = resources.getEnvMap();
     if (env) {
       scene.environment = env;
-      // Keep IBL subordinate to the key sun (avoids flat_ambient wash).
-      scene.environmentIntensity = 0.1;
+      // Brighter IBL for soft snow fill; still below key so direction reads.
+      scene.environmentIntensity = 0.28;
     }
 
     // Critic-critical: clamp post fog before first frame / course_start capture.
@@ -109,13 +109,13 @@ export class RenderModule implements GameModule {
 
     this.#sun.castShadow = s.shadowsEnabled;
     this.#sun.shadow.mapSize.set(s.shadowMapSize, s.shadowMapSize);
-    // Full umbra on snow — intensity is a 0–1 mix in Three r185.
-    this.#sun.shadow.intensity = 1;
-    // Grazing late sun: tight bias so long stripes don't peter-pan off groom.
-    this.#sun.shadow.bias = -0.00012;
-    this.#sun.shadow.normalBias = 0.022;
-    // Harder stripes read better on corduroy than over-soft PCF.
-    this.#sun.shadow.radius = s.softShadows ? 1.25 : 1;
+    // Lighter umbras — readable long casts without muddy night stripes on groom.
+    this.#sun.shadow.intensity = 0.62;
+    // Grazing late sun: bias tuned for soft PCF without peter-pan.
+    this.#sun.shadow.bias = -0.00018;
+    this.#sun.shadow.normalBias = 0.035;
+    // Soft penumbra — kill razor zebra on corduroy while keeping cast length.
+    this.#sun.shadow.radius = s.softShadows ? 3.25 : 2.4;
     this.#sun.shadow.camera.near = 0.8;
     // Far must cover light→target + ~30 m cast receivers under grazing sun.
     this.#sun.shadow.camera.far = Math.max(
@@ -135,8 +135,8 @@ export class RenderModule implements GameModule {
   #applyQuality(ctx: EngineContext): void {
     this.#configureShadow(ctx);
     ctx.renderer.shadowMap.enabled = ctx.settings.shadowsEnabled;
-    // Prefer crisp umbras for critic B3 readability (long striped casts).
-    ctx.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // Soft PCF — long casts stay readable without razor zebra on groom.
+    ctx.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     ctx.renderer.shadowMap.needsUpdate = true;
 
     this.#fog.density = FOG_DENSITY;
