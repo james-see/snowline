@@ -31,20 +31,20 @@ Compare Snowline captures to:
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-26 evening, runs 68564/68762/68962)
+## Current score (2026-07-26, tip `770258a` — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
-| B1_peaks | **FAIL** — soft berms only, no peaks |
-| B2_forest | **FAIL** — ~3 trees |
-| B3_shadows | **FAIL** — no long shadows |
-| B4_corduroy | **FAIL** |
-| B5_snow_color | **FAIL** — grey plastic |
-| B6_furniture | **FAIL** |
-| B7_rider | **WEAK FAIL** — dark capsule, little athlete read |
-| B8_camera | **FAIL** — empty midfield |
-| B9_hud | **FAIL** |
-| B10_no_float | **PASS** (raycast plant) |
-| B11_atmosphere | **FAIL** |
+| B1_peaks | **FAIL** — cardboard peaks in milk void |
+| B2_forest | **FAIL** — ~4–8 lonely pines |
+| B3_shadows | **FAIL** — no long sun casts |
+| B4_corduroy | **PASS** |
+| B5_snow_color | **PASS** — warm strip |
+| B6_furniture | **PASS** — fences/banner |
+| B7_rider | **PASS** — carve lean + contrast |
+| B8_camera | **FAIL** — empty midfield void |
+| B9_hud | **PASS** |
+| B10_no_float | **PASS** |
+| B11_atmosphere | **FAIL** — whiteout milk haze |
 
-**Verdict: FAIL.** Mean visual language ≈ **2–3 / 10** vs user refs.
+**Verdict: FAIL.** 5 PASS / 6 FAIL. Rubric mean ≈ **4.55** vs user refs.
