@@ -48,8 +48,8 @@ describe('finish void-bounce regression', () => {
         pathT: 0.97,
         finishT: 0.97,
         distanceToFinish: 52,
-        finishRadius: 160,
-        approachT: 0.85,
+        finishRadius: 280,
+        approachT: 0.82,
       }),
       true
     );
@@ -60,8 +60,8 @@ describe('finish void-bounce regression', () => {
         pathT: 1,
         finishT: 0.97,
         distanceToFinish: 56,
-        finishRadius: 160,
-        approachT: 0.85,
+        finishRadius: 280,
+        approachT: 0.82,
       }),
       true
     );
@@ -75,10 +75,25 @@ describe('finish void-bounce regression', () => {
         pathT: 0.9,
         finishT: 0.97,
         distanceToFinish: 183,
-        finishRadius: 160,
-        approachT: 0.85,
-        endZoneT: 0.88,
+        finishRadius: 280,
+        approachT: 0.82,
+        endZoneT: 0.79,
         inEndZoneVoid: true,
+      }),
+      true
+    );
+  });
+
+  it('plaza covers Alpine last-checkpoint distance (~230 m)', () => {
+    assert.equal(
+      shouldCompleteRun({
+        alreadyFinished: false,
+        inFinishTrigger: false,
+        pathT: 0.88,
+        finishT: 0.97,
+        distanceToFinish: 230,
+        finishRadius: 280,
+        approachT: 0.82,
       }),
       true
     );
@@ -188,5 +203,65 @@ describe('CourseModule finish', () => {
     course.fixedUpdate(1 / 60, ctx);
     assert.equal(finished, true);
     assert.equal(course.getProgress().finished, true);
+  });
+
+  it('soft-completes void before last CP (legacy kill-plane bounce at t≈0.80)', async () => {
+    const events = new GameEventBus();
+    let finished = false;
+    events.on('course:finish', () => {
+      finished = true;
+    });
+
+    const riderPos = new THREE.Vector3();
+    const course = new CourseModule({ getRiderPosition: () => riderPos });
+    const voidBoard = { voidRecovering: true };
+    const ctx = {
+      events,
+      physics: stubPhysics(),
+      scene: new THREE.Scene(),
+      settings: {},
+      getModule: (name: string) =>
+        name === 'rider' ? { board: voidBoard, getPosition: () => riderPos, state: { position: riderPos } } : null,
+    } as unknown as EngineContext;
+
+    await course.init(ctx);
+    course.loadCourse('alpine', stubPhysics());
+    const terrain = course.getTerrain()!;
+    const bed = sampleTerrainAt(terrain, 0.8, 0.5, new THREE.Vector3());
+    // Deep snow below the old −48 kill plane, still short of Village Approach CP.
+    assert.ok(bed.y < -48);
+    riderPos.set(bed.x, bed.y + 1.2, bed.z);
+
+    course.fixedUpdate(1 / 60, ctx);
+    assert.equal(finished, true);
+  });
+
+  it('finishes on Alpine last-checkpoint plaza without void', async () => {
+    const events = new GameEventBus();
+    let finished = false;
+    events.on('course:finish', () => {
+      finished = true;
+    });
+
+    const riderPos = new THREE.Vector3();
+    const course = new CourseModule({ getRiderPosition: () => riderPos });
+    const ctx = {
+      events,
+      physics: stubPhysics(),
+      scene: new THREE.Scene(),
+      settings: {},
+      getModule: () => null,
+    } as unknown as EngineContext;
+
+    await course.init(ctx);
+    course.loadCourse('alpine', stubPhysics());
+    const def = course.getDefinition()!;
+    const terrain = course.getTerrain()!;
+    const lastCp = def.checkpoints[def.checkpoints.length - 1]!;
+    const bed = sampleTerrainAt(terrain, lastCp.t, 0.5, new THREE.Vector3());
+    riderPos.set(bed.x, bed.y + 1.2, bed.z);
+
+    course.fixedUpdate(1 / 60, ctx);
+    assert.equal(finished, true);
   });
 });

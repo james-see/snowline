@@ -160,14 +160,18 @@ export const CRASH = {
  * Off-mesh / void freefall recovery.
  * When board rays miss trimesh (holes, map edge), soft powder wallow then
  * restore toward the last grounded pose instead of falling forever.
+ *
+ * Kill plane must sit below every authored course mesh (Summit bed ≈ −380).
+ * A shallow floor (−48) falsely wallowed the last ~20% of Alpine before the
+ * final checkpoint — progress bounced forever and never reached the arch.
  */
 export const VOID = {
   /** Airborne with zero terrain hits longer than this triggers recovery, s. */
   freefallTime: 1.75,
   /** Drop this far below last grounded Y to trigger, m. */
   maxDrop: 14,
-  /** Absolute world kill-plane Y. */
-  killPlaneY: -48,
+  /** Absolute world kill-plane Y (below all playable mesh + margin). */
+  killPlaneY: -520,
   /** Soft powder wallow before hard restore, s. */
   wallowTime: 0.85,
   /** Pull toward last grounded pose during wallow, 1/s. */

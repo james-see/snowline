@@ -471,6 +471,52 @@ describe('BoardPhysics', () => {
     assert.ok(board.position.y > VOID.killPlaneY + 10);
   });
 
+  it('does not void-wallow while riding deep playable snow below sea level', () => {
+    // Alpine/Summit beds reach Y≈−100…−380. Legacy killPlane −48 soft-locked the
+    // run before the last checkpoint; on-mesh contact must stay rideable.
+    const deepY = -120;
+    const physics = flatGroundPhysics(deepY);
+    const board = new BoardPhysics();
+    board.reset({
+      position: new THREE.Vector3(0, deepY + JUMP.rideHeight, 0),
+      yaw: 0,
+    });
+    for (let i = 0; i < 45; i++) {
+      const frame = board.fixedUpdate(1 / 60, idleInput({ boost: true }), physics);
+      assert.equal(frame.crashReason, null, `void at step ${i} y=${board.position.y}`);
+      assert.equal(board.voidRecovering, false);
+      assert.equal(board.crashed, false);
+      assert.ok(board.grounded, `should stay grounded on deep snow at step ${i}`);
+    }
+    assert.ok(board.position.y < -48, 'regression: riding below the old −48 kill plane');
+  });
+
+  it('keeps voidRecovering true through wallow and recover stun', () => {
+    const ground = flatGroundPhysics(0);
+    const voidWorld: PhysicsWorld = {
+      ...ground,
+      raycast() {
+        return null;
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.fixedUpdate(1 / 60, idleInput(), ground);
+
+    const fallSteps = Math.ceil(VOID.freefallTime / (1 / 60)) + 8;
+    for (let i = 0; i < fallSteps; i++) {
+      const frame = board.fixedUpdate(1 / 60, idleInput(), voidWorld);
+      if (frame.crashReason === 'void') break;
+    }
+    assert.equal(board.voidRecovering, true);
+
+    // Past wallow into stun — finish soft-complete still needs the flag.
+    const pastWallow = Math.ceil(VOID.wallowTime / (1 / 60)) + 2;
+    for (let i = 0; i < pastWallow; i++) board.fixedUpdate(1 / 60, idleInput(), voidWorld);
+    assert.equal(board.crashed, true);
+    assert.equal(board.voidRecovering, true);
+  });
+
   it('recovers when dropped far below last grounded Y', () => {
     const physics = flatGroundPhysics(0);
     const board = new BoardPhysics();

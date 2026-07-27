@@ -62,6 +62,21 @@ describe('shouldCompleteRun', () => {
     );
   });
 
+  it('soft-completes on void before the last checkpoint (kill-plane bounce zone)', () => {
+    // Alpine kill-plane false-positive used to fire near t≈0.79, before CP5 (0.88).
+    assert.equal(
+      shouldCompleteRun({
+        ...base,
+        pathT: 0.8,
+        distanceToFinish: 320,
+        approachT: 0.82,
+        endZoneT: 0.79,
+        inEndZoneVoid: true,
+      }),
+      true
+    );
+  });
+
   it('does not soft-complete on void mid-course', () => {
     assert.equal(
       shouldCompleteRun({

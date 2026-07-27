@@ -148,6 +148,8 @@ export class BoardPhysics {
   #noHitAirTime = 0;
   /** Remaining soft powder wallow while recovering from void, s. */
   #voidWallow = 0;
+  /** True from void trigger through wallow + stun (for finish soft-complete). */
+  #voidCrash = false;
   /** Landing-assist flag for the current fixed step. */
   #landingAssist = false;
   #samples: GroundSample[] = Array.from({ length: rayStationCount() }, () => ({
@@ -188,6 +190,7 @@ export class BoardPhysics {
     this.#lastGroundedYaw = spawn.yaw;
     this.#noHitAirTime = 0;
     this.#voidWallow = 0;
+    this.#voidCrash = false;
     this.#groundNormal.set(0, 1, 0);
     this.#groundPoint.copy(spawn.position);
     this.#composeQuaternion();
@@ -205,9 +208,12 @@ export class BoardPhysics {
     return this.#body;
   }
 
-  /** True while soft-powder wallowing back from an off-mesh void. */
+  /**
+   * True for the full void crash (wallow + recover stun).
+   * Finish soft-complete keys off this — wallow-only was too short a window.
+   */
   get voidRecovering(): boolean {
-    return this.crashed && this.#voidWallow > 0;
+    return this.crashed && this.#voidCrash;
   }
 
   get recoveryRemaining(): number {
@@ -256,6 +262,7 @@ export class BoardPhysics {
       if (this.#recovery <= 0) {
         this.crashed = false;
         this.#voidWallow = 0;
+        this.#voidCrash = false;
         this.velocity.set(0, 0, 0);
         this.speed = CRASH.recoverySpeed;
         this.boardPitch = 0;
@@ -363,6 +370,10 @@ export class BoardPhysics {
   }
 
   #shouldRecoverFromVoid(): boolean {
+    // Playable mesh continues far below sea-level Y. Never void-wallow while
+    // board probes still see snow — that soft-locked Alpine before the last CP.
+    if (this.grounded && this.#probeCount > 0) return false;
+
     if (this.position.y <= VOID.killPlaneY) return true;
     if (this.position.y <= this.#lastGroundedPos.y - VOID.maxDrop) return true;
     if (this.airborne && this.#probeCount === 0 && this.#noHitAirTime >= VOID.freefallTime) {
@@ -375,6 +386,7 @@ export class BoardPhysics {
     this.grinding = false;
     this.surfaceKind = 'powder';
     this.#voidWallow = VOID.wallowTime;
+    this.#voidCrash = true;
     this.#beginCrash(result, 'void', VOID.wallowTime + VOID.recoverStun);
   }
 

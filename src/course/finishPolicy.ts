@@ -7,9 +7,9 @@
  * race centerline. Prefer pathT + XZ distance-to-arch instead.
  *
  * End-zone void: riders often fall off the mesh / apron lip short of the
- * arch (pathT ~0.88–0.94, 100–180 m out). Void recovery then wallows forever
- * because peakPathT never reaches finish.t and plaza radius never covers.
- * Soft-complete there — freeride and race alike — instead of infinite bounce.
+ * arch (pathT ~0.79–0.94, 100–230 m out). A shallow kill plane also used to
+ * wallow on playable snow before the last checkpoint. Soft-complete in the
+ * end zone — freeride and race alike — instead of infinite bounce.
  */
 
 export interface FinishCheckInput {
@@ -43,7 +43,7 @@ export function shouldCompleteRun(i: FinishCheckInput): boolean {
   // Past the finish parameter: always complete — even off-mesh / void wallow
   // where XZ distance to the arch can exceed the plaza radius.
   if (i.pathT >= i.finishT) return true;
-  const endZone = i.endZoneT ?? i.finishT - 0.12;
+  const endZone = i.endZoneT ?? i.finishT - 0.18;
   if (i.inEndZoneVoid && i.pathT >= endZone) return true;
   const approach = i.approachT ?? i.finishT - 0.06;
   return i.pathT >= approach && i.distanceToFinish <= i.finishRadius;

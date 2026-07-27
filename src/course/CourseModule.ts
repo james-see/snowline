@@ -329,13 +329,14 @@ export class CourseModule implements GameModule {
     }
 
     const fin = this.#def.finish;
-    // Wide plaza — freeride/race void bounce often sits 80–180 m short of the arch.
-    const finishRadius = Math.max(160, (fin.width ?? 20) * 6);
+    // Wide plaza — Alpine last-CP centerline is ~230 m from the arch; Summit more.
+    const finishRadius = Math.max(280, (fin.width ?? 20) * 10);
     const distToFinish = this.#hasFinishBed
       ? horizontalDistance(_playerPos.x, _playerPos.z, this.#finishBed.x, this.#finishBed.z)
       : Number.POSITIVE_INFINITY;
     const lastCp = this.#def.checkpoints[this.#def.checkpoints.length - 1];
-    const endZoneT = Math.min(fin.t - 0.02, lastCp?.t ?? fin.t - 0.12);
+    // Soft-complete before the last gate too — void used to fire near t≈0.79 on Alpine.
+    const endZoneT = Math.min(fin.t - 0.18, lastCp?.t ?? fin.t - 0.12);
     const inEndZoneVoid = riderMod?.board.voidRecovering === true;
     if (
       shouldCompleteRun({
@@ -345,7 +346,7 @@ export class CourseModule implements GameModule {
         finishT: fin.t,
         distanceToFinish: distToFinish,
         finishRadius,
-        approachT: fin.t - 0.12,
+        approachT: fin.t - 0.15,
         endZoneT,
         inEndZoneVoid,
       })
