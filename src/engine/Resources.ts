@@ -12,6 +12,11 @@ import {
   type PbrMaps,
   type PbrSetId,
 } from '@/render/materials/index.ts';
+import { bindAuthoredPropMaps } from '@/course/props/materials.ts';
+import {
+  loadTreePrototypes,
+  type TreeModelManifestEntry,
+} from '@/course/props/treePrototypes.ts';
 
 export interface ResourcesPreloadOptions {
   budgets?: Pick<LodBudgets, 'textureSize' | 'anisotropy'>;
@@ -58,6 +63,7 @@ export class Resources implements ResourceManager {
         const manifest = (await res.json()) as {
           textures?: Record<string, string>;
           materials?: ManifestMaterialEntry[];
+          models?: TreeModelManifestEntry[];
           environments?: { id: string; url: string; intensity?: number }[];
           env?: string;
         };
@@ -79,6 +85,9 @@ export class Resources implements ResourceManager {
           await this.#loadDefaultPbrSets(loader, anisotropy, onProgress);
         }
 
+        // Bark / plank / fabric onto shared course prop mats (trunks, ramps, banners).
+        bindAuthoredPropMaps(this.#materials);
+
         if (manifest.textures) {
           for (const [id, url] of Object.entries(manifest.textures)) {
             try {
@@ -90,12 +99,19 @@ export class Resources implements ResourceManager {
             }
           }
         }
+
+        if (manifest.models?.length) {
+          onProgress?.({ loaded: 0, total: manifest.models.length, current: 'trees' });
+          const n = await loadTreePrototypes(manifest.models);
+          onProgress?.({ loaded: n, total: manifest.models.length, current: 'trees' });
+        }
       } else {
         await this.#loadDefaultPbrSets(
           new THREE.TextureLoader(),
           this.#anisotropy,
           onProgress
         );
+        bindAuthoredPropMaps(this.#materials);
       }
     } catch {
       /* offline / no assets yet — try direct texture paths */
@@ -105,6 +121,7 @@ export class Resources implements ResourceManager {
           this.#anisotropy,
           onProgress
         );
+        bindAuthoredPropMaps(this.#materials);
       } catch {
         /* procedural only */
       }

@@ -201,13 +201,32 @@ export class MaterialLibrary {
       return ice;
     } else if (id === 'wood') {
       mat = new THREE.MeshStandardMaterial({
-        color: 0x6b4a2e,
-        roughness: 0.88,
+        color: 0x8a6240,
+        roughness: 0.9,
         metalness: 0.0,
         envMapIntensity: 0.4,
       });
-      this.#fallbackAlbedo(mat, 'wood');
+      this.#bindPropSet(mat, 'wood_bark', { repeatU: 1.5, repeatV: 2.5 }, 'wood');
       mat.name = 'prop-wood';
+    } else if (id === 'plank') {
+      mat = new THREE.MeshStandardMaterial({
+        color: 0x9a6a3c,
+        roughness: 0.86,
+        metalness: 0.0,
+        envMapIntensity: 0.45,
+      });
+      this.#bindPropSet(mat, 'wood_plank', { repeatU: 2, repeatV: 2 }, 'wood');
+      mat.name = 'prop-plank';
+    } else if (id === 'fabric') {
+      mat = new THREE.MeshStandardMaterial({
+        color: 0xd8c8a8,
+        roughness: 0.92,
+        metalness: 0.0,
+        envMapIntensity: 0.35,
+        side: THREE.DoubleSide,
+      });
+      this.#bindPropSet(mat, 'fabric_banner', { repeatU: 2, repeatV: 1.2 }, 'wood');
+      mat.name = 'prop-fabric';
     } else {
       mat = new THREE.MeshStandardMaterial({
         color: 0xb8c4d0,
@@ -497,6 +516,23 @@ uniform vec3 snowSunDir;`
     mat.name = id;
     this.#owned.push(mat);
     return mat;
+  }
+
+  #bindPropSet(
+    mat: THREE.MeshStandardMaterial,
+    setId: PbrSetId,
+    repeat: { repeatU: number; repeatV: number },
+    fallbackKind: string
+  ): void {
+    const maps = this.#mapsFor(setId);
+    if (maps) {
+      const local = cloneMaps(maps);
+      applyPbrMaps(mat, local, repeat);
+      mat.normalScale.set(1.4, 1.4);
+      mat.aoMapIntensity = 1.05;
+    } else {
+      this.#fallbackAlbedo(mat, fallbackKind);
+    }
   }
 
   #fallbackAlbedo(mat: THREE.MeshStandardMaterial, kind: string): void {

@@ -1,9 +1,12 @@
 /**
  * Asset source list for Snowline, shared by `fetch.mjs` and `pack.mjs`.
  *
- * All Poly Haven content is CC0-1.0. Texture selection favours surfaces
- * without a single distinctive hero feature, because these tile across large
- * mountain faces and groom runs.
+ * All Poly Haven content is CC0-1.0. Kenney Nature Kit is CC0.
+ * Texture selection favours surfaces without a single distinctive hero feature,
+ * because these tile across large mountain faces and groom runs.
+ *
+ * Tree runtime meshes come from Kenney low-poly pines (~200 tris) — NOT Poly Haven
+ * full trees (fir_sapling etc. are ~tens of MB and fail LOD budgets).
  */
 
 export const POLYHAVEN_API = 'https://api.polyhaven.com';
@@ -26,9 +29,9 @@ export const TEXTURE_MAPS = ['Diffuse', 'nor_gl', 'Rough', 'AO', 'Metal', 'arm']
 export const MATERIALS = [
   {
     id: 'snow_groom',
-    slug: 'ground_snow',
-    tileScale: 8,
-    note: 'Packed groom snow. Low-frequency mottling tiles across wide runs without a readable grid.',
+    slug: 'snow_floor',
+    tileScale: 6,
+    note: 'Packed groom / corduroy snow floor. Replaces flat ground_snow for readable ridges.',
   },
   {
     id: 'snow_powder',
@@ -61,6 +64,24 @@ export const MATERIALS = [
     tileScale: 4,
     note: 'Frosted ice transition at tree line. Softer than race ice, still reads cold.',
   },
+  {
+    id: 'wood_bark',
+    slug: 'pine_bark',
+    tileScale: 2,
+    note: 'Pine bark for tree trunks and timber props. Vertical grain tiles on cylinders.',
+  },
+  {
+    id: 'wood_plank',
+    slug: 'brown_planks_07',
+    tileScale: 2,
+    note: 'Weathered brown planks for ramps, tunnels, and wood furniture.',
+  },
+  {
+    id: 'fabric_banner',
+    slug: 'hessian_230',
+    tileScale: 1.5,
+    note: 'Hessian / burlap weave for finish banners and fabric race furniture.',
+  },
 ];
 
 /**
@@ -84,5 +105,65 @@ export const ENVIRONMENTS = [
     slug: 'kiara_1_dawn',
     intensity: 0.9,
     note: 'Pink dawn horizon for summit vistas and title screen mood.',
+  },
+];
+
+/**
+ * @typedef {object} KitSource
+ * @property {string} id
+ * @property {string} url
+ * @property {string} license
+ * @property {string} author
+ * @property {string} note
+ */
+
+/** @type {KitSource[]} */
+export const KITS = [
+  {
+    id: 'kenney_nature',
+    url: 'https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip',
+    license: 'CC0-1.0',
+    author: 'Kenney',
+    note: 'Low-poly Nature Kit — pine OBJs for instanced forest (~200 tris each).',
+  },
+];
+
+/**
+ * Kenney pines are ~1.55 m tall; procedural trees are ~7 m+. Scale ~5.5×.
+ *
+ * @typedef {object} TreeModelSource
+ * @property {string} id  Runtime / manifest model id (tree_pine_0 …).
+ * @property {string} kit  Kit id in KITS.
+ * @property {string} obj  Path inside the extracted kit zip.
+ * @property {number} scale  Uniform world scale applied at pack + documented for runtime.
+ * @property {number} variant  Maps to PropPlacement.variant % N.
+ * @property {string} note
+ */
+
+/** @type {TreeModelSource[]} */
+export const TREE_MODELS = [
+  {
+    id: 'tree_pine_0',
+    kit: 'kenney_nature',
+    obj: 'Models/OBJ format/tree_pineDefaultA.obj',
+    scale: 5.5,
+    variant: 0,
+    note: 'Default pine — bark + leafsDark meshes.',
+  },
+  {
+    id: 'tree_pine_1',
+    kit: 'kenney_nature',
+    obj: 'Models/OBJ format/tree_pineTallA.obj',
+    scale: 5.5,
+    variant: 1,
+    note: 'Tall pine silhouette for belt variation.',
+  },
+  {
+    id: 'tree_pine_2',
+    kit: 'kenney_nature',
+    obj: 'Models/OBJ format/tree_pineRoundA.obj',
+    scale: 5.5,
+    variant: 2,
+    note: 'Rounder canopy pine for mid-forest fill.',
   },
 ];

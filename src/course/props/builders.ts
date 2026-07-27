@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mats } from '@/course/props/materials.ts';
+import { cloneTreePrototype } from '@/course/props/treePrototypes.ts';
 
 function shadow(mesh: THREE.Mesh): THREE.Mesh {
   mesh.castShadow = true;
@@ -26,9 +27,20 @@ function deformRockGeometry(geo: THREE.BufferGeometry, seed: number): THREE.Buff
   return geo;
 }
 
+/**
+ * Tree prototype for instancing. Prefers Kenney CC0 pine GLBs (loaded after
+ * `resources.preload`); falls back to procedural cones when missing.
+ */
 export function buildTree(variant: number): THREE.Group {
+  const authored = cloneTreePrototype(variant);
+  if (authored) return authored;
+  return buildProceduralTree(variant);
+}
+
+export function buildProceduralTree(variant: number): THREE.Group {
   const g = new THREE.Group();
   g.name = 'tree-proto';
+  g.userData.authoredTree = false;
 
   const trunkH = 3.8 + (variant % 3) * 0.35;
   const trunk = shadow(

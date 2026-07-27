@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { MaterialLibrary } from '@/render/materials/MaterialLibrary.ts';
 
 export const mats = {
   trunk: new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 }),
@@ -90,6 +91,44 @@ export const mats = {
     depthWrite: false,
   }),
 };
+
+/**
+ * Copy bark / plank / fabric PBR from MaterialLibrary onto shared course mats.
+ * Call after `resources.preload()` has bound vendored CC0 sets.
+ */
+export function bindAuthoredPropMaps(library: MaterialLibrary): void {
+  const bark = library.prop('wood');
+  const plank = library.prop('plank');
+  const fabric = library.prop('fabric');
+
+  copyMaps(bark, mats.trunk, 0x8a6240);
+  copyMaps(bark, mats.trunkDark, 0x6a4a30);
+  copyMaps(bark, mats.tunnel, 0x6a4a30);
+  copyMaps(plank, mats.wood, 0x9a6a3c);
+  copyMaps(plank, mats.woodDark, 0x5a3a20);
+  copyMaps(fabric, mats.finishBanner, 0xf2ebe0);
+  copyMaps(fabric, mats.flag, 0xffe14a);
+  mats.flag.normalScale.set(0.8, 0.8);
+}
+
+function copyMaps(
+  src: THREE.MeshStandardMaterial,
+  dest: THREE.MeshStandardMaterial,
+  tint: number
+): void {
+  if (!src.map) return;
+  dest.map = src.map.clone();
+  if (src.normalMap) dest.normalMap = src.normalMap.clone();
+  if (src.aoMap) dest.aoMap = src.aoMap.clone();
+  if (src.roughnessMap) dest.roughnessMap = src.roughnessMap.clone();
+  if (src.metalnessMap) dest.metalnessMap = src.metalnessMap.clone();
+  dest.normalScale.copy(src.normalScale);
+  dest.aoMapIntensity = src.aoMapIntensity;
+  dest.color.setHex(tint);
+  dest.roughness = src.roughness;
+  dest.metalness = src.metalness;
+  dest.needsUpdate = true;
+}
 
 export function disposeSharedMaterials(): void {
   for (const value of Object.values(mats)) {

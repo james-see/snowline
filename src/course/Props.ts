@@ -346,21 +346,27 @@ export function buildCourseProps(
   for (const [variant, matrices] of byVariant) {
     const proto = buildTree(variant);
     proto.updateMatrixWorld(true);
-    for (const part of proto.children) {
-      const mesh = part as THREE.Mesh;
-      if (!mesh.isMesh) continue;
+    const parts: THREE.Mesh[] = [];
+    proto.traverse((c) => {
+      const mesh = c as THREE.Mesh;
+      if (mesh.isMesh) parts.push(mesh);
+    });
+    for (const mesh of parts) {
       mesh.updateMatrix();
-      const local = mesh.matrix.clone();
-      const inst = new THREE.InstancedMesh(
-        mesh.geometry,
-        mesh.material as THREE.Material,
-        matrices.length
+      // Local part transform relative to proto root (identity for baked Kenney meshes).
+      const local = new THREE.Matrix4().multiplyMatrices(
+        new THREE.Matrix4().copy(proto.matrixWorld).invert(),
+        mesh.matrixWorld
       );
+      // Clone geometry so course dispose cannot free shared Kenney prototypes.
+      const geo = mesh.geometry.clone();
+      disposables.push(geo);
+      const inst = new THREE.InstancedMesh(geo, mesh.material as THREE.Material, matrices.length);
       const cast = treeShadowLeft > 0;
       if (cast) treeShadowLeft = Math.max(0, treeShadowLeft - matrices.length);
       inst.castShadow = cast;
       inst.receiveShadow = true;
-      inst.name = `trees-v${variant}-${mesh.uuid.slice(0, 6)}`;
+      inst.name = `trees-v${variant}-${mesh.name || mesh.uuid.slice(0, 6)}`;
       inst.userData.treePartLocal = local;
       inst.userData.treeVariant = variant;
       const composed = new THREE.Matrix4();
@@ -371,10 +377,6 @@ export function buildCourseProps(
       inst.instanceMatrix.needsUpdate = true;
       root.add(inst);
     }
-    proto.traverse((c) => {
-      const m = c as THREE.Mesh;
-      if (m.isMesh) disposables.push(m.geometry);
-    });
   }
 
   // Fallback triggers from checkpoint defs when no gate prop was authored.

@@ -10,19 +10,21 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile, rm, stat, copyFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import sharp from 'sharp';
 
-import { ENVIRONMENTS, MATERIALS } from './sources.mjs';
+import { ENVIRONMENTS, MATERIALS, TREE_MODELS } from './sources.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const CACHE = join(ROOT, '.assetcache');
 const OUT = join(ROOT, 'public', 'assets');
 const TEX_OUT = join(OUT, 'textures');
 const ENV_OUT = join(OUT, 'env');
+const MODEL_OUT = join(OUT, 'models', 'trees');
 const BASIS_OUT = join(ROOT, 'public', 'basis');
+const OBJ2GLTF = join(ROOT, 'node_modules', 'obj2gltf', 'bin', 'obj2gltf.js');
 
 const MANIFEST_VERSION = 1;
 const LICENSE = 'CC0-1.0';
@@ -199,6 +201,55 @@ async function packEnvironment(source, cached, report) {
   };
 }
 
+async function packTreeModel(source, kitCache, report) {
+  if (!kitCache?.extractDir || kitCache.placeholder) {
+    console.warn(`\n[${source.id}] kit missing — skip (runtime falls back to procedural)`);
+    return null;
+  }
+
+  const objPath = join(kitCache.extractDir, source.obj);
+  try {
+    await stat(objPath);
+  } catch {
+    console.warn(`\n[${source.id}] OBJ missing at ${objPath} — skip`);
+    return null;
+  }
+
+  await mkdir(MODEL_OUT, { recursive: true });
+  const file = `${source.id}.glb`;
+  const dest = join(MODEL_OUT, file);
+
+  console.log(`\n[${source.id}] ${source.obj} -> models/trees/${file}`);
+  try {
+    execFileSync(process.execPath, [OBJ2GLTF, '-i', objPath, '-o', dest], {
+      stdio: 'pipe',
+      cwd: dirname(objPath),
+    });
+  } catch (err) {
+    // obj2gltf looks for .mtl beside the OBJ; ensure cwd is the OBJ folder.
+    const msg = err.stderr?.toString?.() || err.message;
+    throw new Error(`obj2gltf failed for ${source.id}: ${msg}`);
+  }
+
+  const bytes = (await stat(dest)).size;
+  report.bytes += bytes;
+  console.log(`  glb     ${human(bytes)}  scale×${source.scale} variant=${source.variant}`);
+
+  return {
+    id: source.id,
+    url: `/assets/models/trees/${file}`,
+    kind: 'tree',
+    variant: source.variant,
+    scale: source.scale,
+    source: {
+      name: source.id,
+      author: kitCache.author || 'Kenney',
+      license: kitCache.license || LICENSE,
+      url: kitCache.url || 'https://kenney.nl/assets/nature-kit',
+    },
+  };
+}
+
 async function copyBasisTranscoder() {
   const candidates = [
     join(ROOT, 'node_modules', 'three', 'examples', 'jsm', 'libs', 'basis'),
@@ -238,8 +289,10 @@ async function main() {
 
   await rm(TEX_OUT, { recursive: true, force: true });
   await rm(ENV_OUT, { recursive: true, force: true });
+  await rm(MODEL_OUT, { recursive: true, force: true });
   await mkdir(TEX_OUT, { recursive: true });
   await mkdir(ENV_OUT, { recursive: true });
+  await mkdir(MODEL_OUT, { recursive: true });
 
   const report = { bytes: 0 };
   const materials = [];
@@ -256,13 +309,20 @@ async function main() {
     environments.push(await packEnvironment(source, cached, report));
   }
 
+  const models = [];
+  for (const source of TREE_MODELS) {
+    const kitCache = index.kits?.[source.kit];
+    const packed = await packTreeModel(source, kitCache, report);
+    if (packed) models.push(packed);
+  }
+
   await copyBasisTranscoder();
 
   const manifest = {
     version: MANIFEST_VERSION,
     generatedAt: new Date().toISOString(),
     materials,
-    models: [],
+    models,
     audio: [],
     environments,
   };
@@ -270,7 +330,10 @@ async function main() {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   console.log(`\nWrote ${manifestPath}`);
-  console.log(`${materials.length} materials, ${environments.length} environments, ${human(report.bytes)} of assets.`);
+  console.log(
+    `${materials.length} materials, ${models.length} models, ${environments.length} environments, ` +
+      `${human(report.bytes)} of assets.`
+  );
 }
 
 main().catch((err) => {
