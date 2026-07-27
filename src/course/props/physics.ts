@@ -67,6 +67,7 @@ function registerSensorVolume(
   object.getWorldPosition(_pos);
   object.getWorldQuaternion(_quat);
   // Lift sensor so the ride corridor is covered, not buried in snow.
+  // Must stay `sensor: true` — a solid box here becomes a launch pad.
   _pos.y += halfExtents.y * 0.35;
   physics.createStaticBox(halfExtents, _pos.clone(), _quat.clone(), 'packed', actorId, true);
 }
@@ -91,10 +92,12 @@ export function registerPropsPhysics(
     const placement = byId.get(data.propId);
     if (!placement) continue;
 
-    // Gates / finish always get sensors (progress), never solid blocking volumes.
+    // Gates / finish: sensor-only (no solid mesh / trimesh). Course progress
+    // also uses AABB triggers; the Rapier sensor must never launch the board.
     if (data.propKind === 'checkpoint_gate' || data.propKind === 'finish_arch') {
       const width = data.gateWidth ?? (data.propKind === 'finish_arch' ? 20 : 14);
-      const half = new THREE.Vector3(width * 0.45, 3.5, 2.2);
+      // Thin travel-axis slab — covers the opening without a deep launch volume.
+      const half = new THREE.Vector3(width * 0.45, 3.5, 0.8);
       registerSensorVolume(physics, child, half, data.propId);
       continue;
     }

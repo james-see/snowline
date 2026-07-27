@@ -85,11 +85,16 @@ export class RapierPhysics implements PhysicsWorld {
         }
       : undefined;
 
+    // Rapier 0.19 returns toi=0 for rays that start inside sensors even when
+    // `solid=true`. That turns checkpoint/finish volumes into launch pads for
+    // board ground probes — always exclude sensors on solid casts.
+    const filterFlags = solid ? RAPIER.QueryFilterFlags.EXCLUDE_SENSORS : undefined;
+
     const hit = this.#world.castRayAndGetNormal(
       ray,
       maxDistance,
       solid,
-      undefined,
+      filterFlags,
       filter,
       undefined,
       undefined,

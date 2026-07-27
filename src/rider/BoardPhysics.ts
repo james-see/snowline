@@ -629,11 +629,9 @@ export class BoardPhysics {
           direction: WORLD_DOWN,
           maxDistance: JUMP.rayLength,
           // Prop = ramps / boxes / rocks; Rail = grind bars.
-          groups:
-            CollisionGroup.Terrain |
-            CollisionGroup.Trigger |
-            CollisionGroup.Rail |
-            CollisionGroup.Prop,
+          // Never probe Trigger — checkpoint/finish sensors must not count as
+          // ground (Rapier toi=0 inside sensors → vertical launch + land stop).
+          groups: CollisionGroup.Terrain | CollisionGroup.Rail | CollisionGroup.Prop,
           exclude: ['rider'],
         });
 

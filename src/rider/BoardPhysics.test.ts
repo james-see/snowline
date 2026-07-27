@@ -9,6 +9,7 @@ import type {
   RaycastOptions,
   RigidBodyHandle,
 } from '@/types/physics.ts';
+import { CollisionGroup } from '@/types/physics.ts';
 import { BoardPhysics } from './BoardPhysics.ts';
 import { BOOST, CRASH, JUMP, LANDING, SPEED, VOID } from './tuning.ts';
 
@@ -92,7 +93,46 @@ function enterAir(board: BoardPhysics, physics: PhysicsWorld, height = 2): void 
   assert.equal(board.airborne, true);
 }
 
+/** Ground plus a checkpoint sensor that returns toi=0 if Trigger is probed. */
+function checkpointSensorPhysics(groundY = 0): PhysicsWorld {
+  const base = flatGroundPhysics(groundY);
+  return {
+    ...base,
+    raycast(options: RaycastOptions): RaycastHit | null {
+      if (options.groups !== undefined && options.groups & CollisionGroup.Trigger) {
+        return {
+          point: options.origin.clone(),
+          normal: new THREE.Vector3(0, 1, 0),
+          distance: 0,
+          surface: 'packed',
+          actorId: 'gate-cp1',
+          colliderId: 99,
+        };
+      }
+      return base.raycast(options);
+    },
+  };
+}
+
 describe('BoardPhysics', () => {
+  it('does not launch when riding through a checkpoint sensor volume', () => {
+    const physics = checkpointSensorPhysics(0);
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    // Forward is +Z at yaw 0 — keep travel on the board axis.
+    board.velocity.set(0, 0, 14);
+
+    const y0 = board.position.y;
+    for (let i = 0; i < 20; i++) {
+      board.fixedUpdate(1 / 60, idleInput(), physics);
+    }
+
+    assert.equal(board.grounded, true);
+    assert.equal(board.airborne, false);
+    assert.ok(board.position.y < y0 + 0.35, `launched to y=${board.position.y}`);
+    assert.ok(board.speed > 10, `speed collapsed to ${board.speed}`);
+  });
+
   it('resets to spawn pose and clears jump buffer / crash state', () => {
     const board = new BoardPhysics();
     const physics = flatGroundPhysics(0);
