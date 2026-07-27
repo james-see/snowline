@@ -21,11 +21,23 @@
       <canvas id="viewport"></canvas>
       <div id="hud"></div>
 
-      <div id="loader">
+      <div id="loader" role="status" aria-live="polite">
         <h1>SNOWLINE</h1>
         <div class="sub">Alpine Arcade</div>
-        <div id="bar-track"><div id="bar-fill"></div></div>
-        <div class="status" id="loader-status">Initialising renderer</div>
+        <div
+          id="bar-track"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+          aria-label="Loading"
+        >
+          <div id="bar-fill"></div>
+        </div>
+        <div class="loader-meta">
+          <div class="status" id="loader-status">Initialising renderer</div>
+          <div class="pct" id="loader-pct">0%</div>
+        </div>
       </div>
 
       <div id="error"><pre id="error-text"></pre></div>

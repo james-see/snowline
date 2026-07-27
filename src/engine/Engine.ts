@@ -143,12 +143,18 @@ export class Engine {
     mutable.resources = services.resources;
   }
 
-  async boot(): Promise<void> {
+  async boot(
+    onProgress?: (name: string, index: number, total: number) => void
+  ): Promise<void> {
     this.#modules.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     this.#resize();
-    for (const module of this.#modules) {
+    const total = this.#modules.length;
+    for (let i = 0; i < total; i++) {
+      const module = this.#modules[i]!;
+      onProgress?.(module.name, i, total);
       await module.init(this.#ctx);
     }
+    onProgress?.('ready', total, total);
     this.events.emit('game:ready');
     if (this.capture) this.time.scale = 0;
     this.start();
