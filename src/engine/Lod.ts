@@ -31,8 +31,8 @@ export interface LodBudgets {
 export const LOD_BUFFER_CAPS = {
   snow: 4000,
   spray: 400,
-  /** Instanced Kenney pines — dense apron belts need headroom past lonely loners. */
-  trees: 480,
+  /** Instanced Kenney pines — timberline midfield walls need headroom past apron loners. */
+  trees: 560,
   rocks: 128,
 } as const;
 
@@ -62,8 +62,9 @@ const PRESET_BUDGETS: Record<QualityPreset, LodBudgets> = {
     anisotropy: 4,
   },
   high: {
-    maxTreeInstances: 320,
-    maxTreeShadowCasters: 40,
+    // 400: chase midfield timberline walls; still under buffer / 60fps headroom.
+    maxTreeInstances: 400,
+    maxTreeShadowCasters: 56,
     maxRockInstances: 48,
     shadowDistance: 140,
     shadowFrustum: 64,
@@ -74,8 +75,8 @@ const PRESET_BUDGETS: Record<QualityPreset, LodBudgets> = {
     anisotropy: 8,
   },
   ultra: {
-    maxTreeInstances: 480,
-    maxTreeShadowCasters: 64,
+    maxTreeInstances: 560,
+    maxTreeShadowCasters: 80,
     maxRockInstances: 80,
     shadowDistance: 200,
     shadowFrustum: 90,
