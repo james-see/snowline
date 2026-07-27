@@ -220,6 +220,9 @@ export class CourseModule implements GameModule {
       );
     }
     registerPropsPhysics(world, def.props, props.root);
+    // Engine fixedUpdate runs before step — warm the query pipeline so the
+    // first board probes (and overlap depenetration) never hit an unstepped world.
+    world.warmupPipeline?.();
   }
 
   #commitCourse(

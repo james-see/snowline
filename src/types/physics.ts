@@ -92,6 +92,11 @@ export interface PhysicsWorld {
   init(gravity?: THREE.Vector3): Promise<void>;
   beginTick(): void;
   step(dt: number): void;
+  /**
+   * Optional: step once after collider registration so the query pipeline is
+   * live. Needed because Engine runs fixedUpdate before step each tick.
+   */
+  warmupPipeline?(): void;
   raycast(options: RaycastOptions): RaycastHit | null;
   /** Sphere sweep for kinematic obstacle response (props / hazards). */
   shapeCast(options: ShapeCastOptions): ShapeCastHit | null;

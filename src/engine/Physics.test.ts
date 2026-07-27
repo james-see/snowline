@@ -129,10 +129,7 @@ describe('RapierPhysics sensors', () => {
       true
     );
 
-    for (let i = 0; i < 2; i++) {
-      physics.beginTick();
-      physics.step(1 / 60);
-    }
+    physics.warmupPipeline();
 
     // Mid-cylinder sample inside the trunk — must push out sideways, not via finish.
     const overlap = physics.sphereOverlap({
@@ -145,6 +142,83 @@ describe('RapierPhysics sensors', () => {
     assert.equal(overlap.inside, true);
     assert.ok(overlap.penetration > HAZARD.radius * 0.5, `pen=${overlap.penetration}`);
     assert.ok(Math.abs(overlap.normal.y) < HAZARD.rideableNormalY, 'side exit, not vertical launch');
+  });
+
+  it('sphereOverlap is safe before the first step (no WASM panic)', () => {
+    physics.clearWorld();
+    physics.createStaticCapsule(
+      1.5,
+      0.35,
+      new THREE.Vector3(0, 1.8, 2),
+      new THREE.Quaternion(),
+      'wood',
+      'prestep-trunk'
+    );
+
+    // Mirrors Engine: fixedUpdate/queries before step after collider insert.
+    // Old world.projectPoint path threw "unreachable" and poisoned WASM.
+    const overlap = physics.sphereOverlap({
+      origin: new THREE.Vector3(0.1, 1.0, 2.0),
+      radius: HAZARD.radius,
+      groups: CollisionGroup.Prop,
+    });
+    assert.equal(overlap, null, 'must no-op until pipeline warmup/step');
+
+    // Subsequent raycast must still work (world not poisoned).
+    physics.warmupPipeline();
+    const hit = physics.raycast({
+      origin: new THREE.Vector3(0, 5, 2),
+      direction: new THREE.Vector3(0, -1, 0),
+      maxDistance: 20,
+      groups: CollisionGroup.Prop,
+    });
+    assert.ok(hit, 'raycast after safe pre-step overlap must still function');
+
+    const after = physics.sphereOverlap({
+      origin: new THREE.Vector3(0.1, 1.8, 2.0),
+      radius: HAZARD.radius,
+      groups: CollisionGroup.Prop,
+    });
+    assert.ok(after, 'overlap works after warmup');
+    assert.equal(after.actorId, 'prestep-trunk');
+  });
+
+  it('rejects non-finite query origins without poisoning WASM', () => {
+    physics.clearWorld();
+    physics.createTrimesh(
+      new Float32Array([-10, 0, -10, 10, 0, -10, 10, 0, 10, -10, 0, 10]),
+      new Uint32Array([0, 1, 2, 0, 2, 3]),
+      new THREE.Vector3(),
+      'packed',
+      'terrain'
+    );
+    physics.warmupPipeline();
+
+    assert.equal(
+      physics.sphereOverlap({
+        origin: new THREE.Vector3(Number.NaN, 1, 0),
+        radius: HAZARD.radius,
+        groups: CollisionGroup.Prop,
+      }),
+      null
+    );
+    assert.equal(
+      physics.raycast({
+        origin: new THREE.Vector3(Number.NaN, 5, 0),
+        direction: new THREE.Vector3(0, -1, 0),
+        maxDistance: 20,
+        groups: CollisionGroup.Terrain,
+      }),
+      null
+    );
+
+    const hit = physics.raycast({
+      origin: new THREE.Vector3(0, 5, 0),
+      direction: new THREE.Vector3(0, -1, 0),
+      maxDistance: 20,
+      groups: CollisionGroup.Terrain,
+    });
+    assert.ok(hit, 'finite raycast must work after rejected NaN queries');
   });
 });
 
