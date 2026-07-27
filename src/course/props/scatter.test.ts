@@ -32,8 +32,20 @@ describe('expandCourseProps', () => {
     assert.ok(rails.length >= 4, `expected several rails, got ${rails.length}`);
     assert.ok(ramps.length >= 4, `expected several ramps, got ${ramps.length}`);
     assert.ok(boxes.length >= 2, `expected park boxes, got ${boxes.length}`);
+    const park = [...rails, ...ramps, ...boxes];
+    const early = park.filter((p) => (p.pathT ?? 1) <= 0.2);
+    assert.ok(
+      early.length >= 4,
+      `expected early–mid terrace park in grind/carve frustum, got ${early.length}`
+    );
+    assert.ok(
+      early.some((p) => p.kind === 'rail') &&
+        early.some((p) => p.kind === 'box') &&
+        early.some((p) => p.kind === 'ramp'),
+      'early park must include rail + box + kicker'
+    );
     const pos = new THREE.Vector3();
-    for (const feature of [...rails, ...ramps, ...boxes]) {
+    for (const feature of park) {
       pos.set(...feature.position);
       const closest = path.closestPoint(pos);
       // Path-resolved park stays on/near the run — not apron void.
