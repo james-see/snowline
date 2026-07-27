@@ -135,8 +135,8 @@ export class RenderModule implements GameModule {
   #applyQuality(ctx: EngineContext): void {
     this.#configureShadow(ctx);
     ctx.renderer.shadowMap.enabled = ctx.settings.shadowsEnabled;
-    // Soft PCF — long casts stay readable without razor zebra on groom.
-    ctx.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Soft PCF via PCFShadowMap (PCFSoftShadowMap deprecated → same path).
+    ctx.renderer.shadowMap.type = THREE.PCFShadowMap;
     ctx.renderer.shadowMap.needsUpdate = true;
 
     this.#fog.density = FOG_DENSITY;

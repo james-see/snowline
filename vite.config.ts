@@ -3,9 +3,14 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   resolve: {
+    // Single shared three instance — addons (GLTFLoader) must not pull a second copy.
+    dedupe: ['three'],
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+  },
+  optimizeDeps: {
+    include: ['three', 'three/addons/loaders/GLTFLoader.js'],
   },
   server: {
     port: 5173,

@@ -73,7 +73,9 @@ export class Engine {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // PCFSoftShadowMap was removed as a distinct mode in recent Three.js;
+    // PCFShadowMap is the supported soft-PCF path.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.autoClear = false;
     this.renderer.info.autoReset = false;
 

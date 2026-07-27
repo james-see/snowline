@@ -21,7 +21,8 @@
     "flicker": "node tools/critic/flicker-probe.mjs",
     "smoke": "node tools/critic/smoke.mjs",
     "blank-frame": "node tools/critic/blank-frame.mjs",
-    "refs:fetch": "node tools/critic/fetch-refs.mjs"
+    "refs:fetch": "node tools/critic/fetch-refs.mjs",
+    "postinstall": "node scripts/patch-rapier-init.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",
@@ -36,5 +37,10 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.3",
     "vite": "^6.3.5"
+  },
+  "overrides": {
+    "@types/three": {
+      "@dimforge/rapier3d-compat": "$@dimforge/rapier3d-compat"
+    }
   }
 }
