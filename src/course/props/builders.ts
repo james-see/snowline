@@ -303,6 +303,99 @@ export function buildFlag(): THREE.Group {
   return g;
 }
 
+function makeBannerLabelTexture(label: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 192;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#f2f4f7';
+    ctx.fillRect(0, 0, 512, 192);
+    ctx.fillStyle = '#c01820';
+    ctx.fillRect(0, 0, 512, 28);
+    ctx.fillRect(0, 164, 512, 28);
+    ctx.fillStyle = '#111820';
+    ctx.font = 'bold 64px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label.toUpperCase(), 256, 96);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Course warning board on twin posts — race-furniture language. */
+export function buildBanner(label = 'SLOW DOWN'): THREE.Group {
+  const g = new THREE.Group();
+  const postH = 3.4;
+  const boardW = 3.6;
+  const boardH = 1.35;
+
+  for (const x of [-boardW * 0.42, boardW * 0.42]) {
+    const post = shadow(
+      new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, postH, 8), mats.fencePost)
+    );
+    post.position.set(x, postH * 0.5, 0);
+    g.add(post);
+  }
+
+  const frame = shadow(
+    new THREE.Mesh(new THREE.BoxGeometry(boardW + 0.2, boardH + 0.2, 0.1), mats.bannerFrame)
+  );
+  frame.position.set(0, postH - 0.55, 0);
+  g.add(frame);
+
+  const tex = makeBannerLabelTexture(label);
+  const faceMat = new THREE.MeshStandardMaterial({
+    map: tex,
+    color: 0xffffff,
+    roughness: 0.68,
+    side: THREE.DoubleSide,
+  });
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(boardW, boardH), faceMat);
+  face.position.set(0, postH - 0.55, 0.06);
+  face.castShadow = true;
+  g.add(face);
+  g.userData.bannerMat = faceMat;
+  g.userData.bannerTex = tex;
+
+  return g;
+}
+
+/** Safety fence / catch-netting segment. Local X = length along the line edge. */
+export function buildFence(length = 10): THREE.Group {
+  const g = new THREE.Group();
+  const half = length * 0.5;
+  const postH = 1.85;
+  const posts = Math.max(2, Math.round(length / 2.4) + 1);
+
+  for (let i = 0; i < posts; i++) {
+    const t = posts === 1 ? 0 : i / (posts - 1);
+    const x = -half + t * length;
+    const post = shadow(
+      new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, postH, 6), mats.fencePost)
+    );
+    post.position.set(x, postH * 0.5, 0);
+    g.add(post);
+  }
+
+  for (const y of [0.55, 1.15, 1.7]) {
+    const rail = shadow(
+      new THREE.Mesh(new THREE.BoxGeometry(length, 0.04, 0.04), mats.fenceRail)
+    );
+    rail.position.set(0, y, 0);
+    g.add(rail);
+  }
+
+  const net = new THREE.Mesh(new THREE.PlaneGeometry(length * 0.96, postH * 0.85), mats.fenceNet);
+  net.position.set(0, postH * 0.48, 0.02);
+  g.add(net);
+
+  return g;
+}
+
 /** Log-framed snow tunnel — ride-through arch with timber walls. Local −Z = through. */
 export function buildTunnel(scale = 1): THREE.Group {
   const g = new THREE.Group();

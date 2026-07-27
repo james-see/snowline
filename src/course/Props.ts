@@ -9,7 +9,9 @@ import type { SplinePath } from '@/course/SplinePath.ts';
 import { lateralToU, sampleTerrainAt } from '@/course/TerrainGenerator.ts';
 import { presetBudgets, type LodBudgets } from '@/engine/Lod.ts';
 import {
+  buildBanner,
   buildCheckpointGate,
+  buildFence,
   buildFinishArch,
   buildFlag,
   buildRail,
@@ -23,9 +25,11 @@ import {
   tagPropRoot,
   type PropUserData,
 } from '@/course/props/physics.ts';
+import { expandCourseProps } from '@/course/props/scatter.ts';
 
 export type { PropUserData } from '@/course/props/physics.ts';
 export { registerPropsPhysics };
+export { expandCourseProps };
 
 const _snapPos = new THREE.Vector3();
 const _snapQuat = new THREE.Quaternion();
@@ -50,6 +54,8 @@ export const SUPPORTED_PROP_KINDS: readonly PropKind[] = [
   'tree',
   'rock',
   'flag',
+  'banner',
+  'fence',
   'checkpoint_gate',
   'finish_arch',
   'tunnel',
@@ -129,6 +135,10 @@ function buildPropObject(placement: PropPlacement): THREE.Object3D | null {
       return buildFinishArch(20);
     case 'flag':
       return buildFlag();
+    case 'banner':
+      return buildBanner(placement.label ?? 'SLOW DOWN');
+    case 'fence':
+      return buildFence(placement.length ?? 10);
     case 'tunnel': {
       const s = typeof placement.scale === 'number' ? placement.scale : 1;
       return buildTunnel(s);
@@ -246,6 +256,7 @@ export function buildCourseProps(
   const treeBases: TreeInstanceBase[] = [];
   const disposables: THREE.BufferGeometry[] = [];
   const extraMats: THREE.Material[] = [];
+  const extraTex: THREE.Texture[] = [];
   let rockCount = 0;
 
   for (const placement of placements) {
@@ -293,6 +304,12 @@ export function buildCourseProps(
 
     if (object.userData.checkerMat) {
       extraMats.push(object.userData.checkerMat as THREE.Material);
+    }
+    if (object.userData.bannerMat) {
+      extraMats.push(object.userData.bannerMat as THREE.Material);
+    }
+    if (object.userData.bannerTex) {
+      extraTex.push(object.userData.bannerTex as THREE.Texture);
     }
 
     if (placement.kind === 'checkpoint_gate') {
@@ -391,6 +408,7 @@ export function buildCourseProps(
       });
       for (const geo of disposables) geo.dispose();
       for (const mat of extraMats) mat.dispose();
+      for (const tex of extraTex) tex.dispose();
       root.removeFromParent();
     },
   };
