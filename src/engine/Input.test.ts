@@ -127,6 +127,20 @@ describe('Input gamepad → rider', () => {
     assert.equal(dump.pads.length, 1);
     assert.ok(dump.held.includes('jump'));
     assert.equal(dump.lockedOut, false);
+    assert.ok(dump.rawMoveX > 0.4);
+    assert.equal(dump.slots.length, 1);
+    assert.equal(dump.slots[0]?.present, true);
+    assert.equal(dump.connectEvents, 0);
+    input.endFrame();
+  });
+
+  it('rawMoveX survives lockout zeroing of move', () => {
+    const buttons = Array.from({ length: 16 }, () => fakeButton(false));
+    pads = [fakePad({ axes: [0.9, 0, 0, 0], buttons })];
+    input.setLockout(true);
+    input.beginFrame();
+    assert.equal(input.move.x, 0);
+    assert.ok(input.gamepadDebug().rawMoveX > 0.5);
     input.endFrame();
   });
 

@@ -16,6 +16,7 @@ import {
   resolveAxisLayout,
   sampleGamepad,
   sampleStandardGamepad,
+  scanGamepadSlots,
   triggerDown,
 } from '@/engine/gamepadMap.ts';
 
@@ -86,8 +87,26 @@ describe('gamepadMap', () => {
     assert.equal(pickConnectedGamepad([zombie, real], 0)?.index, 0);
     assert.equal(pickActiveGamepad([zombie, real], 0)?.index, 1);
     assert.equal(pickActiveGamepad([zombie, real], 1)?.index, 1);
-    // No activity → keep preferred / first connected
-    assert.equal(pickActiveGamepad([zombie, fakePad({ index: 1 })], 0)?.index, 0);
+    // Idle: prefer non-ghost over empty-id / ghost preferred
+    assert.equal(pickActiveGamepad([zombie, fakePad({ index: 1, id: 'Pad' })], 0)?.index, 1);
+  });
+
+  it('pickActiveGamepad prefers 8BitDo over generic idle', () => {
+    const generic = fakePad({ index: 0, id: 'Wireless Controller' });
+    const u2 = fakePad({
+      index: 1,
+      id: '8BitDo Ultimate 2 (Vendor: 2dc8 Product: 6012)',
+    });
+    assert.equal(pickActiveGamepad([generic, u2], 0)?.index, 1);
+  });
+
+  it('scanGamepadSlots reports null vs live', () => {
+    const buttons = Array.from({ length: 16 }, () => fakeButton(false));
+    buttons[2] = fakeButton(true);
+    const scan = scanGamepadSlots([null, fakePad({ index: 1, id: 'Pad', buttons })]);
+    assert.equal(scan[0]?.present, false);
+    assert.equal(scan[1]?.present, true);
+    assert.deepEqual(scan[1]?.pressedButtons, [2]);
   });
 
   it('gamepadsAwaitingGesture detects Chrome null slots', () => {
@@ -223,6 +242,9 @@ describe('gamepadMap', () => {
     assert.equal(dump.pads.length, 1);
     assert.equal(dump.pads[0]?.id, 'Pad One');
     assert.equal(dump.pads[0]?.index, 1);
+    assert.equal(dump.slots.length, 2);
+    assert.equal(dump.slots[0]?.present, false);
+    assert.equal(dump.slots[1]?.present, true);
   });
 
   it('edgeSets reports press and release', () => {

@@ -16,8 +16,10 @@ import {
   gamepadHasActivity,
   gamepadsAwaitingGesture,
   pickActiveGamepad,
+  readGamepadSlots,
   sampleGamepad,
   type GamepadDebugDump,
+  type GamepadSlotScan,
 } from '@/engine/gamepadMap.ts';
 
 const DEFAULT_BINDINGS: Record<InputAction, string> = {
@@ -60,6 +62,10 @@ export class Input implements InputState {
   /** True once we have successfully sampled a connected pad this session. */
   #padActivated = false;
   #padSeenConnect = false;
+  #padConnectCount = 0;
+  #padLastConnectId: string | null = null;
+  /** Stick X sampled this frame before lockout zeroing (Controller Test). */
+  #rawMoveX = 0;
   /** Last pad id announced via consumeGamepadToast (connect / slot steal). */
   #padToastId: string | null = null;
   #padPendingToast: string | null = null;
@@ -153,7 +159,14 @@ export class Input implements InputState {
     };
     const onPadConnected = (e: GamepadEvent): void => {
       this.#padSeenConnect = true;
-      if (this.#padIndex === null) this.#padIndex = e.gamepad.index;
+      this.#padConnectCount += 1;
+      this.#padLastConnectId = e.gamepad.id || `(slot ${e.gamepad.index})`;
+      // Warm the GamepadList — Chromium sometimes needs a getGamepads() call
+      // inside the connect handler before subsequent polls populate.
+      readGamepadSlots();
+      if (this.#padIndex === null || gamepadHasActivity(e.gamepad)) {
+        this.#padIndex = e.gamepad.index;
+      }
     };
     const onPadDisconnected = (e: GamepadEvent): void => {
       if (this.#padIndex === e.gamepad.index) {
@@ -161,6 +174,10 @@ export class Input implements InputState {
         this.#padToastId = null;
         this.#clearPadEdges();
       }
+    };
+    const onFocus = (): void => {
+      // Re-poll after tab focus — Mac Chrome may keep null slots until then.
+      readGamepadSlots();
     };
 
     const root = globalThis as typeof globalThis & {
@@ -173,9 +190,11 @@ export class Input implements InputState {
     root.addEventListener('mouseup', onMouseUp);
     root.addEventListener('mousemove', onMouseMove);
     root.addEventListener('blur', onBlur);
+    root.addEventListener('focus', onFocus);
     root.addEventListener('gamepadconnected', onPadConnected);
     root.addEventListener('gamepaddisconnected', onPadDisconnected);
     document.addEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener('visibilitychange', onFocus);
     this.#element.addEventListener('contextmenu', onContextMenu);
 
     this.#disposers.push(() => {
@@ -185,9 +204,11 @@ export class Input implements InputState {
       root.removeEventListener('mouseup', onMouseUp);
       root.removeEventListener('mousemove', onMouseMove);
       root.removeEventListener('blur', onBlur);
+      root.removeEventListener('focus', onFocus);
       root.removeEventListener('gamepadconnected', onPadConnected);
       root.removeEventListener('gamepaddisconnected', onPadDisconnected);
       document.removeEventListener('pointerlockchange', onPointerLockChange);
+      document.removeEventListener('visibilitychange', onFocus);
       this.#element.removeEventListener('contextmenu', onContextMenu);
     });
   }
@@ -230,14 +251,14 @@ export class Input implements InputState {
       this.look.y += pad.lookY;
     }
 
+    this.#rawMoveX = mx;
     this.move.x = this.#lockedOut ? 0 : mx;
     this.move.y = 0;
   }
 
   #readGamepad(): { x: number; lookX: number; lookY: number } {
-    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
-    const list = Array.from(pads);
-    // Over-sample every slot; any activity steals the active pad from zombies.
+    const list = readGamepadSlots();
+    // Over-sample every slot; activity + 8BitDo preference steals from zombies.
     const gp = pickActiveGamepad(list, this.#padIndex);
     const awaiting =
       gamepadsAwaitingGesture(list) || (this.#padSeenConnect && !this.#padActivated);
@@ -430,8 +451,7 @@ export class Input implements InputState {
 
   /** Active resolved map for the current pad (for Settings remap UI). */
   resolvedGamepadBindings(): GamepadBindingMap | null {
-    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
-    const gp = pickActiveGamepad(Array.from(pads), this.#padIndex);
+    const gp = pickActiveGamepad(readGamepadSlots(), this.#padIndex);
     if (!gp) {
       return this.#padBindings ?? autoBindingMap({ id: '', mapping: 'standard', axes: [0, 0, 0, 0] });
     }
@@ -439,8 +459,7 @@ export class Input implements InputState {
   }
 
   gamepadPresetId(): string {
-    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
-    const gp = pickActiveGamepad(Array.from(pads), this.#padIndex);
+    const gp = pickActiveGamepad(readGamepadSlots(), this.#padIndex);
     if (!gp) return 'none';
     if (this.#padBindings?.preset === 'custom') return 'custom';
     return detectGamepadPreset(gp.id, gp.mapping);
@@ -467,28 +486,42 @@ export class Input implements InputState {
     activated: boolean;
     awaitingGesture: boolean;
     lockedOut: boolean;
+    documentHasFocus: boolean;
+    connectEvents: number;
+    lastConnectId: string | null;
     move: { x: number; y: number };
+    /** Stick X before lockout zeroing — Controller Test should use this. */
+    rawMoveX: number;
     held: InputAction[];
     bindings: GamepadBindingMap | null;
     rebindTarget: GamepadBindAction | null;
+    slots: GamepadSlotScan[];
   } {
-    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
-    const list = Array.from(pads);
+    const list = readGamepadSlots();
     const dump = dumpGamepads(list);
     const active = pickActiveGamepad(list, this.#padIndex);
     const bindings =
       this.#padResolved ??
       (active ? resolveBindingsForPad(active, this.#padBindings) : this.#padBindings);
+    const hasFocus =
+      typeof document !== 'undefined' && typeof document.hasFocus === 'function'
+        ? document.hasFocus()
+        : true;
     return {
       ...dump,
       awaitingGesture: this.gamepadAwaitingGesture || dump.awaitingGesture,
       activeIndex: active?.index ?? this.#padIndex,
       activated: this.#padActivated,
       lockedOut: this.#lockedOut,
+      documentHasFocus: hasFocus,
+      connectEvents: this.#padConnectCount,
+      lastConnectId: this.#padLastConnectId,
       move: { x: this.move.x, y: this.move.y },
+      rawMoveX: this.#rawMoveX,
       held: [...this.#padHeld],
       bindings,
       rebindTarget: this.#padRebindTarget,
+      slots: dump.slots,
     };
   }
 
