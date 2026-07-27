@@ -9,7 +9,7 @@ import { COSMETICS, loadSave } from '@/score/SaveData.ts';
 import { COURSE_LIST } from '@/course/CourseDefs.ts';
 import {
   buttonDown,
-  pickConnectedGamepad,
+  pickActiveGamepad,
   resolveAxisLayout,
 } from '@/engine/gamepadMap.ts';
 import './styles.css';
@@ -140,7 +140,9 @@ export class UiModule implements GameModule {
 
     if (flow.screen === 'settings') {
       this.#applyMenuLockout(ctx);
-      if (nav.back || nav.confirm) this.#leaveSettings(flow);
+      // Back only — A/confirm must not kick out of Controller Test.
+      if (nav.back) this.#leaveSettings(flow);
+      this.#paintPadTest(ctx);
     }
 
     if (flow.screen === 'results') {
@@ -160,6 +162,8 @@ export class UiModule implements GameModule {
     } else {
       this.#maybeShowGamepadHint(ctx);
     }
+
+    this.#maybeToastGamepad(ctx, flow.screen);
   }
 
   setHud(visible: boolean): void {
@@ -251,7 +255,7 @@ export class UiModule implements GameModule {
   } {
     const empty = { left: false, right: false, up: false, down: false, confirm: false, back: false };
     const pads = Array.from(navigator.getGamepads?.() ?? []);
-    const gp = pickConnectedGamepad(pads, this.#padIndex);
+    const gp = pickActiveGamepad(pads, this.#padIndex);
     if (!gp) {
       this.#padIndex = null;
       this.#padA = false;
@@ -572,6 +576,112 @@ export class UiModule implements GameModule {
     }, 5000);
   }
 
+  /** First pad activity on title/settings → toast. */
+  #maybeToastGamepad(ctx: EngineContext, screen: ScreenId): void {
+    const input = ctx.input as { consumeGamepadToast?: () => string | null };
+    const id = input.consumeGamepadToast?.();
+    if (!id) return;
+    if (screen !== 'title' && screen !== 'settings') return;
+    const short = id.length > 48 ? `${id.slice(0, 46)}…` : id;
+    this.#showToast(`Gamepad connected: ${short}`);
+  }
+
+  #showToast(text: string): void {
+    let el = document.getElementById('ui-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ui-toast';
+      el.className = 'ui-toast';
+      (this.#root ?? document.body).appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.add('visible');
+    window.setTimeout(() => {
+      el?.classList.remove('visible');
+    }, 3200);
+  }
+
+  /** Live Controller Test panel — same source as `window.__snowline.gamepadDebug()`. */
+  #paintPadTest(ctx: EngineContext): void {
+    const root = document.getElementById('pad-test');
+    if (!root) return;
+    const input = ctx.input as {
+      gamepadDebug?: () => {
+        awaitingGesture: boolean;
+        activeIndex: number | null;
+        activated: boolean;
+        lockedOut: boolean;
+        move: { x: number; y: number };
+        held: string[];
+        pads: Array<{
+          id: string;
+          index: number;
+          mapping: string;
+          connected: boolean;
+          axes: number[];
+          buttons: Array<{ pressed: boolean; value: number }>;
+        }>;
+        slotCount: number;
+      };
+    };
+    const dump = input.gamepadDebug?.();
+    if (!dump) {
+      root.innerHTML = '<p class="pad-test-empty">Gamepad debug unavailable</p>';
+      return;
+    }
+
+    const gesture = dump.awaitingGesture
+      ? `<p class="pad-gesture">Press any button to activate</p>`
+      : '';
+    const pads =
+      dump.pads.length === 0
+        ? `<p class="pad-test-empty">No pads connected${dump.slotCount ? ' (slots present — press a button)' : ''}</p>`
+        : `<ul class="pad-list">${dump.pads
+            .map((p) => {
+              const active = p.index === dump.activeIndex ? ' active' : '';
+              const map = p.mapping || 'none';
+              return `<li class="pad-item${active}"><span class="pad-id">${escapeHtml(p.id)}</span><span class="pad-meta">#${p.index} · ${escapeHtml(map)}${active ? ' · active' : ''}</span></li>`;
+            })
+            .join('')}</ul>`;
+
+    const activePad = dump.pads.find((p) => p.index === dump.activeIndex) ?? dump.pads[0];
+    let axesHtml = '<p class="pad-test-empty">—</p>';
+    let buttonsHtml = '';
+    if (activePad) {
+      axesHtml = `<div class="pad-axes">${activePad.axes
+        .map((v, i) => {
+          const pct = Math.round(((v + 1) / 2) * 100);
+          const lit = Math.abs(v) > 0.2 ? ' lit' : '';
+          return `<div class="pad-axis${lit}"><span>a${i}</span><div class="pad-axis-track"><i style="left:${pct}%"></i></div><b>${v.toFixed(2)}</b></div>`;
+        })
+        .join('')}</div>`;
+      buttonsHtml = `<div class="pad-buttons">${activePad.buttons
+        .map((b, i) => {
+          const on = b.pressed || b.value > 0.3;
+          return `<span class="pad-btn${on ? ' on' : ''}" title="${b.value.toFixed(2)}">${i}</span>`;
+        })
+        .join('')}</div>`;
+    }
+
+    const held = dump.held.length ? dump.held.join(', ') : '—';
+    root.innerHTML = `
+      ${gesture}
+      ${pads}
+      <div class="pad-live">
+        <div class="pad-live-meta">move.x ${dump.move.x.toFixed(2)} · lockedOut ${dump.lockedOut ? 'yes' : 'no'} · held ${escapeHtml(held)}</div>
+        ${axesHtml}
+        ${buttonsHtml}
+      </div>
+      <dl class="pad-legend">
+        <div><dt>LS</dt><dd>Steer</dd></div>
+        <div><dt>A</dt><dd>Jump</dd></div>
+        <div><dt>B</dt><dd>Brake</dd></div>
+        <div><dt>LT</dt><dd>Lean</dd></div>
+        <div><dt>RT</dt><dd>Boost</dd></div>
+        <div><dt>Start</dt><dd>Pause</dd></div>
+      </dl>`;
+  }
+
   #resultsHtml(flow: GameFlowModule): string {
     const r = flow.lastResults;
     const medal = (r?.medal ?? 'none') as Medal;
@@ -622,8 +732,13 @@ export class UiModule implements GameModule {
           <label class="check"><input id="set-motion" type="checkbox" ${s.reducedMotion ? 'checked' : ''}/> Reduced motion</label>
         </div>
         <p class="unlocks">Unlocked: ${unlocks || '—'}</p>
+        <section class="pad-test-panel" aria-label="Controller test">
+          <h3>Controller Test</h3>
+          <p class="pad-test-blurb">Live axes and buttons — same data as <code>__snowline.gamepadDebug()</code></p>
+          <div id="pad-test" class="pad-test"></div>
+        </section>
         <button class="btn primary focused" data-focus="0" data-act="back">Back</button>
-        <p class="hint">Esc / B — back</p>
+        <p class="hint">Esc / B — back · press any pad button to activate</p>
       </section>`;
   }
 
@@ -676,4 +791,12 @@ function fmtTime(t: number): string {
   const s = Math.floor(t % 60);
   const ms = Math.floor((t % 1) * 100);
   return `${m}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

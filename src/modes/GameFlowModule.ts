@@ -60,8 +60,21 @@ export class GameFlowModule implements GameModule {
     });
   }
 
+  /**
+   * Clear lockout before rider fixedUpdate (order 10). UiModule also clears
+   * during playing, but that runs after physics — too late for stick carve.
+   */
+  fixedUpdate(_dt: number, ctx: EngineContext): void {
+    if (this.controller.screen === 'playing') {
+      ctx.input.setLockout(false);
+    }
+  }
+
   update(_dt: number, ctx: EngineContext): void {
     const s = this.controller.screen;
+    if (s === 'playing') {
+      ctx.input.setLockout(false);
+    }
     if ((s === 'playing' || s === 'paused') && ctx.input.wasPressed('pause')) {
       this.togglePause();
     }

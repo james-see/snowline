@@ -21,11 +21,13 @@ Input is data-driven via `Input.rebind`. Keyboard and gamepad merge each frame (
 
 ## Gamepad
 
-Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`, tracks the active pad index, and falls back to the first connected slot. Polled every frame in `Input.beginFrame`.
+Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`. Every connected slot is over-sampled each frame in `Input.beginFrame`; **any stick/button activity becomes the active pad** (steals focus from idle Steam/OS ghost slots). Falls back to the preferred index, then the first connected slot.
 
-**Chrome / WebKit activation:** `navigator.getGamepads()` often returns all-null slots until you press any gamepad button after the page is focused. A one-time on-screen hint (“Press any gamepad button…”) appears while that is the case. Keyboard keeps working regardless.
+**Chrome / WebKit activation:** `navigator.getGamepads()` often returns all-null slots until you press any gamepad button after the page is focused. A one-time on-screen hint (“Press any gamepad button…”) appears while that is the case. First activity on title/settings also toasts `Gamepad connected: …`. Keyboard keeps working regardless.
 
 **Layouts:** Prefers W3C `mapping: "standard"` (DualSense, Xbox, Switch Pro over Bluetooth typically qualify after the first button press). Non-standard Bluetooth pads with 6 axes (LX LY LT RX RY RT) are handled via a fallback axis layout. Face buttons also honor `value` when `pressed` is sticky/false.
+
+**In-run:** `GameFlow.fixedUpdate` clears input lockout while `playing` *before* rider physics, so stick carve is not eaten by menu lockout ordering.
 
 | Action | Control |
 |--------|---------|
@@ -55,4 +57,4 @@ Returns connected pad ids, mapping, axes, buttons, `awaitingGesture`, `move`, an
 
 ## Settings
 
-Landing assist, reduced camera shake (see settings screen).
+Landing assist, reduced motion, and **Controller Test**: live connected pads (id / mapping / index), axis meters, button grid, binding legend (LS/A/B/LT/RT/Start). Back with Esc/B only — A does not leave the panel. Same snapshot as `window.__snowline.gamepadDebug()`.

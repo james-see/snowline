@@ -88,6 +88,70 @@ export function pickConnectedGamepad(
   return null;
 }
 
+/** Stick / button activity floor — ignores idle noise and resting trigger axes. */
+export const GAMEPAD_ACTIVITY = 0.35;
+
+/**
+ * True when any button is down or any stick/trigger axis is meaningfully deflected.
+ * Used to steal focus from zombie "connected" slots (Steam Input, OS ghosts).
+ */
+export function gamepadHasActivity(gp: Gamepad, threshold = GAMEPAD_ACTIVITY): boolean {
+  for (const b of gp.buttons) {
+    if (!b) continue;
+    if (b.pressed || b.value > threshold) return true;
+  }
+  const layout = resolveAxisLayout(gp);
+  const lx = gp.axes[layout.leftX] ?? 0;
+  const ly = gp.axes[layout.leftY] ?? 0;
+  if (Math.hypot(lx, ly) > threshold) return true;
+  const rx = gp.axes[layout.rightX] ?? 0;
+  const ry = gp.axes[layout.rightY] ?? 0;
+  if (Math.hypot(rx, ry) > threshold) return true;
+  if (layout.ltAxis !== null && normalizeTriggerAxis(gp.axes[layout.ltAxis] ?? 0) > threshold) {
+    return true;
+  }
+  if (layout.rtAxis !== null && normalizeTriggerAxis(gp.axes[layout.rtAxis] ?? 0) > threshold) {
+    return true;
+  }
+  // Non-layout axes (hats, extras) — skip near-zero / sentinel rests.
+  for (let i = 0; i < gp.axes.length; i++) {
+    if (
+      i === layout.leftX ||
+      i === layout.leftY ||
+      i === layout.rightX ||
+      i === layout.rightY ||
+      i === layout.ltAxis ||
+      i === layout.rtAxis
+    ) {
+      continue;
+    }
+    const v = gp.axes[i] ?? 0;
+    if (!Number.isFinite(v)) continue;
+    if (Math.abs(v) > 0 && Math.abs(v) <= 1.01 && Math.abs(v) > threshold) return true;
+  }
+  return false;
+}
+
+/**
+ * Over-sample every slot each frame. Any activity becomes the active pad;
+ * otherwise keep preferred while connected, else first connected.
+ */
+export function pickActiveGamepad(
+  pads: Array<Gamepad | null>,
+  preferredIndex: number | null,
+): Gamepad | null {
+  let active: Gamepad | null = null;
+  for (const gp of pads) {
+    if (!gp?.connected) continue;
+    if (!gamepadHasActivity(gp)) continue;
+    // Prefer the previously active slot when several pads chatter.
+    if (preferredIndex !== null && gp.index === preferredIndex) return gp;
+    if (!active) active = gp;
+  }
+  if (active) return active;
+  return pickConnectedGamepad(pads, preferredIndex);
+}
+
 /** True when the Gamepad API has slots but every entry is still null (Chrome pre-gesture). */
 export function gamepadsAwaitingGesture(pads: Array<Gamepad | null>): boolean {
   if (pads.length === 0) return false;

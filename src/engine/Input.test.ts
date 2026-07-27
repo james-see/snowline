@@ -9,6 +9,7 @@ function fakeButton(pressed: boolean, value = pressed ? 1 : 0): GamepadButton {
 
 function fakePad(partial: {
   index?: number;
+  id?: string;
   axes?: number[];
   buttons?: GamepadButton[];
   mapping?: GamepadMappingType;
@@ -16,7 +17,7 @@ function fakePad(partial: {
   const buttons =
     partial.buttons ?? Array.from({ length: 16 }, () => fakeButton(false));
   return {
-    id: 'test-pad',
+    id: partial.id ?? 'test-pad',
     index: partial.index ?? 0,
     connected: true,
     mapping: partial.mapping ?? 'standard',
@@ -138,6 +139,38 @@ describe('Input gamepad → rider', () => {
     assert.equal(input.move.x, 0);
     assert.equal(input.isDown('pause'), true);
     assert.equal(input.isDown('jump'), false);
+    input.endFrame();
+  });
+
+  it('steals active pad from idle ghost slot on activity', () => {
+    const ghost = fakePad({ index: 0, id: 'ghost', axes: [0, 0, 0, 0] });
+    const buttons = Array.from({ length: 16 }, () => fakeButton(false));
+    buttons[0] = fakeButton(true);
+    const real = fakePad({
+      index: 1,
+      id: 'Wireless Controller',
+      axes: [0.85, 0, 0, 0],
+      buttons,
+    });
+    pads = [ghost, real];
+
+    input.beginFrame();
+    assert.equal(input.gamepadIndex, 1);
+    assert.ok(input.move.x > 0.5);
+    assert.equal(input.consumeGamepadToast(), 'Wireless Controller');
+    assert.equal(input.consumeGamepadToast(), null);
+    input.endFrame();
+  });
+
+  it('inject holds survive pad sampling', () => {
+    pads = [fakePad({ axes: [0, 0, 0, 0] })];
+    input.inject(['boost'], true);
+    input.beginFrame();
+    assert.equal(input.isDown('boost'), true);
+    input.endFrame();
+    input.inject(['boost'], false);
+    input.beginFrame();
+    assert.equal(input.isDown('boost'), false);
     input.endFrame();
   });
 });

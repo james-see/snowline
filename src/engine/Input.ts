@@ -3,8 +3,9 @@ import type { EventBus } from '@/types/events.ts';
 import {
   dumpGamepads,
   edgeSets,
+  gamepadHasActivity,
   gamepadsAwaitingGesture,
-  pickConnectedGamepad,
+  pickActiveGamepad,
   sampleGamepad,
   type GamepadDebugDump,
 } from '@/engine/gamepadMap.ts';
@@ -49,6 +50,9 @@ export class Input implements InputState {
   /** True once we have successfully sampled a connected pad this session. */
   #padActivated = false;
   #padSeenConnect = false;
+  /** Last pad id announced via consumeGamepadToast (connect / slot steal). */
+  #padToastId: string | null = null;
+  #padPendingToast: string | null = null;
 
   #lookX = 0;
   #lookY = 0;
@@ -136,6 +140,7 @@ export class Input implements InputState {
     const onPadDisconnected = (e: GamepadEvent): void => {
       if (this.#padIndex === e.gamepad.index) {
         this.#padIndex = null;
+        this.#padToastId = null;
         this.#clearPadEdges();
       }
     };
@@ -214,10 +219,12 @@ export class Input implements InputState {
   #readGamepad(): { x: number; lookX: number; lookY: number } {
     const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
     const list = Array.from(pads);
-    const awaiting = gamepadsAwaitingGesture(list) || (this.#padSeenConnect && !this.#padActivated);
-    this.#padAwaitingGesture = awaiting && !pickConnectedGamepad(list, this.#padIndex);
+    // Over-sample every slot; any activity steals the active pad from zombies.
+    const gp = pickActiveGamepad(list, this.#padIndex);
+    const awaiting =
+      gamepadsAwaitingGesture(list) || (this.#padSeenConnect && !this.#padActivated);
+    this.#padAwaitingGesture = awaiting && !gp;
 
-    const gp = pickConnectedGamepad(list, this.#padIndex);
     if (!gp) {
       if (this.#padHeld.size > 0) {
         const { released } = edgeSets(this.#padHeld, new Set());
@@ -236,6 +243,12 @@ export class Input implements InputState {
     this.#padIndex = gp.index;
     this.#padActivated = true;
     this.#padAwaitingGesture = false;
+    // Toast only on real activity (not idle Steam/OS ghost slots).
+    if (gamepadHasActivity(gp) && gp.id !== this.#padToastId) {
+      this.#padToastId = gp.id;
+      this.#padPendingToast = gp.id;
+    }
+
     const sample = sampleGamepad(gp);
     const { pressed, released } = edgeSets(this.#padHeld, sample.held);
     this.#padHeld = sample.held;
@@ -243,6 +256,16 @@ export class Input implements InputState {
     this.#padReleased = released;
 
     return { x: sample.steer, lookX: sample.lookX, lookY: sample.lookY };
+  }
+
+  /**
+   * One-shot toast id after first activity / slot steal.
+   * UI: “Gamepad connected: …”. Returns null when nothing new.
+   */
+  consumeGamepadToast(): string | null {
+    const id = this.#padPendingToast;
+    this.#padPendingToast = null;
+    return id;
   }
 
   endFrame(): void {
@@ -343,11 +366,13 @@ export class Input implements InputState {
     held: InputAction[];
   } {
     const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : [];
-    const dump = dumpGamepads(Array.from(pads));
+    const list = Array.from(pads);
+    const dump = dumpGamepads(list);
+    const active = pickActiveGamepad(list, this.#padIndex);
     return {
       ...dump,
       awaitingGesture: this.gamepadAwaitingGesture || dump.awaitingGesture,
-      activeIndex: this.#padIndex,
+      activeIndex: active?.index ?? this.#padIndex,
       activated: this.#padActivated,
       lockedOut: this.#lockedOut,
       move: { x: this.move.x, y: this.move.y },
