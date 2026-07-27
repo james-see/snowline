@@ -58,33 +58,34 @@ const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   powder: {
     // Cool alpine powder — reads as volume under directional sun, not grey fill.
     color: 0xc2d0de,
-    roughness: 0.92,
+    roughness: 0.9,
     metalness: 0.0,
-    clearcoat: 0.08,
-    clearcoatRoughness: 0.68,
-    sheen: 0.82,
-    sheenColor: 0xb4cce2,
-    sheenRoughness: 0.8,
-    envMapIntensity: 0.42,
-    normalScale: 1.35,
+    clearcoat: 0.1,
+    clearcoatRoughness: 0.64,
+    sheen: 0.9,
+    sheenColor: 0xb8d0e6,
+    sheenRoughness: 0.76,
+    envMapIntensity: 0.48,
+    /** Soft micro-bump normals — powder undulation reads at chase distance. */
+    normalScale: 1.55,
     speckle: 0.1,
-    sunResponse: 0.72,
+    sunResponse: 0.78,
   },
   packed: {
-    // Cooler packed groom — less muddy brown; corduroy + sun form for hills/kickers.
-    color: 0xc8c6c0,
-    roughness: 0.44,
+    // Cooler packed groom — corduroy normals + specular sheen on rideable strip.
+    color: 0xcac8c2,
+    roughness: 0.4,
     metalness: 0.03,
-    clearcoat: 0.58,
-    clearcoatRoughness: 0.12,
-    sheen: 0.32,
-    sheenColor: 0xd8d0c4,
-    sheenRoughness: 0.32,
-    envMapIntensity: 1.15,
-    /** Stronger corduroy normals so hill volume / jump faces read under key light. */
-    normalScale: 1.85,
-    speckle: 0.06,
-    sunResponse: 0.95,
+    clearcoat: 0.68,
+    clearcoatRoughness: 0.1,
+    sheen: 0.42,
+    sheenColor: 0xddd6ca,
+    sheenRoughness: 0.28,
+    envMapIntensity: 1.28,
+    /** Corduroy normals — midfield groom volume without plastic zebra. */
+    normalScale: 1.95,
+    speckle: 0.05,
+    sunResponse: 1.05,
   },
   ice: {
     color: 0x6a92ae,
@@ -433,10 +434,10 @@ export class MaterialLibrary {
     let local = cloneMaps(maps);
 
     if (setId === 'snow_groom' && typeof document !== 'undefined') {
-      // CC0 groom lacks corduroy — bake soft chase-scale grooves (low contrast, multi-freq).
+      // CC0 groom lacks corduroy — bake chase-readable grooves (normal relief + AO troughs).
       try {
         const baked = bakeCorduroyGroom(local, {
-          strength: 0.95,
+          strength: 1.05,
           seed: 77 + Math.floor(tuning.normalScale * 10),
         });
         if (baked) {
@@ -468,7 +469,7 @@ export class MaterialLibrary {
     applyPbrMaps(mat, local, repeat);
     mat.normalScale.set(tuning.normalScale, tuning.normalScale);
     // Stronger AO in groom troughs so corduroy + jump faces get directional form.
-    mat.aoMapIntensity = setId === 'snow_groom' ? 1.22 : setId === 'snow_powder' ? 1.05 : 1.0;
+    mat.aoMapIntensity = setId === 'snow_groom' ? 1.35 : setId === 'snow_powder' ? 1.12 : 1.0;
     mat.color.setHex(tuning.color);
     mat.roughness = tuning.roughness;
     mat.metalness = tuning.metalness;
@@ -485,13 +486,14 @@ export class MaterialLibrary {
       mat.clearcoat = Math.max(mat.clearcoat, 0.95);
       mat.clearcoatRoughness = Math.min(mat.clearcoatRoughness, 0.05);
     } else if (setId === 'snow_groom') {
-      // Packed: preserve specular response for sun glints on corduroy.
-      mat.roughness = Math.min(mat.roughness, 0.52);
-      mat.clearcoat = Math.max(mat.clearcoat, 0.5);
+      // Packed: specular sheen on corduroy ridges (no emissive glow).
+      mat.roughness = Math.min(mat.roughness, 0.46);
+      mat.clearcoat = Math.max(mat.clearcoat, 0.62);
+      mat.clearcoatRoughness = Math.min(mat.clearcoatRoughness, 0.12);
     } else if (setId === 'snow_powder') {
       // Powder stays soft — kill accidental hard specular from ORM lows.
-      mat.roughness = Math.max(mat.roughness, 0.88);
-      mat.clearcoat = Math.min(mat.clearcoat, 0.1);
+      mat.roughness = Math.max(mat.roughness, 0.86);
+      mat.clearcoat = Math.min(mat.clearcoat, 0.12);
     }
   }
 
@@ -571,11 +573,25 @@ uniform vec3 snowSunDir;`;
   packedW = smoothstep( 0.12, 0.88, packedW );
   float powderFade = 1.0 - packedW;
   normal = normalize( mix( normal, snowGeoNormal, powderFade * 0.72 ) );
+  // Soft world-space relief normals — fills mesh dens without plastic sawtooth zebra.
+  vec2 wp = vSnowWorldPos.xz;
+  float cordN = sin( wp.x * 1.35 + wp.y * 0.28 ) * 0.22 + sin( wp.x * 2.8 - wp.y * 0.15 ) * 0.1;
+  float bumpN = ( snowSeamNoise( wp * 0.4 ) - 0.5 ) * 0.38;
+  float powderN = ( snowSeamNoise( wp * 0.85 + 7.0 ) - 0.5 ) * 0.48;
+  vec3 reliefN = normalize( vec3(
+    cordN * packedW + powderN * powderFade * 0.7,
+    1.0 + bumpN * 0.45,
+    cordN * 0.28 * packedW + powderN * powderFade * 0.32
+  ) );
+  vec3 reliefView = normalize( mat3( viewMatrix ) * reliefN );
+  normal = normalize( mix( normal, normalize( normal + reliefView * 0.38 ), 0.48 ) );
   vec3 powderRgb = snowPowderColor;
   diffuseColor.rgb = mix( diffuseColor.rgb, powderRgb, powderFade * 0.82 );
   float flatPow = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
   diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatPow ), powderFade * 0.12 );
   roughnessFactor = mix( roughnessFactor, snowPowderRough, powderFade * 0.9 );
+  // Packed ridges catch a touch more sheen; troughs stay softer (no emissive).
+  roughnessFactor = mix( roughnessFactor, max( 0.24, roughnessFactor - 0.06 ), packedW * 0.28 );
 `
         : '';
 
@@ -587,20 +603,26 @@ uniform vec3 snowSunDir;`;
 #include <normal_fragment_maps>
 {
   float viewDist = length( vViewPosition );
-  // Soft distance fade — near corduroy stays, far fields read continuous.
-  float detailFade = smoothstep( 24.0, 130.0, viewDist );
-  normal = normalize( mix( normal, snowGeoNormal, detailFade * 0.68 ) );
+  // Soft distance fade — keep near corduroy longer so midfield groom still reads 3D.
+  float detailFade = smoothstep( 36.0, 160.0, viewDist );
+  normal = normalize( mix( normal, snowGeoNormal, detailFade * 0.55 ) );
   float flatLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
-  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatLuma ), detailFade * 0.18 );
+  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatLuma ), detailFade * 0.14 );
   ${seamBody}
   vec3 worldN = inverseTransformDirection( normal, viewMatrix );
-  float sunFacing = clamp( dot( normalize( worldN ), normalize( snowSunDir ) ), 0.0, 1.0 );
+  vec3 sunDirN = normalize( snowSunDir );
+  float sunFacing = clamp( dot( normalize( worldN ), sunDirN ), 0.0, 1.0 );
   vec3 warmTint = vec3( 1.14, 1.05, 0.88 );
   vec3 coolTint = vec3( 0.82, 0.9, 1.12 );
   // Stronger warm/cool split so hills and kickers read soft volume under key light.
   diffuseColor.rgb *= mix( coolTint, warmTint, sunFacing * sunFacing * snowSunAmount );
-  float shadeBoost = mix( 0.9, 1.06, sunFacing );
+  float shadeBoost = mix( 0.88, 1.08, sunFacing );
   diffuseColor.rgb *= mix( 1.0, shadeBoost, clamp( snowSunAmount, 0.0, 1.0 ) );
+  // Soft SSS-ish wrap on snow edges — cool bleed, never emissive glow.
+  float wrap = clamp( dot( normalize( worldN ), sunDirN ) * 0.55 + 0.45, 0.0, 1.0 );
+  float rim = pow( 1.0 - sunFacing, 1.65 ) * wrap;
+  vec3 sssTint = vec3( 0.78, 0.88, 0.98 );
+  diffuseColor.rgb += diffuseColor.rgb * sssTint * rim * snowSunAmount * 0.2;
 }`
         );
     };

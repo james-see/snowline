@@ -72,6 +72,54 @@ function envelope01(t: number, start: number, end: number): number {
 }
 
 /**
+ * Chase-readable ride-surface relief (metres of Y).
+ * Baked into mesh positions + heightfield so Rapier trimesh / sampleTerrainAt stay synced.
+ * Wavelengths target mesh cell spacing (~1.5–6 m); fine corduroy stays in normal maps.
+ */
+function rideSurfaceRelief(
+  wx: number,
+  wz: number,
+  lateral: number,
+  pathDist: number,
+  raceDistNorm: number,
+  seed: number,
+  reliefScale: number
+): number {
+  // Full on race strip; fade across soft berm into powder apron.
+  const groomW = 1 - THREE.MathUtils.smoothstep(0.1, 0.88, raceDistNorm);
+  const powderW = THREE.MathUtils.smoothstep(0.2, 1.05, raceDistNorm);
+
+  // Soft geometric corduroy — rounded ridges along fall-line (~4.5 m; not sawtooth).
+  const cordWander = valueNoise(wx * 0.06, wz * 0.06, seed + 1201) * 1.1;
+  const cordPhase = lateral * ((Math.PI * 2) / 4.5) + cordWander;
+  // |sin|^k keeps troughs soft; amplitude stays chase-readable without faceted zebra.
+  const cordWave = Math.sin(cordPhase);
+  const cord =
+    Math.sign(cordWave || 1) * Math.pow(Math.abs(cordWave), 1.35) * 0.07 +
+    Math.sin(cordPhase * 1.7 + 0.4) * 0.018;
+
+  // Soft rollers / volume under midfield chase (resolves at ~4–5 m path spacing).
+  const roller =
+    Math.sin(pathDist * ((Math.PI * 2) / 14) + seed * 0.001) * 0.3 +
+    Math.sin(pathDist * ((Math.PI * 2) / 22) + 1.55) * 0.2 +
+    Math.sin(pathDist * ((Math.PI * 2) / 10) + lateral * 0.06) * 0.1;
+  // Soft mounds / mogul-ish volume across the groom path.
+  const mound =
+    (fbm(wx * 0.042, wz * 0.042, seed + 1303, 4) - 0.5) * 0.5 +
+    (fbm(wx * 0.095, wz * 0.095, seed + 1319, 3) - 0.5) * 0.18;
+
+  // Powder micro-bumps + soft wind undulation (looser, slower).
+  const powderBump =
+    (fbm(wx * 0.1, wz * 0.1, seed + 1409, 4) - 0.5) * 0.48 +
+    (fbm(wx * 0.28, wz * 0.28, seed + 1511, 3) - 0.5) * 0.2 +
+    Math.sin(wx * 0.4 + wz * 0.2 + seed * 0.002) * 0.06;
+
+  const groom = (cord * 1.25 + roller * 1.05 + mound * 0.9) * groomW;
+  const powder = powderBump * powderW * 1.05;
+  return (groom + powder) * reliefScale;
+}
+
+/**
  * Alpine ridgeline profile — continuous mass with summit accents.
  * High floor so mid-ridge stays a mountain wall, not cardboard spikes over void.
  */
@@ -768,10 +816,11 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       const flankRidge = fbm(wx * 0.022, wz * 0.022, seed + 91, 4) - 0.5;
       // Stronger near relief so the playable sheet isn't a flat card.
       const rough = (macro * 9.5 + micro * 3.4) * profile.roughness * reliefScale;
+      const pathDist = path.distanceAt(featureT);
 
       let y =
         corridorCenterY -
-        Math.tan(pitch) * path.distanceAt(featureT) * 0.015 +
+        Math.tan(pitch) * pathDist * 0.015 +
         rough +
         bank * lateral * 0.04;
 
@@ -840,6 +889,9 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
           }
         }
       }
+
+      // Rideable snow volume — corduroy + rollers + powder bumps (mesh = physics).
+      y += rideSurfaceRelief(wx, wz, lateral, pathDist, raceDistNorm, seed, reliefScale);
 
       baseY = Math.min(baseY, y);
 
