@@ -214,3 +214,31 @@ export const BOARD_COLLIDER = {
 
 /** Kinematic body collision group membership (reserved for physics backend). */
 export const BOARD_GROUPS = 1 << 1;
+
+/**
+ * Arcade prop / hazard response for the kinematic board.
+ * Shape-casts Prop colliders only (never Trigger/Terrain) so finish sensors
+ * cannot relaunch the board.
+ */
+export const HAZARD = {
+  /** Sphere radius swept along travel, m. */
+  radius: 0.42,
+  /** Lift cast origin above board bed so boulder midsections register, m. */
+  castLift: 0.55,
+  /** Hit normals with Y above this are rideable decks — ignore for scrub. */
+  rideableNormalY: 0.55,
+  /** Closing speed into a rock that triggers a brief stun, m/s. */
+  rockStunSpeed: 11,
+  /** Speed retained after a rock side-hit (fraction). */
+  rockSpeedKeep: 0.42,
+  /** Speed retained after a tree / light wood scrub (fraction). */
+  treeSpeedKeep: 0.82,
+  /** Speed retained after other solid prop sides (tunnel walls, boxes). */
+  solidSpeedKeep: 0.58,
+  /** Brief control lock on a hard rock slap, s. */
+  stunTime: 0.55,
+  /** Minimum stun re-arm gap so wall hugs do not soft-lock, s. */
+  stunCooldown: 0.35,
+  /** Skin push-out along hit normal after contact, m. */
+  skin: 0.08,
+} as const;

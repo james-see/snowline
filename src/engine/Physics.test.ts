@@ -50,4 +50,41 @@ describe('RapierPhysics sensors', () => {
     assert.equal(hit.actorId, 'terrain');
     assert.ok(hit.distance > 0.3 && hit.distance < 0.5, `distance=${hit.distance}`);
   });
+
+  it('shapeCast hits Prop rock boxes and ignores sensors', () => {
+    physics.createStaticBox(
+      new THREE.Vector3(1.2, 0.8, 1.1),
+      new THREE.Vector3(3, 0.8, 0),
+      new THREE.Quaternion(),
+      'rock',
+      'frustum-rock-test'
+    );
+    physics.createStaticBox(
+      new THREE.Vector3(6, 3.5, 0.8),
+      new THREE.Vector3(1.5, 1.2, 0),
+      new THREE.Quaternion(),
+      'packed',
+      'finish',
+      true
+    );
+
+    for (let i = 0; i < 2; i++) {
+      physics.beginTick();
+      physics.step(1 / 60);
+    }
+
+    const hit = physics.shapeCast({
+      origin: new THREE.Vector3(0, 0.6, 0),
+      direction: new THREE.Vector3(1, 0, 0),
+      maxDistance: 6,
+      radius: 0.4,
+      groups: CollisionGroup.Prop,
+    });
+
+    assert.ok(hit, 'expected rock hit');
+    assert.equal(hit.actorId, 'frustum-rock-test');
+    assert.equal(hit.surface, 'rock');
+    assert.ok(hit.distance > 0.5 && hit.distance < 3.5, `distance=${hit.distance}`);
+    assert.ok(hit.normal.x < -0.5, 'normal should face the cast');
+  });
 });

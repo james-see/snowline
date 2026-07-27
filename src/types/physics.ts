@@ -30,6 +30,26 @@ export interface RaycastHit {
   colliderId: number;
 }
 
+export interface ShapeCastOptions {
+  origin: THREE.Vector3;
+  /** Sweep direction (need not be unit). */
+  direction: THREE.Vector3;
+  maxDistance: number;
+  radius: number;
+  groups?: CollisionGroupMask;
+  exclude?: string[];
+}
+
+export interface ShapeCastHit {
+  point: THREE.Vector3;
+  /** World-space normal pointing out of the hit collider toward the cast. */
+  normal: THREE.Vector3;
+  distance: number;
+  surface: SurfaceKind;
+  actorId: string | null;
+  colliderId: number;
+}
+
 export interface RigidBodyHandle {
   id: number;
   remove(): void;
@@ -53,6 +73,8 @@ export interface PhysicsWorld {
   beginTick(): void;
   step(dt: number): void;
   raycast(options: RaycastOptions): RaycastHit | null;
+  /** Sphere sweep for kinematic obstacle response (props / hazards). */
+  shapeCast(options: ShapeCastOptions): ShapeCastHit | null;
   createKinematicBody(desc: KinematicBodyDesc): RigidBodyHandle;
   createTrimesh(
     vertices: Float32Array,

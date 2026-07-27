@@ -22,6 +22,7 @@ import {
   CRASH,
   GRAVITY,
   GRIND,
+  HAZARD,
   JUMP,
   LANDING,
   SPEED,
@@ -50,7 +51,7 @@ export interface RiderPhysicsFrameResult {
   jumpImpulse: number;
   landed: LandingResult | null;
   crashed: boolean;
-  crashReason: 'impact' | 'edge-catch' | 'alignment' | 'void' | null;
+  crashReason: 'impact' | 'edge-catch' | 'alignment' | 'void' | 'obstacle' | null;
   recovered: boolean;
   spray: SpraySignal | null;
   grindStarted: boolean;
@@ -152,6 +153,8 @@ export class BoardPhysics {
   #voidCrash = false;
   /** Landing-assist flag for the current fixed step. */
   #landingAssist = false;
+  /** Seconds before another hard rock stun can fire. */
+  #obstacleStunCooldown = 0;
   #samples: GroundSample[] = Array.from({ length: rayStationCount() }, () => ({
     hit: false,
     distance: JUMP.rayLength,
@@ -191,6 +194,7 @@ export class BoardPhysics {
     this.#noHitAirTime = 0;
     this.#voidWallow = 0;
     this.#voidCrash = false;
+    this.#obstacleStunCooldown = 0;
     this.#groundNormal.set(0, 1, 0);
     this.#groundPoint.copy(spawn.position);
     this.#composeQuaternion();
@@ -334,6 +338,11 @@ export class BoardPhysics {
       this.#tryStartGrind();
     } else {
       this.#integrateAir(dt, input);
+    }
+
+    // Kinematic board ignores Rapier solids — sweep Prop hazards after travel.
+    if (!this.crashed) {
+      this.#resolveObstacles(dt, physics, result);
     }
 
     if (wasGrounded && !this.grounded) {
@@ -540,6 +549,77 @@ export class BoardPhysics {
     // Pull along world down to match the sensing ray; keeps trimesh TOI consistent.
     if (Math.abs(error) > 1e-4) {
       this.position.y -= error;
+    }
+  }
+
+  /**
+   * Sphere-sweep Prop colliders along this frame's travel. Rideable tops
+   * (high normal.y) are ignored; vertical boulder/tree/tunnel faces scrub
+   * speed and may briefly stun on a hard rock slap.
+   */
+  #resolveObstacles(dt: number, physics: PhysicsWorld, result: RiderPhysicsFrameResult): void {
+    this.#obstacleStunCooldown = Math.max(0, this.#obstacleStunCooldown - dt);
+
+    const travel = this.velocity.length() * dt;
+    if (travel < 1e-4 && this.velocity.lengthSq() < 1e-4) return;
+
+    _v0.copy(this.velocity);
+    const speed = _v0.length();
+    if (speed < 0.35) return;
+    _v0.multiplyScalar(1 / speed);
+
+    // Undo this frame's integrate so the sweep starts from the prior pose.
+    _v1.copy(this.position).addScaledVector(this.velocity, -dt);
+    _v1.y += HAZARD.castLift;
+
+    const hit = physics.shapeCast({
+      origin: _v1,
+      direction: _v0,
+      maxDistance: Math.max(travel, HAZARD.radius * 0.5),
+      radius: HAZARD.radius,
+      // Prop only — Terrain/Rail stay raycast ground; Trigger/sensors excluded.
+      groups: CollisionGroup.Prop,
+      exclude: ['rider'],
+    });
+    if (!hit) return;
+
+    // Flat / shallow tops are rideable park decks and boulder crowns.
+    if (hit.normal.y >= HAZARD.rideableNormalY) return;
+
+    const kind = classifyHazard(hit.surface, hit.actorId);
+    if (!kind) return;
+
+    const closing = Math.max(0, -this.velocity.dot(hit.normal));
+    if (closing < 0.6 && hit.distance > travel * 0.98) return;
+
+    // Park the board just outside the face — never leave it buried.
+    const stop = Math.max(0, hit.distance - HAZARD.skin);
+    this.position.copy(_v1).addScaledVector(_v0, stop);
+    this.position.y -= HAZARD.castLift;
+    this.position.addScaledVector(hit.normal, HAZARD.skin);
+
+    // Kill into-face velocity, then scrub planar carry by hazard class.
+    const into = this.velocity.dot(hit.normal);
+    if (into < 0) this.velocity.addScaledVector(hit.normal, -into);
+
+    const keep =
+      kind === 'rock'
+        ? HAZARD.rockSpeedKeep
+        : kind === 'tree'
+          ? HAZARD.treeSpeedKeep
+          : HAZARD.solidSpeedKeep;
+    this.velocity.multiplyScalar(keep);
+    this.speed = horizontalSpeed(this.velocity);
+
+    // Hard rock slap → short stun + combo ding. Trees stay scrub-only.
+    if (
+      kind === 'rock' &&
+      closing >= HAZARD.rockStunSpeed &&
+      this.#obstacleStunCooldown <= 0
+    ) {
+      this.#obstacleStunCooldown = HAZARD.stunCooldown;
+      this.grinding = false;
+      this.#beginCrash(result, 'obstacle', HAZARD.stunTime);
     }
   }
 
@@ -821,4 +901,20 @@ function majoritySurface(counts: Record<SurfaceKind, number>, fallback: SurfaceK
 /** Thin rail colliders only — wood/packed decks ride and launch, never grind. */
 function isGrindableSurface(kind: SurfaceKind): boolean {
   return kind === 'rail';
+}
+
+type HazardKind = 'rock' | 'tree' | 'solid';
+
+/** Map Prop hits to arcade hazard classes. Rideable tops are filtered earlier. */
+function classifyHazard(surface: SurfaceKind, actorId: string | null): HazardKind | null {
+  if (surface === 'rock') return 'rock';
+  if (actorId) {
+    if (actorId.includes('tree')) return 'tree';
+    if (actorId.includes('tunnel') || actorId.includes('-wall-')) return 'solid';
+  }
+  // Vertical wood faces (box sides, leftover tree tags) — light scrub only.
+  if (surface === 'wood') return 'tree';
+  // Packed ramp sides etc.
+  if (surface === 'packed' || surface === 'ice' || surface === 'powder') return 'solid';
+  return null;
 }

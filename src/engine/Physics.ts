@@ -7,6 +7,8 @@ import type {
   RaycastOptions,
   RigidBodyHandle,
   SensorHandle,
+  ShapeCastHit,
+  ShapeCastOptions,
 } from '@/types/physics.ts';
 import { CollisionGroup } from '@/types/physics.ts';
 import type { SurfaceKind } from '@/types/gameplay.ts';
@@ -16,6 +18,9 @@ function interactionGroups(membership: number, filter: number): number {
 }
 
 const ALL = 0xffff;
+const _shapeDir = new THREE.Vector3();
+const _shapeNormal = new THREE.Vector3();
+const _shapeQuat = new THREE.Quaternion();
 
 export class RapierPhysics implements PhysicsWorld {
   #world!: RAPIER.World;
@@ -110,6 +115,63 @@ export class RapierPhysics implements PhysicsWorld {
         origin.z + direction.z * distance
       ),
       normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z),
+      distance,
+      surface,
+      actorId,
+      colliderId: hit.collider.handle,
+    };
+  }
+
+  shapeCast(options: ShapeCastOptions): ShapeCastHit | null {
+    if (!this.#ready) return null;
+    const { origin, maxDistance, radius, groups = CollisionGroup.Prop, exclude } = options;
+    if (maxDistance <= 0 || radius <= 0) return null;
+
+    _shapeDir.copy(options.direction);
+    const dirLen = _shapeDir.length();
+    if (dirLen < 1e-8) return null;
+    _shapeDir.multiplyScalar(1 / dirLen);
+
+    const predicate = exclude?.length
+      ? (collider: RAPIER.Collider): boolean => {
+          const actorId = this.#actors.get(collider.handle);
+          return actorId === undefined || !exclude.includes(actorId);
+        }
+      : undefined;
+
+    const hit = this.#world.castShape(
+      { x: origin.x, y: origin.y, z: origin.z },
+      { x: 0, y: 0, z: 0, w: 1 },
+      { x: _shapeDir.x, y: _shapeDir.y, z: _shapeDir.z },
+      new RAPIER.Ball(radius),
+      0,
+      maxDistance,
+      true,
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+      interactionGroups(ALL, groups),
+      undefined,
+      undefined,
+      predicate
+    );
+    if (!hit) return null;
+
+    const { surface, actorId } = this.#classify(hit.collider);
+    const rot = hit.collider.rotation();
+    _shapeQuat.set(rot.x, rot.y, rot.z, rot.w);
+    _shapeNormal.set(hit.normal2.x, hit.normal2.y, hit.normal2.z).applyQuaternion(_shapeQuat);
+    if (_shapeNormal.lengthSq() < 1e-8) _shapeNormal.set(0, 1, 0);
+    else _shapeNormal.normalize();
+    // Face the cast origin so kinematic rejection pushes out of the prop.
+    if (_shapeNormal.dot(_shapeDir) > 0) _shapeNormal.negate();
+
+    const distance = hit.time_of_impact;
+    return {
+      point: new THREE.Vector3(
+        origin.x + _shapeDir.x * distance,
+        origin.y + _shapeDir.y * distance,
+        origin.z + _shapeDir.z * distance
+      ),
+      normal: _shapeNormal.clone(),
       distance,
       surface,
       actorId,

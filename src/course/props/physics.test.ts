@@ -9,12 +9,15 @@ import type {
   RaycastHit,
   RaycastOptions,
   RigidBodyHandle,
+  ShapeCastHit,
+  ShapeCastOptions,
 } from '@/types/physics.ts';
 import { registerPropsPhysics, tagPropRoot } from './physics.ts';
 
 interface BoxCall {
   surface: SurfaceKind;
   actorId: string;
+  half: { x: number; y: number; z: number };
 }
 
 interface CapsuleCall {
@@ -37,6 +40,9 @@ function recordingPhysics(): PhysicsWorld & { boxes: BoxCall[]; capsules: Capsul
     raycast(_options: RaycastOptions): RaycastHit | null {
       return null;
     },
+    shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+      return null;
+    },
     createKinematicBody(_desc: KinematicBodyDesc) {
       return handle;
     },
@@ -52,8 +58,12 @@ function recordingPhysics(): PhysicsWorld & { boxes: BoxCall[]; capsules: Capsul
     createKinematicBox() {
       return handle;
     },
-    createStaticBox(_h, _p, _r, surface, actorId = 'prop') {
-      boxes.push({ surface, actorId });
+    createStaticBox(half, _p, _r, surface, actorId = 'prop') {
+      boxes.push({
+        surface,
+        actorId,
+        half: { x: half.x, y: half.y, z: half.z },
+      });
       return handle;
     },
     createStaticCapsule(_hh, radius, _p, _r, surface, actorId = 'rail') {
@@ -132,5 +142,51 @@ describe('registerPropsPhysics', () => {
     assert.equal(physics.boxes.length, 1);
     assert.equal(physics.boxes[0]!.surface, 'wood');
     assert.equal(physics.capsules.length, 0);
+  });
+
+  it('registers rocks as Prop-group solid boxes (not pass-through scenery)', () => {
+    const physics = recordingPhysics();
+    const placement: PropPlacement = {
+      id: 'frustum-rock-alpine-0',
+      kind: 'rock',
+      position: [4, 10, 20],
+      scale: 1.4,
+      variant: 2,
+    };
+    registerPropsPhysics(physics, [placement], placeRoot(placement));
+
+    assert.equal(physics.boxes.length, 1);
+    assert.equal(physics.boxes[0]!.surface, 'rock');
+    assert.equal(physics.boxes[0]!.actorId, 'frustum-rock-alpine-0');
+    assert.ok(physics.boxes[0]!.half.x > 1);
+    assert.ok(physics.boxes[0]!.half.y > 0.4);
+    assert.equal(physics.capsules.length, 0);
+  });
+
+  it('skips solid colliders for recovery-tagged rocks', () => {
+    const physics = recordingPhysics();
+    const placement: PropPlacement = {
+      id: 'rock-guard-1',
+      kind: 'rock',
+      position: [0, 0, 0],
+      scale: 1.6,
+      recovery: true,
+    };
+    registerPropsPhysics(physics, [placement], placeRoot(placement));
+    assert.equal(physics.boxes.length, 0);
+  });
+
+  it('keeps tree trunk boxes for light scrub', () => {
+    const physics = recordingPhysics();
+    const placement: PropPlacement = {
+      id: 'belt-tree-alpine-1',
+      kind: 'tree',
+      position: [3, 5, 8],
+    };
+    // Trees are instanced — physics registers from placements, not scene roots.
+    registerPropsPhysics(physics, [placement], new THREE.Group());
+    assert.equal(physics.boxes.length, 1);
+    assert.equal(physics.boxes[0]!.actorId, 'belt-tree-alpine-1');
+    assert.equal(physics.boxes[0]!.surface, 'wood');
   });
 });

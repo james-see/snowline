@@ -39,23 +39,18 @@ export function tagPropRoot(object: THREE.Object3D, placement: PropPlacement, ga
   });
 }
 
-function registerMeshCollider(
-  physics: PhysicsWorld,
-  mesh: THREE.Mesh,
-  surface: SurfaceKind,
-  actorId: string
-): void {
-  mesh.updateWorldMatrix(true, false);
-  const geometry = mesh.geometry.clone();
-  geometry.applyMatrix4(mesh.matrixWorld);
-  const position = geometry.getAttribute('position');
-  const vertices = new Float32Array(position.array);
-  const index = geometry.getIndex();
-  const indices = index
-    ? new Uint32Array(index.array)
-    : new Uint32Array(Array.from({ length: position.count }, (_, i) => i));
-  physics.createTrimesh(vertices, indices, new THREE.Vector3(0, 0, 0), surface, actorId);
-  geometry.dispose();
+function rockHalfExtents(placement: PropPlacement): THREE.Vector3 {
+  const s =
+    typeof placement.scale === 'number'
+      ? placement.scale
+      : placement.scale
+        ? (placement.scale[0] + placement.scale[2]) * 0.5
+        : 1;
+  // Approximate buildRock silhouette (flattened boulder) — Prop-group box, not
+  // Terrain trimesh (kinematic board never bounced off rock meshes before).
+  const variant = placement.variant ?? 0;
+  const plump = 0.9 + (variant % 4) * 0.08;
+  return new THREE.Vector3(1.45 * s * plump, 0.72 * s * plump, 1.25 * s * plump);
 }
 
 function registerSensorVolume(
@@ -170,18 +165,14 @@ export function registerPropsPhysics(
         break;
       }
       case 'rock': {
-        const mesh = child.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
-        if (mesh) {
-          registerMeshCollider(physics, mesh, placement.surface ?? 'rock', data.propId);
-        } else {
-          physics.createStaticBox(
-            new THREE.Vector3(1.1 * _scale.x, 0.7 * _scale.y, 1.0 * _scale.z),
-            _pos.clone().add(new THREE.Vector3(0, 0.5 * _scale.y, 0)),
-            _quat.clone(),
-            placement.surface ?? 'rock',
-            data.propId
-          );
-        }
+        const half = rockHalfExtents(placement);
+        physics.createStaticBox(
+          half,
+          _pos.clone().add(new THREE.Vector3(0, half.y, 0).applyQuaternion(_quat)),
+          _quat.clone(),
+          placement.surface ?? 'rock',
+          data.propId
+        );
         break;
       }
       case 'tunnel': {

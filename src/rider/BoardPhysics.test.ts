@@ -9,10 +9,12 @@ import type {
   RaycastHit,
   RaycastOptions,
   RigidBodyHandle,
+  ShapeCastHit,
+  ShapeCastOptions,
 } from '@/types/physics.ts';
 import { CollisionGroup } from '@/types/physics.ts';
 import { BoardPhysics } from './BoardPhysics.ts';
-import { BOOST, CRASH, JUMP, LANDING, SPEED, VOID } from './tuning.ts';
+import { BOOST, CRASH, HAZARD, JUMP, LANDING, SPEED, VOID } from './tuning.ts';
 
 function idleInput(overrides: Partial<RiderInput> = {}): RiderInput {
   return {
@@ -53,6 +55,9 @@ function flatGroundPhysics(groundY = 0, surface: SurfaceKind = 'packed'): Physic
         actorId: surface === 'rail' ? 'rail' : surface === 'wood' ? 'box' : 'terrain',
         colliderId: 1,
       };
+    },
+    shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+      return null;
     },
     createKinematicBody(_desc: KinematicBodyDesc) {
       return handle;
@@ -571,6 +576,104 @@ describe('BoardPhysics', () => {
     assert.equal(frame.grindStarted, true);
     assert.equal(board.grinding, true);
     assert.equal(board.surfaceKind, 'rail');
+  });
+
+  it('scrubs speed on a rock side-hit without soft-locking', () => {
+    const ground = flatGroundPhysics(0);
+    const physics: PhysicsWorld = {
+      ...ground,
+      shapeCast(options: ShapeCastOptions): ShapeCastHit | null {
+        if (!(options.groups === undefined || options.groups & CollisionGroup.Prop)) return null;
+        return {
+          point: options.origin.clone().addScaledVector(options.direction, 0.2),
+          normal: new THREE.Vector3(-1, 0.1, 0).normalize(),
+          distance: 0.2,
+          surface: 'rock',
+          actorId: 'frustum-rock-alpine-0',
+          colliderId: 7,
+        };
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    // Below rockStunSpeed so we only scrub (no stun soft-lock).
+    board.velocity.set(HAZARD.rockStunSpeed - 3, 0, 2);
+    const before = board.velocity.length();
+    const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.ok(board.velocity.length() < before * 0.75, 'expected rock scrub');
+    assert.ok(board.position.x < 0.3, 'should not tunnel through the rock');
+    assert.equal(frame.crashed, false);
+  });
+
+  it('stuns on a hard rock slap and dings via obstacle crash', () => {
+    const ground = flatGroundPhysics(0);
+    const physics: PhysicsWorld = {
+      ...ground,
+      shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+        return {
+          point: new THREE.Vector3(0.2, HAZARD.castLift, 0),
+          normal: new THREE.Vector3(-1, 0.05, 0).normalize(),
+          distance: 0.15,
+          surface: 'rock',
+          actorId: 'rock-1',
+          colliderId: 8,
+        };
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(HAZARD.rockStunSpeed + 6, 0, 0);
+    const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.equal(frame.crashed, true);
+    assert.equal(frame.crashReason, 'obstacle');
+  });
+
+  it('light-scrubs trees without a stun crash', () => {
+    const ground = flatGroundPhysics(0);
+    const physics: PhysicsWorld = {
+      ...ground,
+      shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+        return {
+          point: new THREE.Vector3(0.2, HAZARD.castLift, 0),
+          normal: new THREE.Vector3(-1, 0.05, 0).normalize(),
+          distance: 0.15,
+          surface: 'wood',
+          actorId: 'belt-tree-alpine-3',
+          colliderId: 9,
+        };
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(22, 0, 2);
+    const before = board.velocity.length();
+    const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.ok(board.velocity.length() < before, 'expected tree scrub');
+    assert.equal(frame.crashed, false, 'trees must not stun / soft-lock');
+  });
+
+  it('ignores rideable prop tops during obstacle sweeps', () => {
+    const ground = flatGroundPhysics(0);
+    const physics: PhysicsWorld = {
+      ...ground,
+      shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+        return {
+          point: new THREE.Vector3(0, 0.2, 0.2),
+          normal: new THREE.Vector3(0, 1, 0),
+          distance: 0.1,
+          surface: 'wood',
+          actorId: 'box-ride',
+          colliderId: 10,
+        };
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(0, 0, 16);
+    const before = board.velocity.length();
+    const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.ok(Math.abs(board.velocity.length() - before) < 1.5);
+    assert.equal(frame.crashed, false);
   });
 
   it('exposes speed limits from tuning', () => {
