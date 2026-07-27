@@ -22,15 +22,16 @@ export interface ManifestMaterialEntry {
   };
 }
 
-/** Default metres-per-repeat when manifest omits tileScale. Smaller = denser micro-detail. */
+/** Default metres-per-repeat when manifest omits tileScale. Larger = smoother wide fields. */
 export const DEFAULT_TILE_SCALE: Record<PbrSetId, number> = {
-  snow_powder: 3.2,
-  /** Dense enough for corduroy grooves to read at chase cam distance. */
-  snow_groom: 2.6,
+  /** Soft powder sheets — avoid dense wallpaper on aprons. */
+  snow_powder: 22,
+  /** Groom/corduroy readable at chase distance without bathroom-tile repeats. */
+  snow_groom: 16,
   rock_face: 4,
   rock_scree: 3,
-  ice_glass: 3.2,
-  ice_frost: 2.8,
+  ice_glass: 10,
+  ice_frost: 12,
   wood_bark: 2,
   /** Dense needle microdetail on low-poly Kenney / cone canopies. */
   foliage_pine: 1.25,

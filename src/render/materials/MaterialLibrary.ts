@@ -66,8 +66,8 @@ const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
     sheenColor: 0xa8c4de,
     sheenRoughness: 0.84,
     envMapIntensity: 0.36,
-    normalScale: 1.45,
-    speckle: 0.14,
+    normalScale: 1.15,
+    speckle: 0.12,
     sunResponse: 0.55,
   },
   packed: {
@@ -80,7 +80,8 @@ const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
     sheenColor: 0xd4c2a0,
     sheenRoughness: 0.34,
     envMapIntensity: 1.05,
-    normalScale: 2.35,
+    /** Softer than sharp chase grooves — corduroy reads via bake, not plastic bump. */
+    normalScale: 1.55,
     speckle: 0.08,
     sunResponse: 0.85,
   },
@@ -305,8 +306,9 @@ export class MaterialLibrary {
       mat.vertexColors = false;
       const setId = SNOW_VARIANT_TO_PBR[v];
       const maps = this.#mapsFor(setId);
-      // Tighter repeats → micro-detail + corduroy readable at chase distance.
-      const tileMul = v === 'packed' ? 0.55 : 0.72;
+      // Larger world metres-per-repeat → continuous snow fields (not bathroom tile).
+      // Powder gets the biggest tiles; packed keeps corduroy readable without dense wallpaper.
+      const tileMul = v === 'powder' ? 1.2 : v === 'ice' ? 1.1 : 1.0;
       const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * tileMul;
       this.#bindSnowMaps(mat, maps, setId, tuning, {
         repeatU: width / tile,
@@ -406,10 +408,10 @@ export class MaterialLibrary {
     let local = cloneMaps(maps);
 
     if (setId === 'snow_groom' && typeof document !== 'undefined') {
-      // CC0 groom lacks corduroy — bake chase-scale grooves into albedo/normal/ORM.
+      // CC0 groom lacks corduroy — bake soft chase-scale grooves (low contrast, multi-freq).
       try {
         const baked = bakeCorduroyGroom(local, {
-          strength: 1.25,
+          strength: 0.82,
           seed: 77 + Math.floor(tuning.normalScale * 10),
         });
         if (baked) {
@@ -440,8 +442,8 @@ export class MaterialLibrary {
 
     applyPbrMaps(mat, local, repeat);
     mat.normalScale.set(tuning.normalScale, tuning.normalScale);
-    // Strong AO so micro-valleys / corduroy troughs read, not flat fill.
-    mat.aoMapIntensity = setId === 'snow_groom' ? 1.45 : 1.25;
+    // Mild AO — troughs read without carving a plastic grid into wide fields.
+    mat.aoMapIntensity = setId === 'snow_groom' ? 1.08 : 1.0;
     mat.color.setHex(tuning.color);
     mat.roughness = tuning.roughness;
     mat.metalness = tuning.metalness;
@@ -470,7 +472,7 @@ export class MaterialLibrary {
 
   /**
    * Warm sun-facing / cool shade tint in world space (matches RenderModule sun).
-   * Keeps snow from reading as flat grey under directional key light.
+   * Also fades mapped microdetail with distance so tiled snow doesn't wallpaper midfield.
    */
   #attachSnowSunResponse(
     mat: THREE.MeshPhysicalMaterial,
@@ -478,7 +480,7 @@ export class MaterialLibrary {
     variant: SnowVariantId
   ): void {
     if (amount <= 0) return;
-    const key = `snow-sun-${variant}-${amount.toFixed(2)}`;
+    const key = `snow-sun-fade-${variant}-${amount.toFixed(2)}`;
     mat.customProgramCacheKey = () => key;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.snowSunAmount = { value: amount };
@@ -494,8 +496,15 @@ uniform vec3 snowSunDir;`
         )
         .replace(
           '#include <normal_fragment_maps>',
-          /* glsl */ `#include <normal_fragment_maps>
+          /* glsl */ `vec3 snowGeoNormal = normal;
+#include <normal_fragment_maps>
 {
+  float viewDist = length( vViewPosition );
+  // Soft distance fade — near corduroy stays, far fields read continuous.
+  float detailFade = smoothstep( 24.0, 130.0, viewDist );
+  normal = normalize( mix( normal, snowGeoNormal, detailFade * 0.68 ) );
+  float flatLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatLuma ), detailFade * 0.18 );
   vec3 worldN = inverseTransformDirection( normal, viewMatrix );
   float sunFacing = clamp( dot( normalize( worldN ), normalize( snowSunDir ) ), 0.0, 1.0 );
   vec3 warmTint = vec3( 1.12, 1.04, 0.90 );
