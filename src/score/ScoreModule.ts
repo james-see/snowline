@@ -75,8 +75,9 @@ export class ScoreModule implements GameModule {
     });
 
     ctx.events.on('course:finish', ({ elapsed }) => {
-      if (!this.#runActive) return;
-      const banked = this.system.bank();
+      // Course is source of truth for the arch — always land results even if
+      // score thought the run was inactive (prevents timer-stuck / no-UI).
+      const banked = this.#runActive ? this.system.bank() : 0;
       if (banked > 0) {
         this.#grantBoost(ctx, this.system.boostRewardForBank());
         ctx.events.emit('score:combo', {
