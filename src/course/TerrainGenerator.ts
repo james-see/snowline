@@ -717,6 +717,8 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
   const positions: number[] = [];
   const colors: number[] = [];
   const uvs: number[] = [];
+  /** Visual groom weight 0=powder … 1=packed — soft seam for materials (physics uses surfaceIndices). */
+  const pathBlends: number[] = [];
   const indices: number[] = [];
   const heights = new Float32Array(nrows * ncols);
   const surfaceIndices = new Uint8Array(nrows * ncols);
@@ -875,8 +877,36 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
       }
 
       surfaceIndices[idx] = surfaceKindIndex(surface, SURFACE_TABLE);
-      const tint = getSurfaceParams(surface).tint;
-      colors.push(tint[0], tint[1], tint[2]);
+
+      // Soft path↔powder seam for rendering. Physics keeps hard surfaceIndices.
+      const seamNoise =
+        (valueNoise(wx * 0.085, wz * 0.1, seed + 811) - 0.5) * 0.22 +
+        (valueNoise(wx * 0.22, wz * 0.19, seed + 919) - 0.5) * 0.1;
+      const edgeCenter = 0.27 + seamNoise;
+      let packedAmt = 1 - THREE.MathUtils.smoothstep(edgeCenter - 0.15, edgeCenter + 0.22, raceDistNorm);
+      packedAmt *= 1 - THREE.MathUtils.smoothstep(0.02, 0.28, apronNorm);
+      if (surface === 'ice') {
+        const iceTint = SNOW_SURFACES.ice.tint;
+        colors.push(iceTint[0], iceTint[1], iceTint[2]);
+        pathBlends.push(1);
+      } else if (surface === 'rock') {
+        const rockTint = getSurfaceParams('rock').tint;
+        colors.push(rockTint[0], rockTint[1], rockTint[2]);
+        pathBlends.push(0);
+      } else {
+        // Bias soft blend toward authored hard kind so grip islands still read.
+        if (surface === 'packed') packedAmt = Math.max(packedAmt, 0.55);
+        if (surface === 'powder') packedAmt = Math.min(packedAmt, 0.4);
+        packedAmt = THREE.MathUtils.clamp(packedAmt, 0, 1);
+        const powderTint = SNOW_SURFACES.powder.tint;
+        const packedTint = SNOW_SURFACES.packed.tint;
+        colors.push(
+          THREE.MathUtils.lerp(powderTint[0], packedTint[0], packedAmt),
+          THREE.MathUtils.lerp(powderTint[1], packedTint[1], packedAmt),
+          THREE.MathUtils.lerp(powderTint[2], packedTint[2], packedAmt)
+        );
+        pathBlends.push(packedAmt);
+      }
       positions.push(wx, y, wz);
       uvs.push(u, rowU);
     }
@@ -909,6 +939,7 @@ export function buildTerrain(options: TerrainGeneratorOptions): TerrainBuildResu
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('pathBlend', new THREE.Float32BufferAttribute(pathBlends, 1));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
 

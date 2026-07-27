@@ -8,7 +8,6 @@ import {
   type PbrSetId,
   type PropMaterialId,
   type SnowVariantId,
-  type TerrainVariantId,
 } from '@/render/materials/ids.ts';
 import {
   applyPbrMaps,
@@ -101,7 +100,6 @@ const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   },
 };
 
-const TERRAIN_VARIANTS: readonly TerrainVariantId[] = ['powder', 'packed', 'ice', 'rock'];
 const SNOW_VARIANTS: readonly SnowVariantId[] = ['powder', 'packed', 'ice'];
 
 /**
@@ -267,7 +265,10 @@ export class MaterialLibrary {
 
   /**
    * Replace a terrain mesh material with powder / packed / ice / rock groups
-   * classified from authored vertex colours (no TerrainGenerator changes).
+   * classified from authored vertex colours.
+   *
+   * Powder + packed share one material driven by `pathBlend` (+ seam noise) so
+   * the race-strip edge is a shader fade, not a hard triangle-material stairstep.
    */
   applyTerrain(mesh: THREE.Mesh, opts: TerrainApplyOptions): void {
     const geo = mesh.geometry;
@@ -282,48 +283,68 @@ export class MaterialLibrary {
     const width = Math.max(1, opts.width);
     const length = Math.max(1, opts.length);
 
-    const mats: THREE.Material[] = TERRAIN_VARIANTS.map((v) => {
-      if (v === 'rock') {
-        const rock = this.prop('rock').clone() as THREE.MeshStandardMaterial;
-        rock.vertexColors = true;
-        const maps = this.#mapsFor('rock_face');
-        if (maps) {
-          const local = cloneMaps(maps);
-          applyPbrMaps(rock, local, {
-            repeatU: width / (maps.tileScale || DEFAULT_TILE_SCALE.rock_face),
-            repeatV: length / (maps.tileScale || DEFAULT_TILE_SCALE.rock_face),
-          });
-          rock.normalScale.set(1.8, 1.8);
-        }
-        rock.color.setHex(0x6e6a64);
-        rock.name = 'terrain-rock';
-        this.#owned.push(rock);
-        return rock;
-      }
-
-      const tuning = SNOW_TUNING[v];
-      const mat = this.snow(v).clone() as THREE.MeshPhysicalMaterial;
-      mat.vertexColors = false;
-      const setId = SNOW_VARIANT_TO_PBR[v];
+    // Shared groom/powder field — corduroy fades via pathBlend, not a second draw group.
+    const seamSnow = this.snow('packed').clone() as THREE.MeshPhysicalMaterial;
+    seamSnow.vertexColors = false;
+    {
+      const setId = SNOW_VARIANT_TO_PBR.packed;
       const maps = this.#mapsFor(setId);
-      // Larger world metres-per-repeat → continuous snow fields (not bathroom tile).
-      // Powder gets the biggest tiles; packed keeps corduroy readable without dense wallpaper.
-      const tileMul = v === 'powder' ? 1.2 : v === 'ice' ? 1.1 : 1.0;
-      const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * tileMul;
-      this.#bindSnowMaps(mat, maps, setId, tuning, {
+      const tuning = SNOW_TUNING.packed;
+      const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * 1.15;
+      this.#bindSnowMaps(seamSnow, maps, setId, tuning, {
         repeatU: width / tile,
         repeatV: length / tile,
       });
-      this.#attachSnowSunResponse(mat, tuning.sunResponse, v);
-      mat.name = `terrain-${v}`;
-      this.#owned.push(mat);
-      return mat;
-    });
+      this.#attachSnowSunResponse(seamSnow, tuning.sunResponse, 'packed', {
+        pathSeam: true,
+        powderColor: SNOW_TUNING.powder.color,
+        powderRoughness: SNOW_TUNING.powder.roughness,
+      });
+      seamSnow.name = 'terrain-snow-seam';
+      this.#owned.push(seamSnow);
+    }
+
+    const iceMat = this.snow('ice').clone() as THREE.MeshPhysicalMaterial;
+    iceMat.vertexColors = false;
+    {
+      const setId = SNOW_VARIANT_TO_PBR.ice;
+      const maps = this.#mapsFor(setId);
+      const tuning = SNOW_TUNING.ice;
+      const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * 1.15;
+      this.#bindSnowMaps(iceMat, maps, setId, tuning, {
+        repeatU: width / tile,
+        repeatV: length / tile,
+      });
+      this.#attachSnowSunResponse(iceMat, tuning.sunResponse, 'ice');
+      iceMat.name = 'terrain-ice';
+      this.#owned.push(iceMat);
+    }
+
+    const rock = this.prop('rock').clone() as THREE.MeshStandardMaterial;
+    rock.vertexColors = true;
+    {
+      const maps = this.#mapsFor('rock_face');
+      if (maps) {
+        const local = cloneMaps(maps);
+        applyPbrMaps(rock, local, {
+          repeatU: width / (maps.tileScale || DEFAULT_TILE_SCALE.rock_face),
+          repeatV: length / (maps.tileScale || DEFAULT_TILE_SCALE.rock_face),
+        });
+        rock.normalScale.set(1.8, 1.8);
+      }
+      rock.color.setHex(0x6e6a64);
+      rock.name = 'terrain-rock';
+      this.#owned.push(rock);
+    }
+
+    // Index order: powder, packed, ice, rock — powder+packed share seamSnow.
+    const mats: THREE.Material[] = [seamSnow, seamSnow, iceMat, rock];
 
     if (!geo.getAttribute('uv2')) {
       const uv = geo.getAttribute('uv');
       if (uv) geo.setAttribute('uv2', uv.clone());
     }
+    ensurePathBlendAttribute(geo, colorAttr);
 
     const triCount = index.count / 3;
     const buckets: number[][] = [[], [], [], []];
@@ -346,6 +367,8 @@ export class MaterialLibrary {
           winnerIdx = k;
         }
       }
+      // Soft mid-tones from pathBlend paint can flip powder↔packed per tri —
+      // both share seamSnow so the visual seam stays continuous.
       buckets[winnerIdx]!.push(i0, i1, i2);
     }
 
@@ -473,27 +496,89 @@ export class MaterialLibrary {
   /**
    * Warm sun-facing / cool shade tint in world space (matches RenderModule sun).
    * Also fades mapped microdetail with distance so tiled snow doesn't wallpaper midfield.
+   * Optional pathSeam: blend groom↔powder via pathBlend + world-space seam noise.
    */
   #attachSnowSunResponse(
     mat: THREE.MeshPhysicalMaterial,
     amount: number,
-    variant: SnowVariantId
+    variant: SnowVariantId,
+    seam?: { pathSeam: boolean; powderColor: number; powderRoughness: number }
   ): void {
-    if (amount <= 0) return;
-    const key = `snow-sun-fade-${variant}-${amount.toFixed(2)}`;
+    if (amount <= 0 && !seam?.pathSeam) return;
+    const pathSeam = seam?.pathSeam === true;
+    const powder = new THREE.Color(seam?.powderColor ?? SNOW_TUNING.powder.color);
+    const powderRough = seam?.powderRoughness ?? SNOW_TUNING.powder.roughness;
+    const key = `snow-sun-fade-${variant}-${amount.toFixed(2)}${pathSeam ? '-seam' : ''}`;
     mat.customProgramCacheKey = () => key;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.snowSunAmount = { value: amount };
       shader.uniforms.snowSunDir = {
         value: new THREE.Vector3(ALPINE_SUN_DIR.x, ALPINE_SUN_DIR.y, ALPINE_SUN_DIR.z),
       };
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <common>',
-          /* glsl */ `#include <common>
+      if (pathSeam) {
+        shader.uniforms.snowPowderColor = { value: powder };
+        shader.uniforms.snowPowderRough = { value: powderRough };
+        shader.vertexShader = shader.vertexShader
+          .replace(
+            '#include <common>',
+            /* glsl */ `#include <common>
+attribute float pathBlend;
+varying float vPathBlend;
+varying vec3 vSnowWorldPos;`
+          )
+          .replace(
+            '#include <begin_vertex>',
+            /* glsl */ `#include <begin_vertex>
+vPathBlend = pathBlend;
+vSnowWorldPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`
+          );
+      }
+
+      const commonInject = pathSeam
+        ? /* glsl */ `#include <common>
 uniform float snowSunAmount;
-uniform vec3 snowSunDir;`
-        )
+uniform vec3 snowSunDir;
+uniform vec3 snowPowderColor;
+uniform float snowPowderRough;
+varying float vPathBlend;
+varying vec3 vSnowWorldPos;
+float snowSeamHash( vec2 p ) {
+  return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 );
+}
+float snowSeamNoise( vec2 p ) {
+  vec2 i = floor( p );
+  vec2 f = fract( p );
+  f = f * f * ( 3.0 - 2.0 * f );
+  float a = snowSeamHash( i );
+  float b = snowSeamHash( i + vec2( 1.0, 0.0 ) );
+  float c = snowSeamHash( i + vec2( 0.0, 1.0 ) );
+  float d = snowSeamHash( i + vec2( 1.0, 1.0 ) );
+  return mix( mix( a, b, f.x ), mix( c, d, f.x ), f.y );
+}`
+        : /* glsl */ `#include <common>
+uniform float snowSunAmount;
+uniform vec3 snowSunDir;`;
+
+      const seamBody = pathSeam
+        ? /* glsl */ `
+  // Soft path↔powder: pathBlend + macro/micro seam noise kills triangle stairsteps.
+  float seamN =
+    snowSeamNoise( vSnowWorldPos.xz * 0.045 ) * 0.55 +
+    snowSeamNoise( vSnowWorldPos.xz * 0.13 + 19.0 ) * 0.45;
+  float packedW = clamp( vPathBlend + ( seamN - 0.5 ) * 0.28, 0.0, 1.0 );
+  packedW = smoothstep( 0.12, 0.88, packedW );
+  float powderFade = 1.0 - packedW;
+  normal = normalize( mix( normal, snowGeoNormal, powderFade * 0.72 ) );
+  vec3 powderRgb = snowPowderColor;
+  diffuseColor.rgb = mix( diffuseColor.rgb, powderRgb, powderFade * 0.82 );
+  float flatPow = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatPow ), powderFade * 0.12 );
+  roughnessFactor = mix( roughnessFactor, snowPowderRough, powderFade * 0.9 );
+`
+        : '';
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', commonInject)
         .replace(
           '#include <normal_fragment_maps>',
           /* glsl */ `vec3 snowGeoNormal = normal;
@@ -505,6 +590,7 @@ uniform vec3 snowSunDir;`
   normal = normalize( mix( normal, snowGeoNormal, detailFade * 0.68 ) );
   float flatLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
   diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatLuma ), detailFade * 0.18 );
+  ${seamBody}
   vec3 worldN = inverseTransformDirection( normal, viewMatrix );
   float sunFacing = clamp( dot( normalize( worldN ), normalize( snowSunDir ) ), 0.0, 1.0 );
   vec3 warmTint = vec3( 1.12, 1.04, 0.90 );
@@ -595,6 +681,36 @@ function classifyTint(r: number, g: number, b: number): 0 | 1 | 2 | 3 {
     }
   }
   return best as 0 | 1 | 2;
+}
+
+/**
+ * Ensure `pathBlend` exists (0=powder … 1=packed). Reconstruct from vertex
+ * colours when TerrainGenerator did not author the attribute.
+ */
+function ensurePathBlendAttribute(
+  geo: THREE.BufferGeometry,
+  colorAttr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute
+): void {
+  if (geo.getAttribute('pathBlend')) return;
+  const count = colorAttr.count;
+  const blends = new Float32Array(count);
+  const powder = SURFACE_TINTS.powder;
+  const packed = SURFACE_TINTS.packed;
+  for (let i = 0; i < count; i++) {
+    const r = colorAttr.getX(i);
+    const g = colorAttr.getY(i);
+    const b = colorAttr.getZ(i);
+    const dp =
+      (r - powder[0]) * (r - powder[0]) +
+      (g - powder[1]) * (g - powder[1]) +
+      (b - powder[2]) * (b - powder[2]);
+    const dk =
+      (r - packed[0]) * (r - packed[0]) +
+      (g - packed[1]) * (g - packed[1]) +
+      (b - packed[2]) * (b - packed[2]);
+    blends[i] = dp + dk > 1e-8 ? dp / (dp + dk) : 0.5;
+  }
+  geo.setAttribute('pathBlend', new THREE.Float32BufferAttribute(blends, 1));
 }
 
 /** Convenience: every PBR set id for preload / debug. */

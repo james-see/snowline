@@ -45,7 +45,7 @@ export function buildProceduralTree(variant: number): THREE.Group {
   const trunkH = 3.8 + (variant % 3) * 0.35;
   const trunk = shadow(
     new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.55, trunkH, 8),
+      new THREE.CylinderGeometry(0.26, 0.52, trunkH, 12),
       variant % 2 === 0 ? mats.trunk : mats.trunkDark
     )
   );
@@ -53,20 +53,27 @@ export function buildProceduralTree(variant: number): THREE.Group {
   g.add(trunk);
 
   const canopyMat = mats.canopy[variant % mats.canopy.length]!;
+  // Overlapping soft cones — denser radial segments kill Minecraft pyramid read.
   const tiers = [
-    { y: trunkH + 0.2, r: 2.7, h: 2.6 },
-    { y: trunkH + 1.35, r: 2.1, h: 2.2 },
-    { y: trunkH + 2.35, r: 1.45, h: 1.9 },
-    { y: trunkH + 3.15, r: 0.85, h: 1.4 },
+    { y: trunkH + 0.15, r: 2.85, h: 2.75, seg: 14 },
+    { y: trunkH + 1.2, r: 2.25, h: 2.35, seg: 14 },
+    { y: trunkH + 2.15, r: 1.65, h: 2.05, seg: 12 },
+    { y: trunkH + 2.95, r: 1.05, h: 1.55, seg: 12 },
+    { y: trunkH + 3.55, r: 0.55, h: 1.05, seg: 10 },
   ];
-  for (const tier of tiers) {
-    const cone = shadow(new THREE.Mesh(new THREE.ConeGeometry(tier.r, tier.h, 10), canopyMat));
-    cone.position.y = tier.y;
+  for (let i = 0; i < tiers.length; i++) {
+    const tier = tiers[i]!;
+    const yaw = (variant * 0.37 + i * 0.51) % (Math.PI * 2);
+    const cone = shadow(
+      new THREE.Mesh(new THREE.ConeGeometry(tier.r, tier.h, tier.seg), canopyMat)
+    );
+    cone.position.set(Math.sin(yaw) * 0.08, tier.y, Math.cos(yaw) * 0.08);
+    cone.rotation.y = yaw;
     g.add(cone);
   }
 
-  const snow = shadow(new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.7, 8), mats.snowCap));
-  snow.position.y = trunkH + 3.7;
+  const snow = shadow(new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.65, 10), mats.snowCap));
+  snow.position.y = trunkH + 4.05;
   g.add(snow);
 
   return g;

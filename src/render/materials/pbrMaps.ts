@@ -25,9 +25,9 @@ export interface ManifestMaterialEntry {
 /** Default metres-per-repeat when manifest omits tileScale. Larger = smoother wide fields. */
 export const DEFAULT_TILE_SCALE: Record<PbrSetId, number> = {
   /** Soft powder sheets — avoid dense wallpaper on aprons. */
-  snow_powder: 22,
+  snow_powder: 28,
   /** Groom/corduroy readable at chase distance without bathroom-tile repeats. */
-  snow_groom: 16,
+  snow_groom: 22,
   rock_face: 4,
   rock_scree: 3,
   ice_glass: 10,

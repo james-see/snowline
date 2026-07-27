@@ -98,6 +98,11 @@ function flattenTreeGroup(scene: THREE.Object3D, variant: number, scale: number)
   const barkMat = variant % 2 === 0 ? mats.trunk : mats.trunkDark;
 
   scene.updateMatrixWorld(true);
+
+  const barkBounds = new THREE.Box3();
+  let hasBark = false;
+  const canopyGeos: THREE.BufferGeometry[] = [];
+
   scene.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh || !mesh.geometry) return;
@@ -106,24 +111,89 @@ function flattenTreeGroup(scene: THREE.Object3D, variant: number, scale: number)
     const baked = mesh.geometry.clone();
     baked.applyMatrix4(mesh.matrixWorld);
     baked.scale(scale, scale, scale);
-    baked.computeVertexNormals();
-    if (!baked.getAttribute('uv2')) {
-      const uv = baked.getAttribute('uv');
-      if (uv) baked.setAttribute('uv2', uv.clone());
-    }
 
     const key = `${mesh.name} ${materialName(mesh)}`.toLowerCase();
     const isBark = /bark|wood|trunk/.test(key);
-    const mat = isBark ? barkMat : canopyMat;
 
-    const part = new THREE.Mesh(baked, mat);
-    part.name = isBark ? `bark-${variant}` : `leafs-${variant}`;
+    if (isBark) {
+      baked.computeBoundingBox();
+      const box = baked.boundingBox;
+      if (box) {
+        if (!hasBark) {
+          barkBounds.copy(box);
+          hasBark = true;
+        } else {
+          barkBounds.union(box);
+        }
+      }
+      baked.dispose();
+      return;
+    }
+
+    softenCanopyGeometry(baked, variant);
+    canopyGeos.push(baked);
+  });
+
+  // Replace cubic Kenney trunks with tapered cylinders — keeps capsule colliders
+  // visually honest without changing physics registration.
+  if (hasBark && !barkBounds.isEmpty()) {
+    const height = Math.max(0.35, barkBounds.max.y - barkBounds.min.y);
+    const midX = (barkBounds.min.x + barkBounds.max.x) * 0.5;
+    const midZ = (barkBounds.min.z + barkBounds.max.z) * 0.5;
+    const halfX = (barkBounds.max.x - barkBounds.min.x) * 0.5;
+    const halfZ = (barkBounds.max.z - barkBounds.min.z) * 0.5;
+    const rBase = Math.max(0.12, Math.min(halfX, halfZ) * 0.92);
+    const rTop = rBase * (0.55 + (variant % 3) * 0.06);
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(rTop, rBase, height, 10, 1, false),
+      barkMat
+    );
+    trunk.name = `bark-${variant}`;
+    trunk.position.set(midX, barkBounds.min.y + height * 0.5, midZ);
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    ensureUv2(trunk.geometry);
+    g.add(trunk);
+  }
+
+  for (let i = 0; i < canopyGeos.length; i++) {
+    const baked = canopyGeos[i]!;
+    const part = new THREE.Mesh(baked, canopyMat);
+    part.name = `leafs-${variant}`;
     part.castShadow = true;
     part.receiveShadow = true;
     g.add(part);
-  });
+  }
 
   return g;
+}
+
+/** Break flat Kenney canopy facets + freshen normals for a softer needle read. */
+function softenCanopyGeometry(geo: THREE.BufferGeometry, variant: number): void {
+  const pos = geo.getAttribute('position');
+  if (!pos) return;
+  const seed = variant * 17.13 + 3.7;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const n =
+      Math.sin(x * 2.4 + seed) * 0.045 +
+      Math.cos(z * 2.1 - seed * 1.2) * 0.04 +
+      Math.sin((x + y) * 1.7 + seed * 0.6) * 0.03;
+    // Stronger outward puff on upper canopy — less boxy silhouette.
+    const lift = Math.max(0, y) * 0.02;
+    pos.setXYZ(i, x * (1 + n * 0.55), y + n * 0.35 + lift, z * (1 + n * 0.55));
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  ensureUv2(geo);
+}
+
+function ensureUv2(geo: THREE.BufferGeometry): void {
+  if (geo.getAttribute('uv2')) return;
+  const uv = geo.getAttribute('uv');
+  if (uv) geo.setAttribute('uv2', uv.clone());
 }
 
 function materialName(mesh: THREE.Mesh): string {

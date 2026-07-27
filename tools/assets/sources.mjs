@@ -30,13 +30,13 @@ export const MATERIALS = [
   {
     id: 'snow_groom',
     slug: 'snow_floor',
-    tileScale: 16,
+    tileScale: 22,
     note: 'Packed groom / corduroy snow floor. Large metres-per-repeat so wide aprons stay continuous, not wallpaper.',
   },
   {
     id: 'snow_powder',
     slug: 'snow_01',
-    tileScale: 22,
+    tileScale: 28,
     note: 'Fresh powder with subtle sparkle variation. Extra-large tile for soft off-piste fields.',
   },
   {

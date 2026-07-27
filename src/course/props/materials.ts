@@ -119,10 +119,12 @@ export function bindAuthoredPropMaps(library: MaterialLibrary): void {
     const canopy = mats.canopy[i]!;
     copyMaps(foliage, canopy, CANOPY_TINTS[i % CANOPY_TINTS.length]!);
     canopy.side = THREE.DoubleSide;
-    canopy.roughness = 0.95;
+    canopy.roughness = 0.96;
     canopy.metalness = 0;
-    canopy.normalScale.set(0.4, 0.4);
-    canopy.envMapIntensity = 0.35;
+    // Soft normals — Kenney facets read less cubic under alpine key light.
+    canopy.normalScale.set(0.28, 0.28);
+    canopy.envMapIntensity = 0.28;
+    canopy.flatShading = false;
   }
 }
 

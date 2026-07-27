@@ -7,7 +7,7 @@
       "albedo": "/assets/textures/snow_groom_albedo.webp",
       "normal": "/assets/textures/snow_groom_normal.jpg",
       "orm": "/assets/textures/snow_groom_orm.jpg",
-      "tileScale": 16,
+      "tileScale": 22,
       "source": {
         "name": "Snow Floor",
         "author": "eye-candy.xyz",
@@ -20,7 +20,7 @@
       "albedo": "/assets/textures/snow_powder_albedo.webp",
       "normal": "/assets/textures/snow_powder_normal.jpg",
       "orm": "/assets/textures/snow_powder_orm.jpg",
-      "tileScale": 22,
+      "tileScale": 28,
       "source": {
         "name": "Snow 01",
         "author": "Rob Tuytel",
