@@ -31,7 +31,8 @@ export interface LodBudgets {
 export const LOD_BUFFER_CAPS = {
   snow: 4000,
   spray: 400,
-  trees: 256,
+  /** Instanced Kenney pines — dense apron belts need headroom past lonely loners. */
+  trees: 480,
   rocks: 128,
 } as const;
 
@@ -61,8 +62,8 @@ const PRESET_BUDGETS: Record<QualityPreset, LodBudgets> = {
     anisotropy: 4,
   },
   high: {
-    maxTreeInstances: 96,
-    maxTreeShadowCasters: 28,
+    maxTreeInstances: 320,
+    maxTreeShadowCasters: 40,
     maxRockInstances: 48,
     shadowDistance: 140,
     shadowFrustum: 64,
@@ -73,8 +74,8 @@ const PRESET_BUDGETS: Record<QualityPreset, LodBudgets> = {
     anisotropy: 8,
   },
   ultra: {
-    maxTreeInstances: 160,
-    maxTreeShadowCasters: 48,
+    maxTreeInstances: 480,
+    maxTreeShadowCasters: 64,
     maxRockInstances: 80,
     shadowDistance: 200,
     shadowFrustum: 90,
