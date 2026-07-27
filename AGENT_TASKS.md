@@ -5,6 +5,8 @@ Critic verdict: **FAIL** (mean **4.15**, was 3.65). See `CRITIC_REPORT.md`, `cap
 
 Ownership: `AGENT_OWNERS.md`. Do **not** cross-edit other agents' files.
 
+**HARD — worktree required:** Every concurrent owner works in `~/.cursor/worktrees/<id>/snowline-...` on **their** branch. Primary `/Users/jc/p/snowline` on `main` is integrator-only (clean merges + critic). Merge agents: dirty tree → **abort** and tell parent — **never stash**. Before merge: `./scripts/require-clean-main.sh`. See `AGENT_OWNERS.md`.
+
 ---
 
 ## DONE (prior tickets — credited)

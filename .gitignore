@@ -7,3 +7,4 @@ captures/
 .capture-snapshot/
 .capture-snapshot-*/
 refs/snowboard/images/
+.worktrees/

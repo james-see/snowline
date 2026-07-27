@@ -43,7 +43,7 @@ npm run capture -- --shot course_start
 | `agent/critic` | Rubric/gate | running |
 | `agent/docs` | Living docs | merging |
 
-See [AGENT_OWNERS.md](AGENT_OWNERS.md). Worktrees: `/Users/jc/p/snowline-worktrees/<name>` and `~/.cursor/worktrees/`.
+See [AGENT_OWNERS.md](AGENT_OWNERS.md). **Worktree required:** `~/.cursor/worktrees/<id>/snowline-...` (owner branch). Primary `/Users/jc/p/snowline` on `main` = integrator only.
 
 ## Completed
 

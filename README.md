@@ -4,6 +4,10 @@ Original arcade snowboarding in the browser — TypeScript, Three.js, Rapier, We
 
 Hitscan-style modules + automated capture/critic loop. See [ORIGIN.md](ORIGIN.md), [AGENT_OWNERS.md](AGENT_OWNERS.md).
 
+**Parallel agents:** worktree required — `~/.cursor/worktrees/<id>/snowline-...` on your owner branch. Primary `main` is integrator-only.
+
+**Merge gate:** `./scripts/require-clean-main.sh` (or clean `git status` on `main`). Dirty → abort; **never** `git stash` other owners' WIP. See [AGENT_OWNERS.md](AGENT_OWNERS.md).
+
 ## Quick start
 
 ```bash
