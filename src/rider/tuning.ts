@@ -232,13 +232,19 @@ export const HAZARD = {
   /** Speed retained after a rock side-hit (fraction). */
   rockSpeedKeep: 0.42,
   /** Speed retained after a tree / light wood scrub (fraction). */
-  treeSpeedKeep: 0.82,
+  treeSpeedKeep: 0.88,
   /** Speed retained after other solid prop sides (tunnel walls, boxes). */
   solidSpeedKeep: 0.58,
+  /** Outward kick after a tree glance so tangent slide clears the trunk, m/s. */
+  treeBounce: 2.8,
+  /** Soft outward kick on non-stun rock / solid contacts, m/s. */
+  solidBounce: 1.2,
   /** Brief control lock on a hard rock slap, s. */
   stunTime: 0.55,
   /** Minimum stun re-arm gap so wall hugs do not soft-lock, s. */
   stunCooldown: 0.35,
   /** Skin push-out along hit normal after contact, m. */
-  skin: 0.08,
+  skin: 0.1,
+  /** Max depenetration push per fixed step (avoids teleport pops), m. */
+  maxDepenetration: 0.85,
 } as const;

@@ -553,67 +553,142 @@ export class BoardPhysics {
   }
 
   /**
-   * Sphere-sweep Prop colliders along this frame's travel. Rideable tops
-   * (high normal.y) are ignored; vertical boulder/tree/tunnel faces scrub
-   * speed and may briefly stun on a hard rock slap.
+   * Arcade Prop response: sweep along travel, depenetrate if still embedded,
+   * slide (kill only the into-face velocity), light scrub, and a small outward
+   * bounce so trunks never soft-lock the kinematic board.
+   *
+   * Prop group only — Trigger/finish sensors cannot relaunch or bounce.
    */
   #resolveObstacles(dt: number, physics: PhysicsWorld, result: RiderPhysicsFrameResult): void {
     this.#obstacleStunCooldown = Math.max(0, this.#obstacleStunCooldown - dt);
 
-    const travel = this.velocity.length() * dt;
-    if (travel < 1e-4 && this.velocity.lengthSq() < 1e-4) return;
+    let contactNormal: THREE.Vector3 | null = null;
+    let contactKind: HazardKind | null = null;
+    let closing = 0;
+    let impact = false;
 
-    _v0.copy(this.velocity);
-    const speed = _v0.length();
-    if (speed < 0.35) return;
-    _v0.multiplyScalar(1 / speed);
+    const speed = this.velocity.length();
+    const travel = speed * dt;
 
-    // Undo this frame's integrate so the sweep starts from the prior pose.
-    _v1.copy(this.position).addScaledVector(this.velocity, -dt);
+    // Predictive sweep from the pre-integrate pose while moving.
+    if (speed >= 0.25 && travel >= 1e-4) {
+      _v0.copy(this.velocity).multiplyScalar(1 / speed);
+      _v1.copy(this.position).addScaledVector(this.velocity, -dt);
+      _v1.y += HAZARD.castLift;
+
+      const hit = physics.shapeCast({
+        origin: _v1,
+        direction: _v0,
+        maxDistance: Math.max(travel, HAZARD.radius * 0.5),
+        radius: HAZARD.radius,
+        groups: CollisionGroup.Prop,
+        exclude: ['rider'],
+      });
+
+      if (hit && hit.normal.y < HAZARD.rideableNormalY) {
+        const kind = classifyHazard(hit.surface, hit.actorId);
+        const into = Math.max(0, -this.velocity.dot(hit.normal));
+        // Only treat as an impact when we actually close this frame — avoids
+        // re-scrubbing every tick while hugging a trunk after a bounce.
+        if (kind && into >= 0.55 && hit.distance <= travel + HAZARD.skin) {
+          const stop = Math.max(0, hit.distance - HAZARD.skin);
+          this.position.copy(_v1).addScaledVector(_v0, stop);
+          this.position.y -= HAZARD.castLift;
+          this.position.addScaledVector(hit.normal, HAZARD.skin);
+          contactNormal = hit.normal;
+          contactKind = kind;
+          closing = into;
+          impact = true;
+        }
+      }
+    }
+
+    // Continuous depenetration — runs even when nearly stopped so a wedged
+    // rider is pushed out along the hit normal every frame.
+    _v1.copy(this.position);
     _v1.y += HAZARD.castLift;
-
-    const hit = physics.shapeCast({
+    const overlap = physics.sphereOverlap({
       origin: _v1,
-      direction: _v0,
-      maxDistance: Math.max(travel, HAZARD.radius * 0.5),
       radius: HAZARD.radius,
-      // Prop only — Terrain/Rail stay raycast ground; Trigger/sensors excluded.
       groups: CollisionGroup.Prop,
       exclude: ['rider'],
     });
-    if (!hit) return;
 
-    // Flat / shallow tops are rideable park decks and boulder crowns.
-    if (hit.normal.y >= HAZARD.rideableNormalY) return;
+    if (overlap) {
+      const sideHit = overlap.normal.y < HAZARD.rideableNormalY;
+      // Always clear true embeds; skip shallow rideable-top grazes (no launch).
+      if (overlap.inside || sideHit) {
+        const push = Math.min(
+          overlap.penetration + (overlap.inside ? HAZARD.skin : 0),
+          HAZARD.maxDepenetration
+        );
+        if (push > 1e-4) this.position.addScaledVector(overlap.normal, push);
 
-    const kind = classifyHazard(hit.surface, hit.actorId);
-    if (!kind) return;
+        if (sideHit) {
+          const kind = classifyHazard(overlap.surface, overlap.actorId);
+          if (kind) {
+            const into = Math.max(0, -this.velocity.dot(overlap.normal));
+            // Slide every frame while intersecting; scrub/bounce only on impact
+            // or a deep embed so wall hugs cannot zero tangent carry.
+            if (!contactNormal) {
+              contactNormal = overlap.normal;
+              contactKind = kind;
+              closing = into;
+            }
+            if (overlap.inside || into >= 0.55) impact = true;
+          }
+        }
+      }
+    }
 
-    const closing = Math.max(0, -this.velocity.dot(hit.normal));
-    if (closing < 0.6 && hit.distance > travel * 0.98) return;
+    if (!contactNormal || !contactKind) return;
 
-    // Park the board just outside the face — never leave it buried.
-    const stop = Math.max(0, hit.distance - HAZARD.skin);
-    this.position.copy(_v1).addScaledVector(_v0, stop);
-    this.position.y -= HAZARD.castLift;
-    this.position.addScaledVector(hit.normal, HAZARD.skin);
+    // Snapshot horizontal approach before slide — bounce is lateral-only so a
+    // front-face trunk slap cannot reverse downhill travel into a soft-lock.
+    _v3.copy(this.velocity);
+    _v3.y = 0;
 
-    // Kill into-face velocity, then scrub planar carry by hazard class.
-    const into = this.velocity.dot(hit.normal);
-    if (into < 0) this.velocity.addScaledVector(hit.normal, -into);
+    // Slide: remove only the into-face component — keep tangent carry.
+    const intoVel = this.velocity.dot(contactNormal);
+    if (intoVel < 0) this.velocity.addScaledVector(contactNormal, -intoVel);
 
-    const keep =
-      kind === 'rock'
-        ? HAZARD.rockSpeedKeep
-        : kind === 'tree'
-          ? HAZARD.treeSpeedKeep
-          : HAZARD.solidSpeedKeep;
-    this.velocity.multiplyScalar(keep);
+    if (impact) {
+      const keep =
+        contactKind === 'rock'
+          ? HAZARD.rockSpeedKeep
+          : contactKind === 'tree'
+            ? HAZARD.treeSpeedKeep
+            : HAZARD.solidSpeedKeep;
+      this.velocity.multiplyScalar(keep);
+
+      const bounce =
+        contactKind === 'tree'
+          ? HAZARD.treeBounce
+          : contactKind === 'rock'
+            ? HAZARD.solidBounce
+            : HAZARD.solidBounce;
+      _v2.set(contactNormal.x, 0, contactNormal.z);
+      if (bounce > 0 && _v2.lengthSq() > 1e-6) {
+        _v2.normalize();
+        if (_v3.lengthSq() > 1e-4) {
+          _v3.normalize();
+          // Keep only the separation axis orthogonal to pre-impact travel.
+          _v2.addScaledVector(_v3, -_v2.dot(_v3));
+        }
+        if (_v2.lengthSq() > 1e-6) {
+          _v2.normalize();
+          const along = this.velocity.dot(_v2);
+          if (along < bounce) this.velocity.addScaledVector(_v2, bounce - along);
+        }
+      }
+    }
+
     this.speed = horizontalSpeed(this.velocity);
 
-    // Hard rock slap → short stun + combo ding. Trees stay scrub-only.
+    // Hard rock slap → short stun + combo ding. Still depenetrated above.
     if (
-      kind === 'rock' &&
+      impact &&
+      contactKind === 'rock' &&
       closing >= HAZARD.rockStunSpeed &&
       this.#obstacleStunCooldown <= 0
     ) {

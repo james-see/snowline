@@ -9,6 +9,8 @@ import type {
   SensorHandle,
   ShapeCastHit,
   ShapeCastOptions,
+  SphereOverlapHit,
+  SphereOverlapOptions,
 } from '@/types/physics.ts';
 import { CollisionGroup } from '@/types/physics.ts';
 import type { SurfaceKind } from '@/types/gameplay.ts';
@@ -176,6 +178,62 @@ export class RapierPhysics implements PhysicsWorld {
       surface,
       actorId,
       colliderId: hit.collider.handle,
+    };
+  }
+
+  sphereOverlap(options: SphereOverlapOptions): SphereOverlapHit | null {
+    if (!this.#ready) return null;
+    const { origin, radius, groups = CollisionGroup.Prop, exclude } = options;
+    if (radius <= 0) return null;
+
+    const predicate = exclude?.length
+      ? (collider: RAPIER.Collider): boolean => {
+          const actorId = this.#actors.get(collider.handle);
+          return actorId === undefined || !exclude.includes(actorId);
+        }
+      : undefined;
+
+    // Closest Prop surface — Trigger/finish sensors stay out via EXCLUDE_SENSORS
+    // + Prop group filter (same contract as shapeCast).
+    const proj = this.#world.projectPoint(
+      { x: origin.x, y: origin.y, z: origin.z },
+      true,
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+      interactionGroups(ALL, groups),
+      undefined,
+      undefined,
+      predicate
+    );
+    if (!proj) return null;
+
+    _shapeNormal.set(origin.x - proj.point.x, origin.y - proj.point.y, origin.z - proj.point.z);
+    let dist = _shapeNormal.length();
+    let penetration: number;
+
+    if (proj.isInside) {
+      // Shortest exit: toward closest surface, then clear the sphere radius.
+      if (dist < 1e-8) {
+        _shapeNormal.set(1, 0, 0);
+        dist = 0;
+      } else {
+        _shapeNormal.multiplyScalar(-1 / dist);
+      }
+      penetration = dist + radius;
+    } else {
+      if (dist >= radius - 1e-5) return null;
+      if (dist < 1e-8) _shapeNormal.set(0, 1, 0);
+      else _shapeNormal.multiplyScalar(1 / dist);
+      penetration = radius - dist;
+    }
+
+    const { surface, actorId } = this.#classify(proj.collider);
+    return {
+      normal: _shapeNormal.clone(),
+      penetration,
+      inside: proj.isInside,
+      surface,
+      actorId,
+      colliderId: proj.collider.handle,
     };
   }
 

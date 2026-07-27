@@ -11,6 +11,8 @@ import type {
   RigidBodyHandle,
   ShapeCastHit,
   ShapeCastOptions,
+  SphereOverlapHit,
+  SphereOverlapOptions,
 } from '@/types/physics.ts';
 import { CollisionGroup } from '@/types/physics.ts';
 import { BoardPhysics } from './BoardPhysics.ts';
@@ -57,6 +59,9 @@ function flatGroundPhysics(groundY = 0, surface: SurfaceKind = 'packed'): Physic
       };
     },
     shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+      return null;
+    },
+    sphereOverlap(_options: SphereOverlapOptions): SphereOverlapHit | null {
       return null;
     },
     createKinematicBody(_desc: KinematicBodyDesc) {
@@ -650,6 +655,65 @@ describe('BoardPhysics', () => {
     const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
     assert.ok(board.velocity.length() < before, 'expected tree scrub');
     assert.equal(frame.crashed, false, 'trees must not stun / soft-lock');
+  });
+
+  it('depenetrates an embedded tree overlap and keeps tangent slide', () => {
+    const ground = flatGroundPhysics(0);
+    const physics: PhysicsWorld = {
+      ...ground,
+      shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+        return null;
+      },
+      sphereOverlap(_options: SphereOverlapOptions): SphereOverlapHit | null {
+        return {
+          normal: new THREE.Vector3(-1, 0.05, 0).normalize(),
+          penetration: 0.45,
+          inside: true,
+          surface: 'wood',
+          actorId: 'belt-tree-alpine-9',
+          colliderId: 11,
+        };
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    // Mostly into the trunk (+X), with Z tangent that must survive.
+    board.velocity.set(14, 0, 10);
+    const zBefore = board.velocity.z;
+    const x0 = board.position.x;
+    const frame = board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.ok(board.position.x < x0 - 0.2, 'must push out along trunk normal');
+    assert.ok(board.velocity.x <= 0.05, 'into-face velocity must be killed (slide)');
+    assert.ok(board.velocity.z > zBefore * 0.5, 'tangent carry must survive scrub');
+    // Lateral bounce separates without reversing the approach tangent.
+    assert.ok(board.velocity.length() > 4, 'must retain slide energy off the trunk');
+    assert.equal(frame.crashed, false, 'trees must not stun');
+  });
+
+  it('depenetrates while nearly stopped so trunks cannot soft-lock', () => {
+    const ground = flatGroundPhysics(0);
+    let pushes = 0;
+    const physics: PhysicsWorld = {
+      ...ground,
+      sphereOverlap(_options: SphereOverlapOptions): SphereOverlapHit | null {
+        pushes++;
+        return {
+          normal: new THREE.Vector3(-1, 0, 0),
+          penetration: 0.35,
+          inside: true,
+          surface: 'wood',
+          actorId: 'tree-wedge',
+          colliderId: 12,
+        };
+      },
+    };
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(0.1, 0, 0.05);
+    const x0 = board.position.x;
+    board.fixedUpdate(1 / 60, idleInput(), physics);
+    assert.ok(pushes >= 1, 'overlap query must run at low speed');
+    assert.ok(board.position.x < x0 - 0.15, 'low-speed embed must still depenetrate');
   });
 
   it('ignores rideable prop tops during obstacle sweeps', () => {

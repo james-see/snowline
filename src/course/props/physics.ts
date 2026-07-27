@@ -204,8 +204,8 @@ export function registerPropsPhysics(
     }
   }
 
-  // Instanced trees: trunk boxes from placements (skip recovery).
-  // Scale with visual trunk — fixed 0.45 half-width missed large inset pines.
+  // Instanced trees: Y-capsules sized to the visual trunk (not fat boxes —
+  // box corners were wedging the kinematic board into the silhouette).
   for (const placement of placements) {
     if (placement.kind !== 'tree' || placement.recovery) continue;
     const s =
@@ -214,11 +214,16 @@ export function registerPropsPhysics(
         : placement.scale
           ? (placement.scale[0] + placement.scale[2]) * 0.5
           : 1;
-    const trunkR = Math.max(0.55, 0.42 * s);
-    const trunkH = Math.max(1.9, 1.55 * s);
-    physics.createStaticBox(
-      new THREE.Vector3(trunkR, trunkH, trunkR),
-      new THREE.Vector3(...placement.position).add(new THREE.Vector3(0, trunkH, 0)),
+    // Procedural trunk is CylinderGeometry(0.28, 0.55) * scale — capsule sits
+    // near mid-radius so grazes match the wood, not the canopy AABB.
+    const trunkR = Math.max(0.3, 0.26 * s);
+    const fullH = Math.max(3.6, 3.1 * s);
+    const halfHeight = Math.max(0.35, fullH * 0.5 - trunkR);
+    const centerY = halfHeight + trunkR;
+    physics.createStaticCapsule(
+      halfHeight,
+      trunkR,
+      new THREE.Vector3(...placement.position).add(new THREE.Vector3(0, centerY, 0)),
       yawQuat(placement.rotationY ?? 0),
       placement.surface ?? 'wood',
       placement.id

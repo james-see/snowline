@@ -11,6 +11,8 @@ import type {
   RigidBodyHandle,
   ShapeCastHit,
   ShapeCastOptions,
+  SphereOverlapHit,
+  SphereOverlapOptions,
 } from '@/types/physics.ts';
 import { registerPropsPhysics, tagPropRoot } from './physics.ts';
 
@@ -41,6 +43,9 @@ function recordingPhysics(): PhysicsWorld & { boxes: BoxCall[]; capsules: Capsul
       return null;
     },
     shapeCast(_options: ShapeCastOptions): ShapeCastHit | null {
+      return null;
+    },
+    sphereOverlap(_options: SphereOverlapOptions): SphereOverlapHit | null {
       return null;
     },
     createKinematicBody(_desc: KinematicBodyDesc) {
@@ -176,7 +181,7 @@ describe('registerPropsPhysics', () => {
     assert.equal(physics.boxes.length, 0);
   });
 
-  it('keeps tree trunk boxes for light scrub', () => {
+  it('registers tree trunk capsules for light scrub (not fat boxes)', () => {
     const physics = recordingPhysics();
     const placement: PropPlacement = {
       id: 'belt-tree-alpine-1',
@@ -186,10 +191,14 @@ describe('registerPropsPhysics', () => {
     };
     // Trees are instanced — physics registers from placements, not scene roots.
     registerPropsPhysics(physics, [placement], new THREE.Group());
-    assert.equal(physics.boxes.length, 1);
-    assert.equal(physics.boxes[0]!.actorId, 'belt-tree-alpine-1');
-    assert.equal(physics.boxes[0]!.surface, 'wood');
-    // Scaled trunks — thin fixed boxes miss inset/lip pines.
-    assert.ok(physics.boxes[0]!.half.x >= 0.9, `trunk half=${physics.boxes[0]!.half.x}`);
+    assert.equal(physics.boxes.length, 0, 'trunks must not use fat AABB boxes');
+    assert.equal(physics.capsules.length, 1);
+    assert.equal(physics.capsules[0]!.actorId, 'belt-tree-alpine-1');
+    assert.equal(physics.capsules[0]!.surface, 'wood');
+    // Mid-trunk radius — thick enough to register, thinner than old 0.42*s boxes.
+    assert.ok(
+      physics.capsules[0]!.radius >= 0.55 && physics.capsules[0]!.radius < 0.9,
+      `trunk radius=${physics.capsules[0]!.radius}`
+    );
   });
 });

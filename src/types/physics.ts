@@ -50,6 +50,26 @@ export interface ShapeCastHit {
   colliderId: number;
 }
 
+export interface SphereOverlapOptions {
+  origin: THREE.Vector3;
+  radius: number;
+  groups?: CollisionGroupMask;
+  exclude?: string[];
+}
+
+/** Result of a sphere vs Prop overlap query used for kinematic depenetration. */
+export interface SphereOverlapHit {
+  /** World-space unit normal pointing out of the prop (push direction). */
+  normal: THREE.Vector3;
+  /** Distance to push the sphere center to clear the surface, m. */
+  penetration: number;
+  /** True when the query origin started inside the collider volume. */
+  inside: boolean;
+  surface: SurfaceKind;
+  actorId: string | null;
+  colliderId: number;
+}
+
 export interface RigidBodyHandle {
   id: number;
   remove(): void;
@@ -75,6 +95,11 @@ export interface PhysicsWorld {
   raycast(options: RaycastOptions): RaycastHit | null;
   /** Sphere sweep for kinematic obstacle response (props / hazards). */
   shapeCast(options: ShapeCastOptions): ShapeCastHit | null;
+  /**
+   * Closest Prop overlap for a sphere at rest. Used to depenetrate when the
+   * kinematic board is already wedged inside a trunk/rock (sweep alone misses).
+   */
+  sphereOverlap(options: SphereOverlapOptions): SphereOverlapHit | null;
   createKinematicBody(desc: KinematicBodyDesc): RigidBodyHandle;
   createTrimesh(
     vertices: Float32Array,
