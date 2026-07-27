@@ -46,86 +46,90 @@ export class Resources implements ResourceManager {
       this.#renderer.capabilities.getMaxAnisotropy()
     );
     const texSize = budgets.textureSize;
+    const anisotropy = this.#anisotropy;
+    const loader = new THREE.TextureLoader();
 
-    const ids = ['snow', 'rock', 'ice', 'wood', 'metal'];
-    let loaded = 0;
-    for (const id of ids) {
-      onProgress?.({ loaded, total: ids.length, current: id });
-      this.#textures.set(id, this.#makeNoiseTexture(id, texSize));
-      loaded++;
-    }
-    this.#env = this.#makeSkyEnv();
-    onProgress?.({ loaded: ids.length, total: ids.length, current: 'done' });
+    const procIds = ['snow', 'rock', 'ice', 'wood', 'metal'] as const;
+    const defaultMaterials = (): ManifestMaterialEntry[] =>
+      PBR_SET_IDS.map((id) => ({
+        id,
+        albedo: `/assets/textures/${id}_albedo.webp`,
+        normal: `/assets/textures/${id}_normal.jpg`,
+        orm: `/assets/textures/${id}_orm.jpg`,
+        tileScale: DEFAULT_TILE_SCALE[id],
+      }));
 
+    type Manifest = {
+      textures?: Record<string, string>;
+      materials?: ManifestMaterialEntry[];
+      models?: TreeModelManifestEntry[];
+      environments?: { id: string; url: string; intensity?: number }[];
+      env?: string;
+    };
+
+    let manifest: Manifest | null = null;
     try {
       const res = await fetch('/assets/manifest.json');
-      if (res.ok) {
-        const manifest = (await res.json()) as {
-          textures?: Record<string, string>;
-          materials?: ManifestMaterialEntry[];
-          models?: TreeModelManifestEntry[];
-          environments?: { id: string; url: string; intensity?: number }[];
-          env?: string;
-        };
-
-        const anisotropy = this.#anisotropy;
-        const loader = new THREE.TextureLoader();
-
-        if (manifest.materials?.length) {
-          const total = manifest.materials.length;
-          let i = 0;
-          for (const entry of manifest.materials) {
-            onProgress?.({ loaded: i, total, current: entry.id });
-            await this.#loadPbrEntry(entry, loader, anisotropy);
-            i++;
-          }
-          onProgress?.({ loaded: total, total, current: 'materials' });
-        } else {
-          // Textures on disk even if manifest.materials is empty.
-          await this.#loadDefaultPbrSets(loader, anisotropy, onProgress);
-        }
-
-        // Bark / plank / fabric onto shared course prop mats (trunks, ramps, banners).
-        bindAuthoredPropMaps(this.#materials);
-
-        if (manifest.textures) {
-          for (const [id, url] of Object.entries(manifest.textures)) {
-            try {
-              const tex = await loader.loadAsync(url);
-              configureColorMap(tex, anisotropy);
-              this.#textures.set(id, tex);
-            } catch {
-              /* keep procedural */
-            }
-          }
-        }
-
-        if (manifest.models?.length) {
-          onProgress?.({ loaded: 0, total: manifest.models.length, current: 'trees' });
-          const n = await loadTreePrototypes(manifest.models);
-          onProgress?.({ loaded: n, total: manifest.models.length, current: 'trees' });
-        }
-      } else {
-        await this.#loadDefaultPbrSets(
-          new THREE.TextureLoader(),
-          this.#anisotropy,
-          onProgress
-        );
-        bindAuthoredPropMaps(this.#materials);
-      }
+      if (res.ok) manifest = (await res.json()) as Manifest;
     } catch {
-      /* offline / no assets yet — try direct texture paths */
-      try {
-        await this.#loadDefaultPbrSets(
-          new THREE.TextureLoader(),
-          this.#anisotropy,
-          onProgress
-        );
-        bindAuthoredPropMaps(this.#materials);
-      } catch {
-        /* procedural only */
-      }
+      /* offline / no manifest */
     }
+
+    const materials =
+      manifest?.materials?.length ? manifest.materials : defaultMaterials();
+    const texEntries = Object.entries(manifest?.textures ?? {});
+    const treeEntries = (manifest?.models ?? []).filter(
+      (e) => (e.kind ?? 'tree') === 'tree' && e.url
+    );
+
+    // Resolve total work before reporting so the bar never rewinds.
+    const total =
+      procIds.length + materials.length + texEntries.length + treeEntries.length;
+    let done = 0;
+    const report = (current: string): void => {
+      onProgress?.({ loaded: done, total: Math.max(total, 1), current });
+    };
+
+    for (const id of procIds) {
+      report(id);
+      this.#textures.set(id, this.#makeNoiseTexture(id, texSize));
+      done++;
+    }
+    this.#env = this.#makeSkyEnv();
+
+    for (const entry of materials) {
+      report(entry.id);
+      await this.#loadPbrEntry(entry, loader, anisotropy);
+      done++;
+    }
+
+    bindAuthoredPropMaps(this.#materials);
+
+    for (const [id, url] of texEntries) {
+      report(id);
+      try {
+        const tex = await loader.loadAsync(url);
+        configureColorMap(tex, anisotropy);
+        this.#textures.set(id, tex);
+      } catch {
+        /* keep procedural */
+      }
+      done++;
+    }
+
+    if (treeEntries.length && manifest?.models?.length) {
+      const treeBase = done;
+      await loadTreePrototypes(manifest.models, (loaded, _t, id) => {
+        onProgress?.({
+          loaded: treeBase + loaded,
+          total: Math.max(total, 1),
+          current: id,
+        });
+      });
+      done += treeEntries.length;
+    }
+
+    onProgress?.({ loaded: total, total: Math.max(total, 1), current: 'done' });
   }
 
   getTexture(id: string): THREE.Texture | null {
@@ -156,30 +160,6 @@ export class Resources implements ResourceManager {
     this.#pbr.clear();
     this.#env?.dispose();
     this.#env = null;
-  }
-
-  async #loadDefaultPbrSets(
-    loader: THREE.TextureLoader,
-    anisotropy: number,
-    onProgress?: (p: LoadProgress) => void
-  ): Promise<void> {
-    const total = PBR_SET_IDS.length;
-    let i = 0;
-    for (const id of PBR_SET_IDS) {
-      onProgress?.({ loaded: i, total, current: id });
-      await this.#loadPbrEntry(
-        {
-          id,
-          albedo: `/assets/textures/${id}_albedo.webp`,
-          normal: `/assets/textures/${id}_normal.jpg`,
-          orm: `/assets/textures/${id}_orm.jpg`,
-          tileScale: DEFAULT_TILE_SCALE[id],
-        },
-        loader,
-        anisotropy
-      );
-      i++;
-    }
   }
 
   async #loadPbrEntry(

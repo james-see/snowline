@@ -33,7 +33,8 @@ export function getTreePrototype(variant: number): THREE.Group | null {
  * `buildTree` falls back to procedural cones.
  */
 export async function loadTreePrototypes(
-  entries: readonly TreeModelManifestEntry[]
+  entries: readonly TreeModelManifestEntry[],
+  onProgress?: (loaded: number, total: number, id: string) => void
 ): Promise<number> {
   if (loaded) return prototypes.size;
   loaded = true;
@@ -43,7 +44,10 @@ export async function loadTreePrototypes(
 
   const loader = new GLTFLoader();
   let ok = 0;
-  for (const entry of trees) {
+  const total = trees.length;
+  for (let i = 0; i < trees.length; i++) {
+    const entry = trees[i]!;
+    onProgress?.(i, total, entry.id);
     try {
       const gltf = await loader.loadAsync(entry.url);
       const variant = entry.variant ?? ok;
@@ -55,6 +59,7 @@ export async function loadTreePrototypes(
       console.warn(`[trees] failed to load ${entry.id} (${entry.url}):`, err);
     }
   }
+  onProgress?.(total, total, 'trees');
   return ok;
 }
 

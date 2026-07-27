@@ -13,6 +13,12 @@ import { VfxModule } from '@/vfx/VfxModule.ts';
 import { AudioModule } from '@/audio/AudioModule.ts';
 import { UiModule } from '@/ui/UiModule.ts';
 import { GameFlowModule } from '@/modes/GameFlowModule.ts';
+import {
+  hideLoader,
+  resetBootProgress,
+  setPhaseProgress,
+  setStatus,
+} from '@/ui/bootLoader.ts';
 
 function nextPresentedFrame(): Promise<void> {
   return new Promise((resolve) => {
@@ -32,16 +38,6 @@ const ORDER = {
   camera: 60,
 } as const;
 
-function setStatus(text: string): void {
-  const el = document.getElementById('loader-status');
-  if (el) el.textContent = text;
-}
-
-function setProgress(fraction: number): void {
-  const el = document.getElementById('bar-fill');
-  if (el) el.style.width = `${Math.round(fraction * 100)}%`;
-}
-
 function showError(err: unknown): void {
   const box = document.getElementById('error');
   const text = document.getElementById('error-text');
@@ -52,6 +48,10 @@ function showError(err: unknown): void {
 }
 
 async function main(): Promise<void> {
+  resetBootProgress();
+  setStatus('Initialising renderer');
+  setPhaseProgress('physics', 0);
+
   const canvas = document.getElementById('viewport') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('viewport canvas missing');
 
@@ -68,28 +68,35 @@ async function main(): Promise<void> {
   const bridge = new CaptureBridge(engine);
 
   setStatus('Starting physics');
+  setPhaseProgress('physics', 0.15);
   const physics = new RapierPhysics();
   await physics.init();
+  setPhaseProgress('physics', 1);
 
   setStatus('Building pipeline');
+  setPhaseProgress('pipeline', 0.2);
   const pipeline = new ForwardPipeline(
     engine.renderer,
     Math.floor(window.innerWidth * Math.min(window.devicePixelRatio, 2)),
     Math.floor(window.innerHeight * Math.min(window.devicePixelRatio, 2))
   );
+  setPhaseProgress('pipeline', 1);
 
   const resources = new Resources(engine.renderer);
   engine.setServices({ pipeline, physics, resources });
 
   setStatus('Loading assets');
+  setPhaseProgress('assets', 0);
   const lod = resolveLodBudgets(engine.settings);
   await resources.preload(
     (p) => {
-      setProgress(p.total > 0 ? p.loaded / p.total : 1);
-      setStatus(`Loading ${p.current}`);
+      const t = p.total > 0 ? p.loaded / p.total : 1;
+      setPhaseProgress('assets', t);
+      setStatus(p.current === 'done' ? 'Assets ready' : `Loading ${p.current}`);
     },
     { budgets: { textureSize: lod.textureSize, anisotropy: lod.anisotropy } }
   );
+  setPhaseProgress('assets', 1);
 
   const flow = new GameFlowModule();
   const ui = new UiModule();
@@ -105,29 +112,35 @@ async function main(): Promise<void> {
     .add(ui)
     .add(new CameraModule());
 
-  setStatus('Compiling shaders');
-  setProgress(0.96);
-  await engine.boot();
+  setStatus('Bootstrapping systems');
+  setPhaseProgress('modules', 0);
+  await engine.boot((name, index, total) => {
+    const t = total > 0 ? index / total : 1;
+    setPhaseProgress('modules', t);
+    setStatus(`Starting ${name}`);
+  });
+  setPhaseProgress('modules', 1);
 
+  setStatus('Compiling shaders');
+  setPhaseProgress('shaders', 0.2);
   engine.renderer.compile(engine.scene, engine.camera);
-  setProgress(1);
+  setPhaseProgress('shaders', 1);
+  setStatus('Ready');
 
   if (import.meta.env.DEV) {
     (window as unknown as { engine: Engine }).engine = engine;
   }
   (window as unknown as { __flow: GameFlowModule }).__flow = flow;
 
-  const loader = document.getElementById('loader');
-  loader?.classList.add('hidden');
-
   if (params.capture) {
-    loader?.remove();
+    hideLoader(true);
     if (!params.hud) ui.setHud(false);
     await nextPresentedFrame();
     bridge.markReady();
     return;
   }
 
+  hideLoader();
   await nextPresentedFrame();
   bridge.markReady();
   flow.goTitle();
