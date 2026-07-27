@@ -20,6 +20,7 @@ describe('gamepadBindings', () => {
   it('detects 8BitDo Ultimate 2 by id', () => {
     assert.equal(is8BitDoUltimate('8BitDo Ultimate 2 Wireless'), true);
     assert.equal(is8BitDoUltimate('Vendor: 8BitDo Ultimate 2 (Vendor: 2dc8)'), true);
+    assert.equal(is8BitDoUltimate('8BitDo Ultimate 2 Pro'), true);
     assert.equal(is8BitDoUltimate('Xbox Wireless Controller'), false);
     assert.equal(is8BitDoUltimate('8BitDo Pro 2'), false);
   });

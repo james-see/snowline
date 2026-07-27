@@ -144,6 +144,17 @@ describe('Input gamepad → rider', () => {
     input.endFrame();
   });
 
+  it('idle connected pad activates (wired / hot-plug sample path)', () => {
+    pads = [
+      fakePad({ index: 0, id: '8BitDo Ultimate 2 Pro', axes: [0, 0, 0, 0] }),
+    ];
+    input.beginFrame();
+    assert.equal(input.gamepadActive, true);
+    assert.equal(input.gamepadAwaitingGesture, false);
+    assert.equal(input.gamepadIndex, 0);
+    input.endFrame();
+  });
+
   it('lockout zeros move but pause still reads', () => {
     const buttons = Array.from({ length: 16 }, () => fakeButton(false));
     buttons[9] = fakeButton(true); // Start
