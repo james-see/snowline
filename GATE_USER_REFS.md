@@ -31,20 +31,20 @@ Compare Snowline captures to:
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-26, tip `ba46d9c` — forward frustum fill + smooth snow + bright lighting — see `CRITIC_REPORT.md`)
+## Current score (2026-07-26, tip `d53ff37` — dense ahead midfield clears B8 — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
 | B1_peaks | **PASS** — ridgelines behind timberline |
-| B2_forest | **PASS** — harsh; v5 lip walls (~412–436k tris) |
+| B2_forest | **PASS** — harsh; dense flank walls (~435–464k tris) |
 | B3_shadows | **PASS** — soft directional casts on corduroy |
-| B4_corduroy | **PASS** — harsh; smoother less-tiled grooves |
-| B5_snow_color | **PASS** — brighter day fill; not milk whiteout |
-| B6_furniture | **PASS** — banner/hut/fence on gate; grind park weak |
+| B4_corduroy | **PASS** — harsh; grooves readable |
+| B5_snow_color | **PASS** — tonal range; darker muddy vs alpine white (μ≈72) |
+| B6_furniture | **PASS** — hut/fence on gate; grind park weak |
 | B7_rider | **PASS** — contrast kit |
-| B8_camera | **FAIL** — harsh; forward frustum fill delta but open groom corridor remains vs alpine/SSX |
+| B8_camera | **PASS** — harsh; dense ahead midfield clears open groom corridor |
 | B9_hud | **PASS** |
 | B10_no_float | **PASS** |
 | B11_atmosphere | **PASS** — cool aerial; canopy depth |
 
-**Verdict: FAIL.** 10 PASS / 1 FAIL. Rubric mean ≈ **5.75** vs user refs.
+**Verdict: PASS** (binary 11/0). Rubric mean ≈ **5.55** vs floors ≥8.5 — quality bar still open.
