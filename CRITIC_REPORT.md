@@ -1,103 +1,106 @@
 # Critic Report — Snowline
 
 **Verdict: FAIL** (user-ref gate)  
-**Date:** 2026-07-26 (evening, forward chase restore)  
-**Git tip scored:** `bd1b721da3ed0426feb0dd93360a5c806cf05c6f`  
-(`camera: restore forward chase for playability` — drops v3/v4 forest cross-look / CAM_CROSS; near-corridor path-ahead chase, FOV ~48. Holds forest v5 `25ac690`, park-on-grind `4702318`, finish `7ad86df`.)  
+**Date:** 2026-07-26 (evening, forward frustum fill + smooth snow)  
+**Git tip scored:** `ba46d9cb1a796a4a44be4bee4dd8ca9fb7af4814`  
+(`Merge props/forward-frustum-fill-b8` — `60f63ab` mid-corridor props into forward chase frustum; holds smooth snow `73390cb`/`e5a4229`, bright lighting `6124adb`, forward chase `bd1b721`, forest v5 `25ac690`, loading bar `39bfa72`, gamepad `5373655`.)  
 **Stashes:** none created/applied. Captured on primary `main` (clean).  
-**Harness note:** `capture.mjs` `rm`s `--out` each run — assembled via per-shot temp dirs. Gate shots blank-PASS. Park probe: `grind` (framing degraded — see note). Results UI plate included.
+**Harness note:** `capture.mjs` `rm`s `--out` each run — assembled via per-shot temp dirs. Gate shots blank-PASS. Park probe: `grind` (snow-plane stare). Results UI plate included.
 
-**Frames reviewed (fresh @ bd1b721 → `captures/tip-bd1b721/`):**
-- `course_start.png` — HUD on, blank PASS (μ≈57.9 σ≈28.6) — ~423k tris
-- `forest.png` — HUD on, blank PASS (μ≈44.6 σ≈28.0) — ~427k tris
-- `carve.png` — HUD on, blank PASS (μ≈56.9 σ≈29.1) — ~423k tris
-- `grind.png` — HUD on, blank PASS (μ≈42.1 σ≈17.0) — ~409k tris — park probe (near snow-plane stare)
-- `results.png` — UI plate (μ≈61.0 σ≈10.2) — finish/results path
+**Frames reviewed (fresh @ ba46d9c → `captures/tip-ba46d9c/`):**
+- `course_start.png` — HUD on, blank PASS (μ≈87.9 σ≈33.5) — ~433k tris
+- `forest.png` — HUD on, blank PASS (μ≈76.5 σ≈34.5) — ~436k tris
+- `carve.png` — HUD on, blank PASS (μ≈88.2 σ≈33.3) — ~434k tris
+- `grind.png` — HUD on, blank PASS (μ≈101.1 σ≈21.7) — ~412k tris — park probe (snow-plane stare)
+- `results.png` — UI plate (μ≈54.7 σ≈9.4) — finish/results path
 
 **Refs:** `refs/snowboard/images/user_ref_{alpine_groom,race_tunnel,ssx_chase}.png`  
 **Gate doc:** `GATE_USER_REFS.md`  
-**Verdict JSON:** `captures/verdict-tip-bd1b721.json`
+**Verdict JSON:** `captures/verdict-tip-ba46d9c.json`
 
 ## Binary checks B1–B11 (any FAIL = gate FAIL)
 
 | ID | Result | Evidence |
 |----|--------|----------|
 | B1_peaks | **PASS** | Ridgelines/peaks readable behind timberline on `course_start` / `carve`. |
-| B2_forest | **PASS** | Harsh: v5 wall holds. `forest` is continuous canopy canyon; start/carve keep packed lip belts. Tris ~409–427k. |
-| B3_shadows | **PASS** | Directional casts under trees + rider (forest striping; carve contact). |
-| B4_corduroy | **PASS** | Packed grooves dominate race strip in all gameplay shots. |
-| B5_snow_color | **PASS** | Warm muddy/tan strip under sun (not flat grey plastic). Still off alpine white. |
-| B6_furniture | **PASS** | Harsh: gate shots keep fence line + mid hut / markers. `grind` no longer sells park box (camera pitched into snow + particles) — furniture bar still met on gate plates. |
+| B2_forest | **PASS** | Harsh: v5 wall holds. `forest` canyon continuous; start/carve lip belts packed. Tris ~412–436k. |
+| B3_shadows | **PASS** | Directional casts under trees + rider; soft PCF umbras (less razor zebra). |
+| B4_corduroy | **PASS** | Harsh tiling: grooves readable without wallpaper repeat; multi-freq bake + higher metres-per-repeat holds. |
+| B5_snow_color | **PASS** | Brighter day fill (μ≈88 vs ~58 pre-lighting); not milk whiteout (σ≈33). Warm muddy strip under sun; still off alpine white. |
+| B6_furniture | **PASS** | Harsh: red banner + mid hut + fence on gate plates. `grind` still no park-box sell. |
 | B7_rider | **PASS** | High-contrast neon accents + red board; carve lean readable. |
-| B8_camera | **FAIL** | Harsh: restored forward chase puts large empty corduroy foreground/mid strip in `course_start` / `carve` — rider sits in open groom void vs alpine/SSX midfield pack. **Intentional playability trade:** fall line + corridor ahead are readable again (v4 cross-look hid the line into apron walls). Frame-fill regresses vs v4; playability improves. |
+| B8_camera | **FAIL** | Harsh: `60f63ab` adds look-ahead hut/fence/banner and ~+10k tris, but `course_start` / `carve` still read as a wide empty corduroy corridor vs alpine/SSX midfield pack. Lower ~half of start is open groom; inset strip props too sparse/far to clear the void. Fall line stays playable (no CAM_CROSS). |
 | B9_hud | **PASS** | Score, combo, speed, time, CP visible on gameplay shots. |
 | B10_no_float | **PASS** | Tree bases sit on snow; no obvious floaters. |
-| B11_atmosphere | **PASS** | Cool aerial depth; forest canyon reads solid canopy with depth cues. |
+| B11_atmosphere | **PASS** | Cool aerial depth; forest canyon reads solid canopy. |
 
 **Binary tally: 10 PASS / 1 FAIL → gate FAIL.**
 
-Loud first-viewport read: **Forward chase restored — fall line playable; harsh B8 still the only binary kill (empty mid/foreground corduroy). Forest canyon sells density. Grind park probe framing worse than `49db70e`.**
+Loud first-viewport read: **Bright soft lighting + smoother snow land clean; forward frustum fill is a delta but harsh B8 still kills — open groom apron remains the first read vs alpine ref. Grind park probe still broken.**
 
-## Rubric (mean = **5.50**, gameplay mean = **5.10**)
+## Rubric (mean = **5.75**, gameplay mean = **5.35**)
 
 | Category | Score | Note |
 |----------|------:|------|
-| lighting | 7 | Long casts + cool alpine aerial hold |
-| snow | 6 | Corduroy + warm strip; muddy vs alpine white |
+| lighting | 8 | Bright soft alpine fill; not milk; soft umbras |
+| snow | 7 | Brighter + less-tiled corduroy; still muddy vs alpine white |
 | terrain | 6 | Amphitheater peaks grounded; still low-poly |
-| materials | 5 | Corduroy OK; peaks/apron plastic |
-| atmosphere | 6 | Cool depth; forest canyon reads solid |
+| materials | 6 | Smoother tiling; peaks/apron still plastic |
+| atmosphere | 6 | Cool depth; forest canyon solid |
 | rider | 7 | Contrast kit + carve lean |
 | animation | 6 | Held lean readable in carve |
-| camera | 4 | Playable forward chase; B8 midfield void worse than v4 cross-look |
-| vfx | 4 | Grind particles; carve spray still thin |
-| ui | 7 | In-run HUD holds; results screen renders |
-| course_composition | 5 | Timber walls + fall line; empty apron centers frame |
-| readability_at_speed | 6 | Fall line readable again (playability win) |
+| camera | 5 | Forward fill delta; harsh B8 corridor remains |
+| vfx | 4 | Grind particles; carve spray thin |
+| ui | 7 | In-run HUD holds; results GOLD plate |
+| course_composition | 6 | Timber walls + some ahead furniture; apron still empty |
+| readability_at_speed | 6 | Fall line readable |
 | physics_believability | 5 | Planted; carve sells |
-| control_feel | 4 | Neutral (not in stills) |
+| control_feel | 4 | Neutral (not in stills; gamepad merge not visible) |
 | trick_satisfaction | 4 | Grind probe lost park-box sell |
 | audio_feedback | 5 | Neutral |
-| performance | 6 | ~409–427k tris; capture fps healthy |
+| performance | 6 | ~412–436k tris; capture fps healthy |
 | temporal_stability | 6 | Stills clean |
-| overall_fun | 6 | Playable chase corridor; still empty mid vs refs |
-| art_direction | 5 | Muddy strip + empty apron ≠ alpine |
+| overall_fun | 6 | Playable chase; midfield still thin vs refs |
+| art_direction | 5 | Brighter groom helps; empty corridor ≠ alpine |
 
 **Disqualifiers:** none of the named extras (`empty_mountain` / `lonely_props` / `no_sun_shadows`) — B8 alone fails the gate.  
-**Playability note:** Parent priority — forward chase > B8 frame fill. Do **not** re-land v4 CAM_CROSS / prop-reach flank yaw without a playable fall-line path. B8 remains open for a *forward* midfield-fill (props/course into the look-ahead corridor), not cross-look into apron walls.
+**Playability note:** Keep forward chase. B8 fix must pack denser *ahead-corridor* mass (trees/rocks/banners closer in the strip) — not revive CAM_CROSS.
 
 ## Top blockers → fan-out owners
 
-1. **Midfield / foreground corduroy void** (B8) → `props` + `course` (+ light `camera` only if fall line stays readable) — pack trees/furniture into the *ahead* chase frustum like alpine/SSX; do not revive flank cross-look that hides the line
+1. **Harsh B8 — open groom corridor** → `props` (+ light `course`) — denser inset mid-corridor trees/rocks/banners in the look-ahead frustum on `course_start`/`carve`; match alpine midfield pack without hiding fall line
 2. **Muddy brown strip vs alpine white** → `materials`
 3. **Minimal carve edge spray** → `vfx`
 4. **Grind park probe framing** → `camera` + `course`/`capture` — box/scrape must stay on-camera under forward chase
 
 ## Park / grind / finish note
 
-`grind.png` under forward chase stares near snow plane (particles + rider) — park box not selling vs prior grind still. `results.png` renders finish UI (GOLD / time / score).
+`grind.png` under forward chase stares at textured snow plane (particles + inverted rider) — park box absent. `results.png` renders finish UI (GOLD / 1:42.40 / 12800).
 
-## Delta vs tip `49db70e` / `d3b7b8e`
+## Delta vs tip `bd1b721`
 
-| Check | d3b7b8e | 49db70e | **bd1b721** |
-|-------|---------|---------|------------|
-| B1 | PASS | PASS | PASS |
-| B2 | FAIL | **PASS** (v5 wall) | **PASS** (held) |
-| B3 | PASS | PASS | PASS |
-| B6 | PASS (box on grind) | **PASS** | **PASS** (gate furniture; grind box weak) |
-| B8 | FAIL | FAIL | **FAIL** (playability restore; frame-fill regress) |
-| B11 | PASS | PASS | PASS |
-| tally | 9/2 | 10/1 | **10/1** |
-| mean | 5.40 | 5.55 | **5.50** |
-| forest tip | v4 | v5 `25ac690` | **v5 held** |
-| camera tip | v4 | v4 | **forward chase `bd1b721`** |
-| park tip | `4702318` | held | held (probe framing weaker) |
-| tris (start) | ~305k | ~408k | **~423k** |
+| Check | bd1b721 | **ba46d9c** |
+|-------|---------|------------|
+| B1 | PASS | PASS |
+| B2 | PASS | PASS |
+| B3 | PASS | PASS |
+| B4 | PASS | **PASS** (smoother tiling held) |
+| B5 | PASS | **PASS** (brighter; not milk) |
+| B6 | PASS | PASS |
+| B8 | FAIL | **FAIL** (forward fill delta; harsh corridor remains) |
+| B11 | PASS | PASS |
+| tally | 10/1 | **10/1** |
+| mean | 5.50 | **5.75** |
+| lighting tip | prior | **bright soft `6124adb`** |
+| materials tip | prior | **smooth less-tiled `73390cb`** |
+| props tip | v5 lip | **v5 + forward frustum `60f63ab`** |
+| camera tip | forward `bd1b721` | held |
+| tris (start) | ~423k | **~433k** |
 
 ## Gate
 
 ```bash
-npm run gate -- --verdict captures/verdict-tip-bd1b721.json --label tip-bd1b721 --fps 500
+npm run gate -- --verdict captures/verdict-tip-ba46d9c.json --label tip-ba46d9c --fps 500
 ```
 
 Expected: **exit 1**.

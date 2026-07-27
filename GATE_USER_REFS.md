@@ -31,20 +31,20 @@ Compare Snowline captures to:
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-26, tip `bd1b721` — forward chase + forest v5 — see `CRITIC_REPORT.md`)
+## Current score (2026-07-26, tip `ba46d9c` — forward frustum fill + smooth snow + bright lighting — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
 | B1_peaks | **PASS** — ridgelines behind timberline |
-| B2_forest | **PASS** — harsh; v5 near-solid lip walls (~409–427k tris) |
-| B3_shadows | **PASS** — long sun casts on corduroy |
-| B4_corduroy | **PASS** |
-| B5_snow_color | **PASS** — warm muddy strip |
-| B6_furniture | **PASS** — fence/hut on gate; grind park sell weaker |
+| B2_forest | **PASS** — harsh; v5 lip walls (~412–436k tris) |
+| B3_shadows | **PASS** — soft directional casts on corduroy |
+| B4_corduroy | **PASS** — harsh; smoother less-tiled grooves |
+| B5_snow_color | **PASS** — brighter day fill; not milk whiteout |
+| B6_furniture | **PASS** — banner/hut/fence on gate; grind park weak |
 | B7_rider | **PASS** — contrast kit |
-| B8_camera | **FAIL** — harsh; forward chase restores fall line but mid/foreground corduroy void (playability > v4 cross-look) |
+| B8_camera | **FAIL** — harsh; forward frustum fill delta but open groom corridor remains vs alpine/SSX |
 | B9_hud | **PASS** |
 | B10_no_float | **PASS** |
 | B11_atmosphere | **PASS** — cool aerial; canopy depth |
 
-**Verdict: FAIL.** 10 PASS / 1 FAIL. Rubric mean ≈ **5.50** vs user refs.
+**Verdict: FAIL.** 10 PASS / 1 FAIL. Rubric mean ≈ **5.75** vs user refs.
