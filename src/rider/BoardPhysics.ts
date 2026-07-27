@@ -197,6 +197,11 @@ export class BoardPhysics {
     return this.#body;
   }
 
+  /** True while soft-powder wallowing back from an off-mesh void. */
+  get voidRecovering(): boolean {
+    return this.crashed && this.#voidWallow > 0;
+  }
+
   get recoveryRemaining(): number {
     return this.#recovery;
   }

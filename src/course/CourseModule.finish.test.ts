@@ -48,8 +48,8 @@ describe('finish void-bounce regression', () => {
         pathT: 0.97,
         finishT: 0.97,
         distanceToFinish: 52,
-        finishRadius: 80,
-        approachT: 0.89,
+        finishRadius: 160,
+        approachT: 0.85,
       }),
       true
     );
@@ -60,8 +60,25 @@ describe('finish void-bounce regression', () => {
         pathT: 1,
         finishT: 0.97,
         distanceToFinish: 56,
-        finishRadius: 80,
-        approachT: 0.89,
+        finishRadius: 160,
+        approachT: 0.85,
+      }),
+      true
+    );
+  });
+
+  it('completes freeride end-zone void short of arch (CP cleared, timer stuck)', () => {
+    assert.equal(
+      shouldCompleteRun({
+        alreadyFinished: false,
+        inFinishTrigger: false,
+        pathT: 0.9,
+        finishT: 0.97,
+        distanceToFinish: 183,
+        finishRadius: 160,
+        approachT: 0.85,
+        endZoneT: 0.88,
+        inEndZoneVoid: true,
       }),
       true
     );
@@ -139,5 +156,37 @@ describe('CourseModule finish', () => {
 
     course.fixedUpdate(1 / 60, ctx);
     assert.equal(finished, true);
+  });
+
+  it('soft-completes when void-recovering past last checkpoint (freeride end bounce)', async () => {
+    const events = new GameEventBus();
+    let finished = false;
+    events.on('course:finish', () => {
+      finished = true;
+    });
+
+    const riderPos = new THREE.Vector3();
+    const course = new CourseModule({ getRiderPosition: () => riderPos });
+    const voidBoard = { voidRecovering: true };
+    const ctx = {
+      events,
+      physics: stubPhysics(),
+      scene: new THREE.Scene(),
+      settings: {},
+      getModule: (name: string) =>
+        name === 'rider' ? { board: voidBoard, getPosition: () => riderPos, state: { position: riderPos } } : null,
+    } as unknown as EngineContext;
+
+    await course.init(ctx);
+    course.loadCourse('alpine', stubPhysics());
+    const def = course.getDefinition()!;
+    const terrain = course.getTerrain()!;
+    // ~pathT 0.90 — past CP5, ~180 m short of arch (screenshot bounce zone).
+    const bed = sampleTerrainAt(terrain, 0.9, 0.5, new THREE.Vector3());
+    riderPos.set(bed.x, bed.y - 6, bed.z);
+
+    course.fixedUpdate(1 / 60, ctx);
+    assert.equal(finished, true);
+    assert.equal(course.getProgress().finished, true);
   });
 });

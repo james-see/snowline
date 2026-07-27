@@ -333,6 +333,7 @@ describe('BoardPhysics', () => {
     }
     assert.equal(voidCrash, true);
     assert.equal(board.crashed, true);
+    assert.equal(board.voidRecovering, true);
 
     let recovered = false;
     const recoverSteps = Math.ceil((VOID.wallowTime + VOID.recoverStun) / (1 / 60)) + 6;
@@ -345,6 +346,7 @@ describe('BoardPhysics', () => {
     }
     assert.equal(recovered, true);
     assert.equal(board.crashed, false);
+    assert.equal(board.voidRecovering, false);
     assert.ok(board.position.distanceTo(anchored) < 0.35);
     assert.ok(Math.abs(board.boardYaw - 0.4) < 1e-3);
   });
