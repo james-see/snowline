@@ -37,6 +37,8 @@ export type EventMap = {
   'rider:landing': { grade: LandingGrade; impact: number };
   'rider:crash': { reason: string };
   'rider:recover': void;
+  /** Manual R / pad chord — snapped to path centerline at current pathT. */
+  'rider:path-reset': void;
   'rider:trick': TrickResult;
   'rider:grind:start': void;
   'rider:grind:end': { duration: number };

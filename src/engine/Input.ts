@@ -40,6 +40,7 @@ const DEFAULT_BINDINGS: Record<InputAction, string> = {
   pause: 'Escape',
   confirm: 'Enter',
   back: 'Backspace',
+  reset: 'KeyR',
   cameraLook: 'Mouse2',
 };
 

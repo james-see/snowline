@@ -137,6 +137,10 @@ export class VfxModule implements GameModule {
       this.#boostTarget = active ? 1 : 0;
     });
 
+    ctx.events.on('rider:path-reset', () => {
+      this.#trail.clear();
+    });
+
     ctx.events.on('settings:changed', () => this.#applyBudgets(ctx));
     ctx.events.on('engine:resized', () => {
       const dpr = ctx.viewport.dpr;
@@ -266,8 +270,8 @@ export class VfxModule implements GameModule {
     const captureMul = ctx.capture ? 1.4 : 1;
     // Floor density so weak pack-snow carves still read; cap vs Lod spray budget.
     const budget = this.#spray.budget;
-    const maxPerEmit = Math.max(10, Math.floor(budget * 0.14));
-    const desired = Math.floor((12 + intensity * 52) * surfaceMul * captureMul);
+    const maxPerEmit = Math.max(10, Math.floor(budget * 0.15));
+    const desired = Math.floor((12 + intensity * 54) * surfaceMul * captureMul);
     const count = Math.min(maxPerEmit, Math.max(10, desired));
     const origin = rider.state.position;
     const vel = rider.state.velocity;
@@ -277,45 +281,47 @@ export class VfxModule implements GameModule {
     this.#forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     this.#lateral.set(this.#forward.z, 0, -this.#forward.x).multiplyScalar(Math.sign(edge || 1));
 
-    const sizeBase = surface === 'powder' ? 1.15 : surface === 'ice' ? 0.7 : 0.95;
+    const sizeBase = surface === 'powder' ? 1.2 : surface === 'ice' ? 0.72 : 0.98;
     const kick = 3.2 + intensity * 5.5;
 
     for (let n = 0; n < count; n++) {
       // Fan along the edged rail: lateral throw + slight aft so spray clears the board.
-      const along = (Math.random() - 0.5) * 0.55;
-      const out = 0.28 + Math.random() * 0.55;
+      const along = (Math.random() - 0.5) * 0.62;
+      const out = 0.26 + Math.random() * 0.62;
       const px =
         origin.x +
         this.#lateral.x * out +
         this.#forward.x * along +
-        (Math.random() - 0.5) * 0.12;
+        (Math.random() - 0.5) * 0.14;
       const pz =
         origin.z +
         this.#lateral.z * out +
         this.#forward.z * along +
-        (Math.random() - 0.5) * 0.12;
+        (Math.random() - 0.5) * 0.14;
       // Lift above snow mesh so depthTest doesn't bury soft points.
-      const py = origin.y + 0.14 + Math.random() * 0.22;
+      const py = origin.y + 0.12 + Math.random() * 0.28;
       const vx =
         -vel.x * 0.1 +
         this.#lateral.x * kick +
-        this.#forward.x * (Math.random() - 0.55) * 1.8 +
-        (Math.random() - 0.5) * 1.4;
-      const vy = 1.8 + Math.random() * (2.8 + intensity * 3.2) * surfaceMul;
+        this.#forward.x * (Math.random() - 0.55) * 2.0 +
+        (Math.random() - 0.5) * 1.5;
+      const vy = 1.6 + Math.random() * (3.0 + intensity * 3.4) * surfaceMul;
       const vz =
         -vel.z * 0.1 +
         this.#lateral.z * kick +
-        this.#forward.z * (Math.random() - 0.55) * 1.8 +
-        (Math.random() - 0.5) * 1.4;
+        this.#forward.z * (Math.random() - 0.55) * 2.0 +
+        (Math.random() - 0.5) * 1.5;
+      // Mix chunky crystals with a few larger soft mist flakes.
+      const mist = Math.random() > 0.78;
       this.#spray.spawn(
         px,
         py,
         pz,
-        vx,
-        vy,
-        vz,
-        0.45 + Math.random() * 0.55 * (0.75 + intensity),
-        sizeBase * (0.75 + Math.random() * 0.9)
+        mist ? vx * 0.55 : vx,
+        mist ? vy * 0.65 + 0.4 : vy,
+        mist ? vz * 0.55 : vz,
+        mist ? 0.55 + Math.random() * 0.45 : 0.42 + Math.random() * 0.55 * (0.75 + intensity),
+        sizeBase * (mist ? 1.15 + Math.random() * 0.7 : 0.7 + Math.random() * 0.95)
       );
     }
   }

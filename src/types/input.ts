@@ -24,6 +24,7 @@ export type InputAction =
   | 'pause'
   | 'confirm'
   | 'back'
+  | 'reset'
   | 'cameraLook';
 
 export interface InputState {

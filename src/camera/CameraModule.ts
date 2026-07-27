@@ -27,6 +27,10 @@ export class CameraModule implements GameModule {
     ctx.events.on('rider:boost', ({ active }) => {
       if (active) this.chase.impulse(0.12);
     });
+    ctx.events.on('rider:path-reset', () => {
+      this.#pendingSnap = true;
+      this.#snapNow(ctx);
+    });
     // Snap as soon as a run begins so capture/warmup never inherit title-origin framing.
     ctx.events.on('run:start', () => {
       this.#pendingSnap = true;

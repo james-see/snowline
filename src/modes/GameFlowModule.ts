@@ -77,10 +77,33 @@ export class GameFlowModule implements GameModule {
     const s = this.controller.screen;
     if (s === 'playing') {
       ctx.input.setLockout(false);
+      // R, remapped pad reset, or Start+Select chord → path centerline recover.
+      const chordReset =
+        (ctx.input.isDown('back') && ctx.input.wasPressed('pause')) ||
+        (ctx.input.isDown('pause') && ctx.input.wasPressed('back'));
+      if (ctx.input.wasPressed('reset') || chordReset) {
+        this.resetToPathCenter();
+        return;
+      }
+      if (ctx.input.wasPressed('pause')) {
+        this.togglePause();
+      }
+      return;
     }
-    if ((s === 'playing' || s === 'paused') && ctx.input.wasPressed('pause')) {
+    if (s === 'paused' && ctx.input.wasPressed('pause')) {
       this.togglePause();
     }
+  }
+
+  /** Stuck recover: snap to course centerline at current pathT, clear vel/stun. */
+  resetToPathCenter(): void {
+    const ctx = this.#ctx;
+    if (!ctx || this.controller.screen !== 'playing') return;
+    const course = ctx.getModule<CourseModule>('course');
+    const rider = ctx.getModule<RiderModule>('rider');
+    if (!course || !rider) return;
+    if (!course.snapRiderToPathCenter(rider)) return;
+    ctx.events.emit('rider:path-reset');
   }
 
   goTitle(): void {

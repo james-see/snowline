@@ -58,7 +58,7 @@ npm run determinism
 
 ## Controls
 
-A/D carve · Space jump · Shift boost · arrows spin/flip · J/K/L/U grabs · Esc pause. Gamepad supported.
+A/D carve · Space jump · Shift boost · arrows spin/flip · J/K/L/U grabs · R reset to path · Esc pause. Gamepad supported (Start+Select reset).
 
 ## License
 

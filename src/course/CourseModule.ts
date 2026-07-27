@@ -55,6 +55,25 @@ function setOrientedTriggerBounds(
 export const SPAWN_PATH_T = 0.02;
 /** Board clearance above terrain bed at spawn (metres). */
 export const SPAWN_HOVER = 1.2;
+/** Clearance for mid-run path-center reset (metres). Terrain Y only — no Rapier projectPoint. */
+export const RESET_HOVER = 0.65;
+
+const _resetBed = new THREE.Vector3();
+
+/** World pose on the race centerline at pathT — safe Y from mesh sample. */
+export function pathCenterPose(
+  path: SplinePath,
+  terrain: TerrainBuildResult,
+  t: number,
+  hover = RESET_HOVER
+): { position: THREE.Vector3; yaw: number } {
+  const bed = sampleTerrainAt(terrain, THREE.MathUtils.clamp(t, 0, 1), 0.5, _resetBed);
+  const tan = path.tangent(t);
+  return {
+    position: new THREE.Vector3(bed.x, bed.y + hover, bed.z),
+    yaw: Math.atan2(-tan.x, -tan.z),
+  };
+}
 
 export interface CourseModuleOptions {
   defaultCourseId?: CourseId;
@@ -283,6 +302,17 @@ export class CourseModule implements GameModule {
 
   getTerrain(): TerrainBuildResult | null {
     return this.#terrain;
+  }
+
+  /**
+   * Snap rider to race centerline at current pathT.
+   * Uses mesh height sample only — never Rapier projectPoint.
+   */
+  snapRiderToPathCenter(rider: RiderModule): boolean {
+    if (!this.#path || !this.#terrain) return false;
+    const pose = pathCenterPose(this.#path, this.#terrain, this.#pathT);
+    rider.spawnAt(pose.position, pose.yaw);
+    return true;
   }
 
   fixedUpdate(dt: number, ctx: EngineContext): void {

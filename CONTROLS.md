@@ -16,6 +16,7 @@ Input is data-driven via `Input.rebind`. Keyboard and gamepad merge each frame (
 | Spin | ← / → |
 | Flip | ↑ / ↓ |
 | Grabs | J Indy · K Mute · L Melon · U Method |
+| Reset to path | R (snap to course centerline at current progress) |
 | Pause | Esc |
 | Confirm / Back | Enter / Backspace |
 
@@ -46,8 +47,11 @@ Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`. Every
 | Grabs | X Indy · Y Mute · LB Melon · RB Method |
 | Pause | Start |
 | Back (menus) | Select / View |
+| Reset to path | Start+Select chord (or remappable **Reset to path** in Settings) |
 
 Menus also read the pad directly in `UiModule` (stick / D-pad navigate, A confirm, B back) so UI works while gameplay input is locked out. In-run, `UiModule` forces lockout off so pad steer/jump/brake/boost reach the rider.
+
+**Stuck recover:** keyboard **R** (or pad Start+Select / remapped reset) snaps the board to the race centerline at the current `pathT`, clears velocity/stun, and reorients downhill. Uses terrain mesh height — never Rapier `projectPoint`.
 
 ### Debug
 

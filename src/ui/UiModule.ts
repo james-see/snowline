@@ -596,7 +596,7 @@ export class UiModule implements GameModule {
     if (!tip) return;
     tip.style.display = 'block';
     tip.textContent =
-      'A/D carve · Space jump · Shift boost · Arrows spin/flip · J/K/L/U grabs · Q/E lean · Pad: stick / A / B / RT';
+      'A/D carve · Space jump · Shift boost · Arrows spin/flip · J/K/L/U grabs · Q/E lean · R reset · Pad: stick / A / B / RT · Start+Select reset';
     window.setTimeout(() => {
       tip.style.display = 'none';
     }, 6000);
@@ -853,7 +853,7 @@ export class UiModule implements GameModule {
           </section>
           <section class="pad-remap-panel" aria-label="Controller remap">
             <h3>Controller Remap</h3>
-            <p class="pad-test-blurb">8BitDo Ultimate 2 X mode → Xbox standard (or Xbox BT when mapping is empty). Click an action, then press a button / pull a trigger.</p>
+            <p class="pad-test-blurb">8BitDo Ultimate 2 X mode → Xbox standard (or Xbox BT when mapping is empty). Click an action, then press a button / pull a trigger. Keyboard <strong>R</strong> / pad Start+Select resets to the path centerline (also remappable below).</p>
             <div id="pad-remap" class="pad-remap"></div>
             <button type="button" class="btn ghost" data-act="pad-reset">Reset to Standard</button>
           </section>
