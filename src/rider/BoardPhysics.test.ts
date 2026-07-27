@@ -204,6 +204,39 @@ describe('BoardPhysics', () => {
     assert.equal(board.grounded, true);
   });
 
+  it('grounded A/jump leaves the snow with a readable ollie', () => {
+    const physics = flatGroundPhysics(0);
+    const board = new BoardPhysics();
+    board.reset({ position: new THREE.Vector3(0, JUMP.rideHeight, 0), yaw: 0 });
+    board.velocity.set(0, 0, 14);
+    for (let i = 0; i < 5; i++) {
+      board.fixedUpdate(1 / 60, idleInput(), physics);
+    }
+    assert.equal(board.grounded, true);
+    const y0 = board.position.y;
+
+    const jumpFrame = board.fixedUpdate(1 / 60, idleInput({ jumpPressed: true, jump: true }), physics);
+    assert.equal(jumpFrame.jumped, true);
+    assert.ok(jumpFrame.jumpImpulse >= JUMP.impulse);
+    assert.equal(board.grounded, false);
+    assert.equal(board.airborne, true);
+    assert.ok(board.velocity.y > JUMP.leaveNormalSpeed);
+
+    let peakY = board.position.y;
+    let stayedAirborne = 0;
+    for (let i = 0; i < 45; i++) {
+      board.fixedUpdate(1 / 60, idleInput(), physics);
+      peakY = Math.max(peakY, board.position.y);
+      if (board.airborne) stayedAirborne++;
+    }
+
+    assert.ok(peakY > y0 + 0.85, `ollie peak too low: ${peakY - y0}`);
+    assert.ok(stayedAirborne >= 12, `air time too short: ${stayedAirborne} frames`);
+    // Must be able to land again after the ollie — sticky leave must not soft-lock air.
+    assert.equal(board.grounded, true);
+    assert.equal(board.airborne, false);
+  });
+
   it('buffers a jump pressed in air and fires on landing', () => {
     const physics = flatGroundPhysics(0);
     const board = new BoardPhysics();

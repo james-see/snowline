@@ -89,6 +89,11 @@ export const JUMP = {
   groundMinHits: 2,
   /** Preferred ride height above the hit surface, m. */
   rideHeight: 0.05,
+  /**
+   * While normal-speed exceeds this, refuse sticky re-ground / snap so an ollie
+   * is not cancelled the frame after impulse (m/s along ground normal).
+   */
+  leaveNormalSpeed: 1.25,
   /** Snap the board down toward the surface when grounded, m/s. */
   groundStick: 6,
   /** Board half-length for ray offsets, m. */

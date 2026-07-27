@@ -406,6 +406,9 @@ export class BoardPhysics {
 
   #resolveGrounded(): boolean {
     if (this.#nearHitCount <= 0) return false;
+    // Ollie / lip leave: upward speed along the contact normal must not be
+    // immediately cancelled by sticky re-ground + plane projection + snap.
+    if (this.velocity.dot(this.#groundNormal) > JUMP.leaveNormalSpeed) return false;
     // Centerline (long=0, lat=0) is index 1 * RAY_LAT.length + 1 = middle of the grid.
     const center = this.#samples[centerSampleIndex()];
     if (center?.hit && isNearGround(center.contactGap)) return true;
@@ -473,11 +476,15 @@ export class BoardPhysics {
     if ((this.#jumpBuffer > 0 || input.jump) && (this.#coyote > 0 || this.grounded)) {
       const impulse = JUMP.impulse + this.#anticipation * JUMP.anticipationBonus * 5;
       this.velocity.addScaledVector(this.#groundNormal, impulse);
+      // Clear the contact band so the same-frame pose is already leaving snow;
+      // `#resolveGrounded` then keeps us airborne until the ollie peaks.
+      this.position.addScaledVector(this.#groundNormal, JUMP.rideHeight + 0.02);
       this.#jumpBuffer = 0;
       this.#coyote = 0;
       this.#anticipation = 0;
       this.grounded = false;
       this.airborne = true;
+      this.#wasAirborne = true;
       result.jumped = true;
       result.jumpImpulse = impulse;
     }
