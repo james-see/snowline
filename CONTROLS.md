@@ -2,7 +2,7 @@
 
 Default map: [GAME_DESIGN.md](GAME_DESIGN.md).
 
-Input is data-driven via `Input.rebind`. Keyboard and gamepad merge each frame (OR for buttons, summed/clamped steer). Capture injection (`Input.inject`) is independent of the pad sampler.
+Input is data-driven via `Input.rebind`. Keyboard and gamepad merge each frame (OR for buttons, analog stick overrides digital steer when deflected). Capture injection (`Input.inject`) is independent of the pad sampler.
 
 ## Keyboard
 
@@ -19,15 +19,19 @@ Input is data-driven via `Input.rebind`. Keyboard and gamepad merge each frame (
 | Pause | Esc |
 | Confirm / Back | Enter / Backspace |
 
-## Gamepad (standard mapping)
+## Gamepad
 
-Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`, tracks the active pad index, and falls back to the first connected slot. Requires a browser-standard layout (`mapping: "standard"` — DualSense, Xbox, Switch Pro over Bluetooth typically qualify after the first button press).
+Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`, tracks the active pad index, and falls back to the first connected slot. Polled every frame in `Input.beginFrame`.
+
+**Chrome / WebKit activation:** `navigator.getGamepads()` often returns all-null slots until you press any gamepad button after the page is focused. A one-time on-screen hint (“Press any gamepad button…”) appears while that is the case. Keyboard keeps working regardless.
+
+**Layouts:** Prefers W3C `mapping: "standard"` (DualSense, Xbox, Switch Pro over Bluetooth typically qualify after the first button press). Non-standard Bluetooth pads with 6 axes (LX LY LT RX RY RT) are handled via a fallback axis layout. Face buttons also honor `value` when `pressed` is sticky/false.
 
 | Action | Control |
 |--------|---------|
 | Steer | Left stick X |
 | Camera look | Right stick |
-| Jump | A |
+| Jump / Confirm | A |
 | Brake | B |
 | Lean | LT |
 | Boost | RT |
@@ -37,7 +41,17 @@ Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`, track
 | Pause | Start |
 | Back (menus) | Select / View |
 
-Menus also read the pad directly in `UiModule` (stick / D-pad navigate, A confirm, B back) so UI works while gameplay input is locked out.
+Menus also read the pad directly in `UiModule` (stick / D-pad navigate, A confirm, B back) so UI works while gameplay input is locked out. In-run, `UiModule` forces lockout off so pad steer/jump/brake/boost reach the rider.
+
+### Debug
+
+With the game running, in the browser console:
+
+```js
+window.__snowline.gamepadDebug()
+```
+
+Returns connected pad ids, mapping, axes, buttons, `awaitingGesture`, `move`, and currently held actions.
 
 ## Settings
 

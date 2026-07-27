@@ -59,6 +59,12 @@ export interface InputState {
 
   setLockout(locked: boolean, exempt?: readonly InputAction[]): void;
   readonly lockedOut: boolean;
+
+  /** Active gamepad slot, if any. */
+  readonly gamepadIndex?: number | null;
+  /** Chrome: true until the user presses a pad button after focus. */
+  readonly gamepadAwaitingGesture?: boolean;
+  readonly gamepadActive?: boolean;
 }
 
 /** Minimal input surface consumed by board physics each fixed step. */

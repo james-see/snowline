@@ -33,6 +33,8 @@ export interface CaptureApi {
   startRun(courseId?: CourseId, mode?: GameModeId): void;
   /** Place rider at the finish arch and step until results (or timeout). */
   finishRun(maxFrames?: number): { finished: boolean; frames: number; screen: string };
+  /** Dump connected pads / axes / buttons + Input pad state for live verify. */
+  gamepadDebug(): ReturnType<Engine['input']['gamepadDebug']>;
   readonly version: string;
 }
 
@@ -104,6 +106,7 @@ export class CaptureBridge {
         this.#engine.setTimeScale(1);
       },
       finishRun: (maxFrames = 90) => this.#finishRun(maxFrames),
+      gamepadDebug: () => this.#engine.input.gamepadDebug(),
       version: '1.0.0',
     };
     window.__snowline = api;

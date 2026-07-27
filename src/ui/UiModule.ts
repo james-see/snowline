@@ -7,7 +7,11 @@ import type { RiderModule } from '@/rider/RiderModule.ts';
 import type { CourseModule } from '@/course/CourseModule.ts';
 import { COSMETICS, loadSave } from '@/score/SaveData.ts';
 import { COURSE_LIST } from '@/course/CourseDefs.ts';
-import { pickConnectedGamepad } from '@/engine/gamepadMap.ts';
+import {
+  buttonDown,
+  pickConnectedGamepad,
+  resolveAxisLayout,
+} from '@/engine/gamepadMap.ts';
 import './styles.css';
 
 const COURSES: { id: CourseId; blurb: string }[] = [
@@ -57,6 +61,7 @@ export class UiModule implements GameModule {
   #padA = false;
   #padB = false;
   #padIndex: number | null = null;
+  #padHintShown = false;
   #ctx: EngineContext | null = null;
   #screen: ScreenId | null = null;
 
@@ -147,8 +152,13 @@ export class UiModule implements GameModule {
       if (nav.back) flow.goTitle();
     }
 
-    if (flow.screen === 'playing' && this.#wantHud()) {
-      this.#paintHud(ctx);
+    if (flow.screen === 'playing') {
+      // Menus re-apply lockout every frame; ensure in-run never stays locked out.
+      ctx.input.setLockout(false);
+      this.#maybeShowGamepadHint(ctx);
+      if (this.#wantHud()) this.#paintHud(ctx);
+    } else {
+      this.#maybeShowGamepadHint(ctx);
     }
   }
 
@@ -250,20 +260,21 @@ export class UiModule implements GameModule {
     }
     this.#padIndex = gp.index;
 
-    const aDown = gp.buttons[0]?.pressed ?? false;
-    const bDown = gp.buttons[1]?.pressed ?? false;
+    const aDown = buttonDown(gp.buttons, 0);
+    const bDown = buttonDown(gp.buttons, 1);
     const confirm = aDown && !this.#padA;
     const back = bDown && !this.#padB;
     this.#padA = aDown;
     this.#padB = bDown;
 
     const dz = 0.55;
-    const ax = gp.axes[0] ?? 0;
-    const ay = gp.axes[1] ?? 0;
-    const hatLeft = gp.buttons[14]?.pressed ?? false;
-    const hatRight = gp.buttons[15]?.pressed ?? false;
-    const hatUp = gp.buttons[12]?.pressed ?? false;
-    const hatDown = gp.buttons[13]?.pressed ?? false;
+    const layout = resolveAxisLayout(gp);
+    const ax = gp.axes[layout.leftX] ?? 0;
+    const ay = gp.axes[layout.leftY] ?? 0;
+    const hatLeft = buttonDown(gp.buttons, 14);
+    const hatRight = buttonDown(gp.buttons, 15);
+    const hatUp = buttonDown(gp.buttons, 12);
+    const hatDown = buttonDown(gp.buttons, 13);
     const axisActive =
       Math.abs(ax) > dz || Math.abs(ay) > dz || hatLeft || hatRight || hatUp || hatDown;
 
@@ -372,6 +383,7 @@ export class UiModule implements GameModule {
               <button class="btn ghost" data-focus="1" data-act="settings">Settings</button>
             </div>
             <p class="hint">Enter / A — confirm · ↑↓ select</p>
+            <p class="hint pad-hint" id="pad-gesture-hint" hidden>Gamepad: press any button to activate</p>
           </div>
         </section>`;
       layer.querySelector('[data-act="play"]')?.addEventListener('click', () => flow.goCourseSelect());
@@ -530,10 +542,34 @@ export class UiModule implements GameModule {
     if (!tip) return;
     tip.style.display = 'block';
     tip.textContent =
-      'A/D carve · Space jump · Shift boost · Arrows spin/flip · J/K/L/U grabs · Q/E lean';
+      'A/D carve · Space jump · Shift boost · Arrows spin/flip · J/K/L/U grabs · Q/E lean · Pad: stick / A / B / RT';
     window.setTimeout(() => {
       tip.style.display = 'none';
     }, 6000);
+  }
+
+  /** One-time Chrome activation nudge when getGamepads() is still all-null. */
+  #maybeShowGamepadHint(ctx: EngineContext): void {
+    if (this.#padHintShown) return;
+    if (!ctx.input.gamepadAwaitingGesture) return;
+    this.#padHintShown = true;
+
+    const menuHint = document.getElementById('pad-gesture-hint');
+    if (menuHint) {
+      menuHint.hidden = false;
+      window.setTimeout(() => {
+        menuHint.hidden = true;
+      }, 8000);
+      return;
+    }
+
+    const tip = document.getElementById('hud-tip');
+    if (!tip) return;
+    tip.style.display = 'block';
+    tip.textContent = 'Press any gamepad button to activate controller';
+    window.setTimeout(() => {
+      tip.style.display = 'none';
+    }, 5000);
   }
 
   #resultsHtml(flow: GameFlowModule): string {
