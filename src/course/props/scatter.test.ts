@@ -166,6 +166,53 @@ describe('expandCourseProps', () => {
     assert.ok(sumNN / nnN <= 4.0, `alpine avg NN ${sumNN / nnN}`);
     assert.ok(props.filter((p) => p.kind === 'banner').length >= 24);
   });
+
+  it('fills forward chase frustum with mid-corridor props (no CAM_CROSS)', () => {
+    const path = new SplinePath(ALPINE_FLOW.controlPoints);
+    const maxTrees = presetBudgets('high').maxTreeInstances;
+    const props = expandCourseProps(ALPINE_FLOW, path, { maxTreeInstances: maxTrees });
+    const raceHalf = ALPINE_FLOW.terrain.width * 0.5;
+    const pos = new THREE.Vector3();
+
+    const inset = props.filter((p) => p.kind === 'tree' && p.id.startsWith('inset-tree-'));
+    assert.ok(inset.length >= 80, `expected inset frustum trees, got ${inset.length}`);
+
+    let insetInStrip = 0;
+    let insetFront = 0;
+    for (const tree of inset) {
+      pos.set(...tree.position);
+      const closest = path.closestPoint(pos);
+      // Mid-corridor-adjacent — inside race half, clear of dead center.
+      assert.ok(closest.distance >= raceHalf * 0.2);
+      assert.ok(closest.distance <= raceHalf * 0.95);
+      if (closest.distance <= raceHalf * 0.9) insetInStrip += 1;
+      if (closest.t <= 0.4) insetFront += 1;
+    }
+    assert.ok(insetInStrip >= inset.length * 0.9);
+    assert.ok(insetFront >= inset.length * 0.75);
+
+    const rocks = props.filter((p) => p.kind === 'rock' && p.id.startsWith('frustum-rock-'));
+    assert.ok(rocks.length >= 30, `expected forward-frustum rocks, got ${rocks.length}`);
+    let rockFrontMid = 0;
+    for (const rock of rocks) {
+      pos.set(...rock.position);
+      const closest = path.closestPoint(pos);
+      if (closest.t <= 0.38 && closest.distance <= raceHalf * 0.75) rockFrontMid += 1;
+    }
+    assert.ok(
+      rockFrontMid >= rocks.length * 0.55,
+      `expected front mid-corridor rocks in look-ahead, got ${rockFrontMid}/${rocks.length}`
+    );
+
+    const midBanners = props.filter((p) => p.id.startsWith('frustum-banner-'));
+    assert.ok(midBanners.length >= 16);
+    // Fall-line lane stays open for playability.
+    for (const p of [...inset, ...rocks, ...midBanners]) {
+      pos.set(...p.position);
+      const closest = path.closestPoint(pos);
+      assert.ok(closest.distance >= raceHalf * 0.18, `${p.id} too close to centerline`);
+    }
+  });
 });
 
 describe('resolvePathPlacements', () => {

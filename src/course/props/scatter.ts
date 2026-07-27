@@ -14,6 +14,16 @@ const FOREST_FILL: Record<CourseDef['id'], number> = {
   summit: 0.4,
 };
 
+/**
+ * Share of tree budget reserved for mid-corridor-adjacent inset pines that sit
+ * inside the forward chase frustum (path look-ahead), not apron flanks only.
+ */
+const INSET_TREE_FRAC: Record<CourseDef['id'], number> = {
+  alpine: 0.14,
+  timberline: 0.08,
+  summit: 0.05,
+};
+
 const BANNER_LABELS = ['SLOW DOWN', 'CAUTION', 'STAY LEFT', 'GATE AHEAD'] as const;
 
 export interface ExpandPropsOptions {
@@ -25,7 +35,7 @@ export interface ExpandPropsOptions {
 /**
  * Merge authored course props with procedural apron forest belts + race furniture.
  * Authored trees keep priority; belts fill remaining Lod tree slots.
- * Corridor center stays clear — plant on flanks only.
+ * Corridor center stays clear — plant on flanks / mid-corridor-adjacent only.
  * Props with `pathT` resolve world XZ from the run spline before scatter merge.
  */
 export function expandCourseProps(
@@ -38,13 +48,25 @@ export function expandCourseProps(
   const raceHalf = def.terrain.width * 0.5;
   const apron = def.terrain.apronWidth ?? Math.max(110, def.terrain.width * 1.4);
 
-  const trees = scatterForestBelt(def.id, path, raceHalf, apron, options.maxTreeInstances, authored, rng);
+  const fill = FOREST_FILL[def.id] ?? 0.6;
+  const target = Math.max(0, Math.floor(options.maxTreeInstances * fill));
+  const existing = authored.filter((p) => p.kind === 'tree').length;
+  const treeSlots = Math.max(0, target - existing);
+  const insetFrac = INSET_TREE_FRAC[def.id] ?? 0.1;
+  const insetSlots = Math.min(treeSlots, Math.floor(treeSlots * insetFrac));
+  const beltSlots = Math.max(0, treeSlots - insetSlots);
+
+  const inset = scatterInsetFrustumTrees(def.id, path, raceHalf, insetSlots, rng);
+  const trees = scatterForestBelt(def.id, path, raceHalf, apron, beltSlots, rng);
   const furniture =
     options.furniture === false
       ? []
-      : scatterCourseFurniture(def.id, path, raceHalf, authored, rng);
+      : [
+          ...scatterCourseFurniture(def.id, path, raceHalf, authored, rng),
+          ...scatterAheadFrustumFill(def.id, path, raceHalf, authored, rng),
+        ];
 
-  return [...authored, ...trees, ...furniture];
+  return [...authored, ...inset, ...trees, ...furniture];
 }
 
 /**
@@ -87,19 +109,173 @@ export function resolvePathPlacements(
   });
 }
 
+/**
+ * Mid-corridor-adjacent pines for the *ahead* chase frustum (B8 without CAM_CROSS).
+ * Laterals sit inside the race half so trunks/canopies read in path look-ahead,
+ * not only as distant apron walls.
+ */
+function scatterInsetFrustumTrees(
+  courseId: CourseDef['id'],
+  path: SplinePath,
+  raceHalf: number,
+  slots: number,
+  rng: SeededRng
+): PropPlacement[] {
+  if (slots <= 0 || courseId === 'summit') return [];
+
+  const out: PropPlacement[] = [];
+  // Keep a clear fall-line lane (~±0.22 raceHalf); pack the rest of the strip.
+  const inner = raceHalf * (courseId === 'timberline' ? 0.42 : 0.28);
+  const outer = raceHalf * (courseId === 'timberline' ? 0.92 : 0.88);
+  const rows = 2;
+  // Front-weight into course_start / carve look-ahead.
+  const denseEnd = courseId === 'timberline' ? 0.32 : 0.38;
+  const denseSlots = Math.floor(slots * 0.9);
+
+  for (let i = 0; i < slots; i++) {
+    const inDense = i < denseSlots;
+    const local = inDense ? i : i - denseSlots;
+    const localCount = inDense ? denseSlots : Math.max(1, slots - denseSlots);
+    const t0 = inDense ? 0.02 : denseEnd + 0.05;
+    const t1 = inDense ? denseEnd : 0.72;
+
+    const side = local % 2 === 0 ? -1 : 1;
+    const idx = Math.floor(local / 2);
+    const perSide = Math.max(1, Math.ceil(localCount / 2));
+    const cellsAlong = Math.max(1, Math.ceil(perSide / rows));
+    const cell = idx % cellsAlong;
+    const row = Math.floor(idx / cellsAlong) % rows;
+    const stagger = (row % 2) * 0.5;
+    const cellJitter = (rng.next() - 0.5) * 0.12;
+    const t = t0 + ((cell + 0.5 + stagger + cellJitter) / cellsAlong) * (t1 - t0);
+    const tt = THREE.MathUtils.clamp(t, 0.015, 0.96);
+
+    const latNorm = (row + rng.range(0.15, 0.85)) / rows;
+    const lateral = side * (inner + latNorm * Math.max(2, outer - inner));
+
+    path.sample(tt, _center);
+    path.right(tt, _right);
+    _right.y = 0;
+    if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
+    else _right.normalize();
+    const nudge = (rng.next() - 0.5) * 1.1;
+    const x = _center.x + _right.x * (lateral + nudge);
+    const z = _center.z + _right.z * (lateral + nudge);
+
+    // Slightly shorter than lip wall so they read as midfield furniture, not a cage.
+    const scale = row === 0 ? 1.9 + rng.range(0, 1.0) : 1.4 + rng.range(0, 0.9);
+
+    out.push({
+      id: `inset-tree-${courseId}-${i}`,
+      kind: 'tree',
+      position: [x, _center.y, z],
+      rotationY: rng.range(0, Math.PI * 2),
+      variant: rng.int(0, 3),
+      scale,
+      recovery: true,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Rocks + mid-corridor banners packed into path look-ahead so forward chase
+ * (FOV ~48, look ~14–20 m) shows alpine/SSX midfield mass — not empty corduroy.
+ */
+function scatterAheadFrustumFill(
+  courseId: CourseDef['id'],
+  path: SplinePath,
+  raceHalf: number,
+  authored: readonly PropPlacement[],
+  rng: SeededRng
+): PropPlacement[] {
+  if (courseId === 'summit') return [];
+
+  const out: PropPlacement[] = [];
+  const authoredRocks = authored.filter((p) => p.kind === 'rock').length;
+  // High Lod rock budget is 48 — leave a few slots for authored landmarks.
+  const rockBudget = courseId === 'timberline' ? 36 : 42;
+  const rockCount = Math.max(0, rockBudget - authoredRocks);
+  // Mid-corridor band: inside race strip, clear of dead-center fall line.
+  const rockInner = raceHalf * (courseId === 'timberline' ? 0.35 : 0.24);
+  const rockOuter = raceHalf * (courseId === 'timberline' ? 0.78 : 0.7);
+  // Front gallery owns start/carve frames; sparse tail after meadow.
+  const rockDenseEnd = 0.36;
+  const rockDense = Math.floor(rockCount * 0.82);
+
+  for (let i = 0; i < rockCount; i++) {
+    const inDense = i < rockDense;
+    const u = inDense
+      ? i / Math.max(1, rockDense - 1)
+      : (i - rockDense) / Math.max(1, rockCount - rockDense - 1);
+    const t = inDense
+      ? 0.025 + Math.pow(u, 0.85) * (rockDenseEnd - 0.025)
+      : rockDenseEnd + 0.04 + u * 0.5;
+    const side = i % 2 === 0 ? -1 : 1;
+    const row = Math.floor(i / 2) % 3;
+    const latNorm = (row + rng.range(0.1, 0.9)) / 3;
+    const lateral = side * (rockInner + latNorm * (rockOuter - rockInner));
+
+    path.sample(t, _center);
+    path.right(t, _right);
+    _right.y = 0;
+    if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
+    else _right.normalize();
+    const nudge = (rng.next() - 0.5) * 1.4;
+    const x = _center.x + _right.x * (lateral + nudge);
+    const z = _center.z + _right.z * (lateral + nudge);
+
+    out.push({
+      id: `frustum-rock-${courseId}-${i}`,
+      kind: 'rock',
+      position: [x, _center.y, z],
+      rotationY: rng.range(0, Math.PI * 2),
+      variant: rng.int(0, 3),
+      scale: 0.85 + rng.range(0, 1.35) + (row === 0 ? 0.35 : 0),
+      recovery: true,
+    });
+  }
+
+  // Extra banners inside the strip — apron-edge banners alone miss near FOV.
+  const midBannerCount = courseId === 'timberline' ? 16 : 20;
+  const banInner = raceHalf * 0.3;
+  const banOuter = raceHalf * 0.55;
+  for (let i = 0; i < midBannerCount; i++) {
+    const u = i / Math.max(1, midBannerCount - 1);
+    const t = 0.03 + Math.pow(u, 0.7) * 0.4;
+    const side = i % 2 === 0 ? 1 : -1;
+    const lateral = side * (banInner + rng.range(0, banOuter - banInner));
+    path.sample(t, _center);
+    path.right(t, _right);
+    _right.y = 0;
+    if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
+    else _right.normalize();
+    path.tangent(t, _tan);
+    const x = _center.x + _right.x * lateral;
+    const z = _center.z + _right.z * lateral;
+    const yaw = Math.atan2(_tan.x, _tan.z) + (side > 0 ? -0.2 : 0.2);
+    out.push({
+      id: `frustum-banner-${courseId}-${i}`,
+      kind: 'banner',
+      position: [x, _center.y, z],
+      rotationY: yaw,
+      label: BANNER_LABELS[i % BANNER_LABELS.length],
+      recovery: true,
+    });
+  }
+
+  return out;
+}
+
 function scatterForestBelt(
   courseId: CourseDef['id'],
   path: SplinePath,
   raceHalf: number,
   apron: number,
-  maxTrees: number,
-  authored: readonly PropPlacement[],
+  slots: number,
   rng: SeededRng
 ): PropPlacement[] {
-  const fill = FOREST_FILL[courseId] ?? 0.6;
-  const target = Math.max(0, Math.floor(maxTrees * fill));
-  const existing = authored.filter((p) => p.kind === 'tree').length;
-  const slots = Math.max(0, target - existing);
   if (slots === 0) return [];
 
   // Near-solid canopy wall on both corridor lips — visual continuity over skyline spray.
