@@ -61,4 +61,5 @@ See [AGENT_OWNERS.md](AGENT_OWNERS.md). **Worktree required:** `~/.cursor/worktr
 
 ## Recent
 
+- `8039361` (`graphics/snow-trail-rider-v2`) — dual-groove packed trail + denser spray + cooler snow/kicker form + rider bindings; critic tip PASS binary + T1–T4
 - `f52fc36` (`vfx/trail-packed-snow`) — BoardTrail = packed-snow channel (not neon ribbon); critic tip PASS binary, trail PASS

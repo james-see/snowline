@@ -51,21 +51,25 @@ Trail binary add-ons (any FAIL fails trail quality even if B1–B11 pass):
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-27, tip `f52fc36` — packed-snow BoardTrail — see `CRITIC_REPORT.md`)
+## Current score (2026-07-27, tip `8039361` — dual-groove BoardTrail — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
 | B1_peaks | **PASS** — ridgelines behind timberline |
-| B2_forest | **PASS** — dense flank walls (~409–432k tris) |
+| B2_forest | **PASS** — dense flank walls (~409–433k tris) |
 | B3_shadows | **PASS** — soft directional casts on corduroy |
-| B4_corduroy | **PASS** — grooves readable; packed trail scar on `max_speed` |
-| B5_snow_color | **PASS** — tonal range; darker muddy vs alpine white (μ≈72) |
+| B4_corduroy | **PASS** — stronger bake; dual-groove scar on `max_speed` |
+| B5_snow_color | **PASS** — cooler alpine pack (μ≈69–76) |
 | B6_furniture | **PASS** — fence / race markers on gate |
-| B7_rider | **PASS** — contrast kit |
+| B7_rider | **PASS** — contrast kit + binding/topsheet split |
 | B8_camera | **PASS** — midfield timber pack holds |
 | B9_hud | **PASS** |
 | B10_no_float | **PASS** |
 | B11_atmosphere | **PASS** — cool aerial; canopy depth |
+| T1_dual_groove | **PASS** — L/C/R ≈56/76/49 on `max_speed` |
+| T2_packed_center | **PASS** — center shelf brighter than ruts |
+| T3_no_emissive | **PASS** — linear sRGB; no chalk ribbon |
+| T4_spray_volume | **PASS** — denser soft mist (carve macros still thin) |
 
-**Trail:** packed denser channel (**PASS** vs arcade ribbon) — groom≈95 vs trail≈71 on `max_speed`.  
-**Verdict: PASS** (binary 11/0). Rubric mean ≈ **5.70** vs floors ≥8.5 — quality bar still open.
+**Trail:** dual-edge packed scar (**PASS** vs glow streak) — groom≈97 vs trail≈71 on `max_speed`.  
+**Verdict: PASS** (binary 11/0 + trail 4/0). Rubric mean ≈ **6.00** vs floors ≥8.5 — quality bar still open.
