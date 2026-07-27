@@ -95,6 +95,7 @@ export class CourseModule implements GameModule {
     };
 
     this.#root.add(terrain.mesh);
+    this.#root.add(terrain.backdrop);
     this.#root.add(props.root);
 
     if (world?.ready) {
@@ -290,6 +291,7 @@ export class CourseModule implements GameModule {
     const mat = this.#terrain?.mesh.material;
     if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
     else mat?.dispose();
+    this.#disposeBackdrop(this.#terrain?.backdrop ?? null);
     this.#props?.dispose();
     this.#terrainBody?.remove();
     this.#root.clear();
@@ -299,5 +301,17 @@ export class CourseModule implements GameModule {
     this.#props = null;
     this.#triggers = [];
     this.#terrainBody = null;
+  }
+
+  #disposeBackdrop(group: THREE.Group | null): void {
+    if (!group) return;
+    group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else mat?.dispose();
+    });
   }
 }

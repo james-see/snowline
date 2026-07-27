@@ -100,6 +100,25 @@ export interface TerrainProfile {
     width: number;
     depth: number;
   }>;
+  /**
+   * Distant alpine peak / ridgeline backdrop (visual only — not in trimesh).
+   * Defaults on in the generator when omitted.
+   */
+  backdrop?: {
+    /** Master switch; default true. */
+    enabled?: boolean;
+    /** Far-layer peak rise above path Y, metres. */
+    peakHeight?: number;
+    /** Near foothill offset beyond apron edge, metres. */
+    nearOffset?: number;
+    /** Far ridgeline offset beyond apron edge, metres. */
+    farOffset?: number;
+  };
+  /**
+   * Extra near-field relief multiplier on playable flanks (1 = default).
+   * Keeps the frame from reading as a flat sheet without breaking spawn.
+   */
+  reliefScale?: number;
 }
 
 export interface CourseDef {
@@ -146,6 +165,11 @@ export interface TerrainHeightfield {
 
 export interface TerrainBuildResult {
   mesh: import('three').Mesh;
+  /**
+   * Multi-layer alpine peaks / ridgelines behind the run.
+   * Visual only — never fed into Rapier trimesh.
+   */
+  backdrop: import('three').Group;
   heightfield: TerrainHeightfield;
   /** Per-vertex surface kind index into `surfaceKinds`. */
   surfaceIndices: Uint8Array;

@@ -42,7 +42,9 @@ export const ALPINE_FLOW: CourseDef = {
     pathSegmentsPer100m: 14,
     lateralSegments: 30,
     pitchDeg: 13,
-    roughness: 0.32,
+    roughness: 0.38,
+    reliefScale: 1.25,
+    backdrop: { peakHeight: 320, nearOffset: 36, farOffset: 240 },
     altLines: [
       // Left powder shelf — soft channel that rejoins before Sun Bowl.
       { startT: 0.2, endT: 0.5, lateral: -28, width: 26, depth: 1.6 },
@@ -134,7 +136,9 @@ export const TIMBERLINE: CourseDef = {
     pathSegmentsPer100m: 17,
     lateralSegments: 18,
     pitchDeg: 16.5,
-    roughness: 0.72,
+    roughness: 0.78,
+    reliefScale: 1.35,
+    backdrop: { peakHeight: 300, nearOffset: 32, farOffset: 210 },
     altLines: [
       // Glade shortcut — left channel after the tunnel, merges at cp4.
       { startT: 0.42, endT: 0.76, lateral: -12, width: 14, depth: 2.0 },
@@ -240,7 +244,9 @@ export const SUMMIT_DROP: CourseDef = {
     pathSegmentsPer100m: 15,
     lateralSegments: 24,
     pitchDeg: 19,
-    roughness: 0.7,
+    roughness: 0.74,
+    reliefScale: 1.3,
+    backdrop: { peakHeight: 360, nearOffset: 40, farOffset: 260 },
     halfpipe: { startT: 0.52, endT: 0.7, depth: 5.2, width: 36 },
     canyon: { startT: 0.76, endT: 0.99, depth: 11 },
     altLines: [
