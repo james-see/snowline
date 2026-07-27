@@ -1,18 +1,24 @@
 import * as THREE from 'three';
 
-const TRAIL_LEN = 56;
-/** Cross-section: outerL, lipL, floor, lipR, outerR — reads as a packed channel. */
-const CROSS = 5;
+const TRAIL_LEN = 64;
+/**
+ * Cross-section (board-wake language from user refs):
+ * outerL → grooveL → packL → center → packR → grooveR → outerR
+ * Dual dark edge grooves + brighter flattened packed center; soft feathered lips.
+ */
+const CROSS = 7;
 const VERTS = TRAIL_LEN * CROSS;
 const MAX_TRIS = (TRAIL_LEN - 1) * (CROSS - 1) * 2;
 
 /**
- * Match `MaterialLibrary` packed snow (`0xb2a898`) — warmer groom, not cool VFX blue.
+ * Match `MaterialLibrary` packed snow — warmer groom, not cool VFX blue.
  * Kept as linear RGB so the trail shares terrain albedo language.
  */
-const PACKED_ALBEDO = new THREE.Color(0xb2a898);
-/** Compressed carve floor — denser / dirtier pack (flattened corduroy channel). */
-const COMPRESSED_ALBEDO = new THREE.Color(0x5e574e);
+const PACKED_ALBEDO = new THREE.Color(0xc4c8cc);
+/** Flattened bright pack in the board center (compressed, sun-facing). */
+const CENTER_ALBEDO = new THREE.Color(0xd8dce0);
+/** Edge-groove compressed snow — darker AO floor in the ruts. */
+const GROOVE_ALBEDO = new THREE.Color(0x6a6560);
 
 /** Same alpine key as MaterialLibrary sun response — keeps the strip lit, not emissive. */
 const SUN_DIR = new THREE.Vector3(0.86, 0.24, 0.45).normalize();
@@ -29,8 +35,9 @@ void main() {
   vColor = color;
   vAcross = aAcross;
   vAge = aAge;
-  // Ribbon faces mostly up; slight trough tilt from across so the channel catches light.
-  float tilt = vAcross * 0.22;
+  // Dual-groove trough: normals tip toward the nearest rut so AO catches light.
+  float grooveSide = sign(vAcross) * smoothstep(0.2, 0.55, abs(vAcross));
+  float tilt = grooveSide * 0.38 - vAcross * 0.08;
   vec3 localN = normalize(vec3(tilt, 1.0, 0.0));
   vWorldNormal = normalize(mat3(modelMatrix) * localN);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -46,23 +53,29 @@ varying float vAge;
 varying vec3 vWorldNormal;
 void main() {
   float across = abs(vAcross);
-  // Narrow feather at the lips only — floor stays a solid packed scar.
-  float edge = smoothstep(1.0, 0.55, across);
-  // Center AO / denser pack (never a bright / emissive groove).
-  float channel = 1.0 - smoothstep(0.0, 0.75, across);
-  // Age softens the scar; keep recent meters readable as compressed snow.
-  float ageFade = mix(0.55, 1.0, 1.0 - vAge);
+  // Soft feather at outer lips only — never a hard arcade stripe.
+  float edge = smoothstep(1.0, 0.62, across);
+  // Dual-edge groove AO peaks near the rails (~0.55), not the center.
+  float groove = smoothstep(0.18, 0.48, across) * (1.0 - smoothstep(0.58, 0.92, across));
+  // Flattened packed center reads brighter than the ruts.
+  float center = 1.0 - smoothstep(0.0, 0.32, across);
+  // Age softens the scar; keep recent meters readable as carved snow.
+  float ageFade = mix(0.5, 1.0, 1.0 - vAge);
   float alpha = edge * ageFade * uOpacity;
-  if (alpha < 0.05) discard;
+  if (alpha < 0.04) discard;
 
   vec3 col = vColor;
-  // Contact shadow in the cut — compression reads as darker pack, not chalk.
-  col *= mix(0.96, 0.62, channel);
+  // Contact shadow / AO in the ruts — never emissive chalk.
+  col *= mix(1.0, 0.52, groove);
+  // Packed center lift (flattened corduroy) — brighter, not glowing.
+  col *= mix(1.0, 1.1, center);
 
   // Lambert + soft hemi so the strip shares scene lighting (never additive/emissive).
   vec3 N = normalize(vWorldNormal);
   float ndl = max(0.0, dot(N, normalize(uSunDir)));
-  float hemi = 0.55 + 0.45 * ndl;
+  float hemi = 0.52 + 0.48 * ndl;
+  // Extra shade in groove floors when facing away from sun.
+  hemi *= mix(1.0, 0.78 + 0.22 * ndl, groove);
   col *= hemi;
 
   gl_FragColor = vec4(col, alpha);
@@ -70,7 +83,7 @@ void main() {
 `;
 
 /**
- * Carved packed-snow channel: denser/darker groom trough with a slight depression.
+ * Dual-edge carved snow trail: dark parallel ruts + brighter packed center.
  * Intentionally not a glowing / translucent VFX ribbon.
  */
 export class BoardTrail {
@@ -95,7 +108,8 @@ export class BoardTrail {
   #right = new THREE.Vector3();
   #forward = new THREE.Vector3();
   #packed = PACKED_ALBEDO.clone();
-  #compressed = COMPRESSED_ALBEDO.clone();
+  #center = CENTER_ALBEDO.clone();
+  #groove = GROOVE_ALBEDO.clone();
   #mix = new THREE.Color();
 
   constructor() {
@@ -118,7 +132,7 @@ export class BoardTrail {
     this.#mat = new THREE.ShaderMaterial({
       uniforms: {
         // Near-opaque pack floor; only lips feather into corduroy.
-        uOpacity: { value: 0.96 },
+        uOpacity: { value: 0.94 },
         uSunDir: { value: SUN_DIR.clone() },
       },
       vertexShader: VERT,
@@ -146,7 +160,7 @@ export class BoardTrail {
     grounded: boolean,
     speed: number
   ): void {
-    // Leave a packed channel once moving; edge deepens/densifies it.
+    // Leave a carved channel once moving; edge deepens the rail grooves.
     if (!grounded || speed < 3.5) {
       this.fade();
       return;
@@ -156,13 +170,13 @@ export class BoardTrail {
     this.#right.set(this.#forward.z, 0, -this.#forward.x);
     const edge = Math.abs(edgeAngle);
     const side = Math.sign(edgeAngle || 1) * Math.min(0.22, edge * 0.38 + 0.03);
-    // Board-scale channel — compressed pack width, not a fat neon ribbon.
-    const halfW = THREE.MathUtils.clamp(0.16 + edge * 0.38 + (speed - 5) * 0.004, 0.14, 0.48);
+    // Board-scale wake — dual rail grooves, not a fat neon ribbon.
+    const halfW = THREE.MathUtils.clamp(0.2 + edge * 0.42 + (speed - 5) * 0.005, 0.18, 0.55);
 
     this.#tmp.copy(position).addScaledVector(this.#right, side);
     // Keep the strip *on* the snow mesh (depth-tested). Depression reads via
-    // AO + denser albedo — burying geometry under the groom just occludes it.
-    this.#tmp.y += 0.028;
+    // AO + groove albedo — burying geometry under the groom just occludes it.
+    this.#tmp.y += 0.03;
 
     const i = this.#head % TRAIL_LEN;
     this.#ringPos[i * 3] = this.#tmp.x;
@@ -197,13 +211,14 @@ export class BoardTrail {
     }
 
     const start = this.#head - this.#count;
-    // outer / lip / floor / lip / outer — shallow trough; depth is shading, not z-bury.
-    const ACROSS = [-1, -0.55, 0, 0.55, 1];
-    const SIDE = [-1, -1, 0, 1, 1];
-    const WIDTH_MUL = [1, 0.72, 0, 0.72, 1];
-    const Y_BIAS = [0.006, 0.0, -0.01, 0.0, 0.006];
-    // How compressed each column reads (1 = floor pack).
-    const PACK = [0.35, 0.8, 1, 0.8, 0.35];
+    // outer / groove / pack / center / pack / groove / outer
+    const ACROSS = [-1, -0.62, -0.28, 0, 0.28, 0.62, 1];
+    const SIDE = [-1, -1, -1, 0, 1, 1, 1];
+    const WIDTH_MUL = [1, 0.78, 0.42, 0, 0.42, 0.78, 1];
+    // Groove floors sit lowest; center is a shallow packed shelf between ruts.
+    const Y_BIAS = [0.008, -0.016, -0.004, -0.002, -0.004, -0.016, 0.008];
+    // 0 = outer groom, 1 = groove AO, 2 = bright center pack
+    const ROLE = [0, 1, 2, 2, 2, 1, 0] as const;
 
     for (let n = 0; n < this.#count; n++) {
       const src = (start + n) % TRAIL_LEN;
@@ -214,7 +229,6 @@ export class BoardTrail {
       const rz = this.#ringRight[src * 3 + 2]!;
       const half = this.#ringHalfW[src]!;
       const age = 1 - n / (this.#count - 1);
-      // Fresh cut = denser pack; older samples wash toward groom albedo then fade via aAge.
       const fresh = 1 - age;
 
       for (let c = 0; c < CROSS; c++) {
@@ -225,8 +239,17 @@ export class BoardTrail {
         this.#pos[dst + 1] = py + Y_BIAS[c]!;
         this.#pos[dst + 2] = pz + rz * side * w;
 
-        const packAmt = PACK[c]! * (0.55 + 0.45 * fresh);
-        this.#mix.copy(this.#packed).lerp(this.#compressed, packAmt);
+        const role = ROLE[c]!;
+        if (role === 1) {
+          // Groove: dark AO floor, fresher = deeper pack dirt.
+          this.#mix.copy(this.#packed).lerp(this.#groove, 0.55 + 0.4 * fresh);
+        } else if (role === 2) {
+          // Center: brighter flattened pack.
+          this.#mix.copy(this.#packed).lerp(this.#center, 0.45 + 0.4 * fresh);
+        } else {
+          // Outer lip: near groom, soft fade handled in shader.
+          this.#mix.copy(this.#packed).lerp(this.#center, 0.12 * fresh);
+        }
         this.#color[dst] = this.#mix.r;
         this.#color[dst + 1] = this.#mix.g;
         this.#color[dst + 2] = this.#mix.b;

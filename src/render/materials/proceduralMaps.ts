@@ -60,26 +60,26 @@ interface VariantPalette {
 
 const PALETTES: Record<PbrSetId, VariantPalette> = {
   snow_powder: {
-    // Cool soft powder — distinct from packed groom.
-    base: [176, 190, 208],
+    // Cool soft powder — brighter alpine volume vs packed groom.
+    base: [194, 206, 218],
     dirt: [92, 78, 64],
-    ice: [140, 172, 196],
-    roughness: 0.93,
+    ice: [148, 176, 198],
+    roughness: 0.92,
     roughnessVar: 0.12,
-    dirtChance: 0.08,
+    dirtChance: 0.06,
     iceChance: 0.03,
     corduroy: 0,
   },
   snow_groom: {
-    // Warmer packed alpine — soft corduroy, not zebra wallpaper.
-    base: [168, 172, 170],
-    dirt: [86, 72, 58],
-    ice: [132, 156, 176],
-    roughness: 0.5,
-    roughnessVar: 0.24,
-    dirtChance: 0.1,
-    iceChance: 0.06,
-    corduroy: 0.95,
+    // Cooler packed alpine — readable corduroy + form, not muddy brown fill.
+    base: [188, 190, 192],
+    dirt: [96, 84, 70],
+    ice: [140, 162, 180],
+    roughness: 0.46,
+    roughnessVar: 0.26,
+    dirtChance: 0.08,
+    iceChance: 0.05,
+    corduroy: 1.0,
   },
   ice_glass: {
     base: [110, 150, 178],

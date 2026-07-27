@@ -26,10 +26,18 @@ export const mats = {
     roughness: 0.4,
   }),
   concrete: new THREE.MeshStandardMaterial({ color: 0x8a8a86, roughness: 0.92 }),
+  // Jump / kicker decks — cooler packed snow with enough roughness contrast for lip form.
   snowDeck: new THREE.MeshStandardMaterial({
-    color: 0xe8eef5,
+    color: 0xe4ecf4,
+    roughness: 0.62,
+    metalness: 0.03,
+    envMapIntensity: 0.85,
+  }),
+  snowDeckShade: new THREE.MeshStandardMaterial({
+    color: 0xb8c4d0,
     roughness: 0.78,
-    metalness: 0.04,
+    metalness: 0.02,
+    envMapIntensity: 0.55,
   }),
   wood: new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.88 }),
   woodDark: new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.9 }),
@@ -104,6 +112,7 @@ export function bindAuthoredPropMaps(library: MaterialLibrary): void {
   const plank = library.prop('plank');
   const fabric = library.prop('fabric');
   const foliage = library.prop('foliage');
+  const packed = library.snow('packed');
 
   copyMaps(bark, mats.trunk, 0x8a6240);
   copyMaps(bark, mats.trunkDark, 0x6a4a30);
@@ -113,6 +122,16 @@ export function bindAuthoredPropMaps(library: MaterialLibrary): void {
   copyMaps(fabric, mats.finishBanner, 0xf2ebe0);
   copyMaps(fabric, mats.flag, 0xffe14a);
   mats.flag.normalScale.set(0.8, 0.8);
+
+  // Kickers share packed groom maps so jump faces get corduroy + sun form.
+  copyMaps(packed, mats.snowDeck, 0xe4ecf4);
+  copyMaps(packed, mats.snowDeckShade, 0xb8c4d0);
+  mats.snowDeck.roughness = 0.58;
+  mats.snowDeck.normalScale.set(1.6, 1.6);
+  mats.snowDeckShade.roughness = 0.74;
+  mats.snowDeckShade.normalScale.set(1.4, 1.4);
+  mats.snowDeck.envMapIntensity = 0.9;
+  mats.snowDeckShade.envMapIntensity = 0.55;
 
   // Kenney leaf meshes + procedural cones share mats.canopy (instancing-safe).
   for (let i = 0; i < mats.canopy.length; i++) {

@@ -194,6 +194,7 @@ export function buildRamp(lip: number, width = 6.5): THREE.Group {
   const depth = 5.2;
   const lipH = Math.max(1.2, lip);
 
+  // Lit approach shelf vs shaded face — directional form for jump readability.
   const approach = shadow(
     new THREE.Mesh(new THREE.BoxGeometry(width, 0.35, depth * 0.55), mats.snowDeck)
   );
@@ -202,7 +203,7 @@ export function buildRamp(lip: number, width = 6.5): THREE.Group {
   g.add(approach);
 
   const face = shadow(
-    new THREE.Mesh(new THREE.BoxGeometry(width * 0.95, lipH, 1.4), mats.snowDeck)
+    new THREE.Mesh(new THREE.BoxGeometry(width * 0.95, lipH, 1.4), mats.snowDeckShade)
   );
   face.position.set(0, lipH * 0.5, depth * 0.28);
   face.rotation.x = -0.55;
@@ -214,6 +215,14 @@ export function buildRamp(lip: number, width = 6.5): THREE.Group {
   deck.position.set(0, lipH * 0.72, depth * 0.12);
   deck.rotation.x = -0.32;
   g.add(deck);
+
+  // Soft carved transition lip — darker pack band at the takeoff edge.
+  const carveLip = shadow(
+    new THREE.Mesh(new THREE.BoxGeometry(width * 0.9, 0.08, 0.55), mats.snowDeckShade)
+  );
+  carveLip.position.set(0, lipH * 0.55, depth * 0.34);
+  carveLip.rotation.x = -0.62;
+  g.add(carveLip);
 
   const coping = shadow(
     new THREE.Mesh(new THREE.BoxGeometry(width * 0.98, 0.12, 0.28), mats.rail)
@@ -227,6 +236,14 @@ export function buildRamp(lip: number, width = 6.5): THREE.Group {
     );
     wall.position.set(side * (width * 0.5 + 0.05), lipH * 0.4, depth * 0.05);
     g.add(wall);
+
+    // Side snow berm — soft volume against the wood wall.
+    const berm = shadow(
+      new THREE.Mesh(new THREE.BoxGeometry(0.45, lipH * 0.35, depth * 0.55), mats.snowDeckShade)
+    );
+    berm.position.set(side * (width * 0.48), lipH * 0.22, depth * 0.02);
+    berm.rotation.z = side * -0.35;
+    g.add(berm);
   }
 
   const under = shadow(

@@ -80,58 +80,70 @@ export function buildProceduralRig(): ProceduralRig {
   const root = new THREE.Group();
   root.name = 'riderVisual';
 
+  // Topsheet sheen vs fabric suit — less plastic-flat under alpine key light.
   const boardMat = new THREE.MeshStandardMaterial({
     color: 0xff5a12,
-    metalness: 0.35,
-    roughness: 0.42,
+    metalness: 0.22,
+    roughness: 0.28,
+    envMapIntensity: 1.1,
   });
   const baseMat = new THREE.MeshStandardMaterial({
     color: 0x0a0c10,
-    metalness: 0.55,
-    roughness: 0.38,
+    metalness: 0.62,
+    roughness: 0.32,
+    envMapIntensity: 0.85,
   });
   const suitMat = new THREE.MeshStandardMaterial({
     color: 0x0a101c,
-    roughness: 0.58,
-    metalness: 0.2,
+    roughness: 0.78,
+    metalness: 0.06,
+    envMapIntensity: 0.45,
   });
   const accentMat = new THREE.MeshStandardMaterial({
     color: 0xc8ff28,
-    roughness: 0.42,
-    metalness: 0.14,
+    roughness: 0.48,
+    metalness: 0.1,
     emissive: 0x1a3300,
-    emissiveIntensity: 0.35,
+    emissiveIntensity: 0.28,
+  });
+  // Binding plates — cool contrast against vivid topsheet (ref board detail).
+  const bindingMat = new THREE.MeshStandardMaterial({
+    color: 0x6ec4e8,
+    roughness: 0.36,
+    metalness: 0.45,
+    envMapIntensity: 0.95,
   });
   const bootMat = new THREE.MeshStandardMaterial({
-    color: 0x0c1014,
-    roughness: 0.42,
-    metalness: 0.3,
+    color: 0x101418,
+    roughness: 0.55,
+    metalness: 0.18,
   });
   const lensMat = new THREE.MeshStandardMaterial({
-    color: 0x143828,
-    metalness: 0.92,
-    roughness: 0.1,
+    color: 0x0e2a22,
+    metalness: 0.95,
+    roughness: 0.06,
     transparent: true,
     opacity: 0.94,
+    envMapIntensity: 1.4,
   });
   const stripeMat = new THREE.MeshStandardMaterial({
     color: 0xff5a0a,
-    roughness: 0.4,
-    metalness: 0.22,
+    roughness: 0.52,
+    metalness: 0.12,
     emissive: 0x331100,
-    emissiveIntensity: 0.25,
+    emissiveIntensity: 0.18,
   });
   const panelMat = new THREE.MeshStandardMaterial({
     color: 0xe2ff3c,
-    roughness: 0.45,
-    metalness: 0.12,
+    roughness: 0.55,
+    metalness: 0.08,
     emissive: 0x223300,
-    emissiveIntensity: 0.4,
+    emissiveIntensity: 0.28,
   });
   const skinMat = new THREE.MeshStandardMaterial({
     color: 0xc48a62,
-    roughness: 0.72,
-    metalness: 0.05,
+    roughness: 0.78,
+    metalness: 0.02,
   });
 
   const board = new THREE.Group();
@@ -151,15 +163,31 @@ export function buildProceduralRig(): ProceduralRig {
   deckStripe.castShadow = true;
   board.add(deckStripe);
 
+  // Edge metal rails — thin contrast strips along the sidecut.
+  for (const x of [-0.13, 0.13] as const) {
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 1.35), baseMat);
+    edge.position.set(x, 0.02, 0);
+    edge.castShadow = true;
+    board.add(edge);
+  }
+
   for (const z of [-0.18, 0.16] as const) {
-    const binding = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.035, 0.24), bootMat);
-    binding.position.set(0, 0.04, z);
+    const binding = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.26), bindingMat);
+    binding.position.set(0, 0.042, z);
     binding.castShadow = true;
     board.add(binding);
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.022, 0.045), accentMat);
-    strap.position.set(0, 0.058, z);
+    const basePlate = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.012, 0.28), bootMat);
+    basePlate.position.set(0, 0.022, z);
+    basePlate.castShadow = true;
+    board.add(basePlate);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.024, 0.05), accentMat);
+    strap.position.set(0, 0.062, z);
     strap.castShadow = true;
     board.add(strap);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.04), bindingMat);
+    buckle.position.set(0.06, 0.07, z);
+    buckle.castShadow = true;
+    board.add(buckle);
   }
   root.add(board);
 
@@ -328,6 +356,7 @@ export function buildProceduralRig(): ProceduralRig {
     baseMat,
     suitMat,
     accentMat,
+    bindingMat,
     bootMat,
     lensMat,
     stripeMat,

@@ -8,6 +8,26 @@ Compare Snowline captures to:
 | Race tunnel | `refs/snowboard/images/user_ref_race_tunnel.png` | Authored race features, line paint, banners, tunnel/arch, packed trees |
 | SSX chase | `refs/snowboard/images/user_ref_ssx_chase.png` | Chase cam energy, HUD, lift/props density, trick callout, readable mountain |
 
+## Trail / snow visual language (2026-07-27 user stills)
+
+External screenshots under Cursor assets (not vendored into `refs/`):
+
+| Role | File (basename) | Bar |
+|------|-----------------|-----|
+| **TARGET trail** | `Screenshot_2026-07-27_at_12.11.04_AM-…png` | Two **dark parallel edge grooves**, brighter flattened packed center, soft feathered lips, AO in ruts, light powder at board |
+| Less preferred | `Screenshot_2026-07-27_at_12.11.20_AM-…png` | Thin arcade parallel lines only — readable but flat, no packed shelf |
+| **ANTI-PATTERN** | `Screenshot_2026-07-27_at_12.11.58_AM-…png` | Glowing white / emissive streak — never ship |
+| **TARGET hills** | `Screenshot_2026-07-27_at_12.12.30_AM-…png` | Soft snow volume + directional shadows; deep carved ruts with groove shadow; rider/board material contrast; denser spray plumes |
+
+Trail binary add-ons (any FAIL fails trail quality even if B1–B11 pass):
+
+| ID | PASS when |
+|----|-----------|
+| `T1_dual_groove` | Wake shows two darker rail grooves, not a single neon ribbon or chalk streak |
+| `T2_packed_center` | Center between grooves reads brighter/flatter packed snow |
+| `T3_no_emissive` | NormalBlending / Lambert only — zero additive glow |
+| `T4_spray_volume` | Carve/max_speed shows soft plume volume (not sparse dots) |
+
 **“Perfect” for this loop** = all binary checks **PASS** on `course_start` + `forest` + `carve` (browser arcade fidelity — match *readability/density/lighting language*, not console polycount).
 
 ## Binary checks (any FAIL = gate FAIL)
