@@ -5,10 +5,16 @@ import type { CourseModule } from '@/course/CourseModule.ts';
 import type { MaterialLibrary } from '@/render/materials/index.ts';
 import { resolveLodBudgets } from '@/engine/Lod.ts';
 
-const SUN_COLOR = 0xfff1c8;
-const SKY_HORIZON = 0x6a9ec4;
-/** World-space sun direction (from ground toward sun). Low elevation → readable contact length. */
-const SUN_DIR = new THREE.Vector3(0.62, 0.68, 0.39).normalize();
+/** Late-afternoon key — warm amber, not noon white. */
+const SUN_COLOR = 0xffc878;
+/** Cool zenith / warm horizon haze tint (scene FogExp2 + post aerial). */
+const SKY_ZENITH = 0x4a7aaa;
+const SKY_HORIZON = 0xb8a890;
+/**
+ * World-space sun direction (from ground toward sun).
+ * ~15° elevation → long striped shadows on corduroy (ref alpine groom).
+ */
+const SUN_DIR = new THREE.Vector3(0.84, 0.26, 0.47).normalize();
 
 export class RenderModule implements GameModule {
   readonly name = 'render';
@@ -18,7 +24,7 @@ export class RenderModule implements GameModule {
   #hemi!: THREE.HemisphereLight;
   #fog!: THREE.FogExp2;
   #materials: MaterialLibrary | null = null;
-  #sunFollow = 80;
+  #sunFollow = 90;
 
   constructor(order = -30) {
     this.order = order;
@@ -27,18 +33,19 @@ export class RenderModule implements GameModule {
   init(ctx: EngineContext): void {
     const { scene, settings, resources } = ctx;
 
-    scene.background = new THREE.Color().setHSL(0.58, 0.42, 0.48);
-    // Distance fog only — low alpine density, never post UV wash values.
-    scene.fog = this.#fog = new THREE.FogExp2(SKY_HORIZON, 0.00055);
+    // Mid sky fill; horizon warmth + depth separation come from FogExp2 + post aerial.
+    scene.background = new THREE.Color(SKY_ZENITH);
+    // Soft distance haze only — low alpine density, never post UV wash values.
+    scene.fog = this.#fog = new THREE.FogExp2(SKY_HORIZON, 0.00042);
 
     // Soft sky fill only — keep well under sun so shading is directional-led.
-    this.#hemi = new THREE.HemisphereLight(0x6a96b8, 0xd4dde8, 0.2);
+    this.#hemi = new THREE.HemisphereLight(0x6a8eb0, 0xe0d2c0, 0.16);
     scene.add(this.#hemi);
 
     const budgets = resolveLodBudgets(settings);
-    this.#sunFollow = Math.min(budgets.shadowDistance * 0.55, 95);
+    this.#sunFollow = Math.min(budgets.shadowDistance * 0.7, 120);
 
-    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 2.45);
+    this.#sun = new THREE.DirectionalLight(SUN_COLOR, 2.85);
     this.#sun.position.copy(SUN_DIR).multiplyScalar(this.#sunFollow);
     this.#sun.castShadow = settings.shadowsEnabled;
     this.#configureShadow(ctx);
@@ -50,7 +57,7 @@ export class RenderModule implements GameModule {
     if (env) {
       scene.environment = env;
       // Keep IBL subordinate to the key sun (avoids flat_ambient wash).
-      scene.environmentIntensity = 0.28;
+      scene.environmentIntensity = 0.22;
     }
 
     // Critic-critical: clamp post fog before first frame / course_start capture.
@@ -89,21 +96,25 @@ export class RenderModule implements GameModule {
   #configureShadow(ctx: EngineContext): void {
     const s = ctx.settings;
     const budgets = resolveLodBudgets(s);
-    this.#sunFollow = Math.min(budgets.shadowDistance * 0.55, 95);
+    // Follow distance: far enough for low-elevation sun, still inside shadow far.
+    this.#sunFollow = Math.min(budgets.shadowDistance * 0.7, 120);
 
     this.#sun.castShadow = s.shadowsEnabled;
     this.#sun.shadow.mapSize.set(s.shadowMapSize, s.shadowMapSize);
-    this.#sun.shadow.intensity = 1.35;
-    this.#sun.shadow.bias = -0.00035;
-    this.#sun.shadow.normalBias = 0.04;
-    this.#sun.shadow.radius = s.softShadows ? 2.25 : 1;
-    this.#sun.shadow.camera.near = 1;
-    // Far must exceed light→target distance + local receivers.
+    // Readable umbra on bright snow (ref: long striped tree shadows).
+    this.#sun.shadow.intensity = 1.7;
+    // Grazing late sun needs a touch more bias to avoid acne without peter-panning.
+    this.#sun.shadow.bias = -0.00045;
+    this.#sun.shadow.normalBias = 0.055;
+    this.#sun.shadow.radius = s.softShadows ? 2.75 : 1;
+    this.#sun.shadow.camera.near = 0.5;
+    // Far must exceed light→target distance + long shadow receivers.
     this.#sun.shadow.camera.far = Math.max(
       budgets.shadowDistance,
-      this.#sunFollow + budgets.shadowFrustum + 40
+      this.#sunFollow + budgets.shadowFrustum + 60
     );
-    const half = budgets.shadowFrustum;
+    // Cover rider + nearby forest belt; long casts need lateral room.
+    const half = budgets.shadowFrustum * 1.15;
     this.#sun.shadow.camera.left = -half;
     this.#sun.shadow.camera.right = half;
     this.#sun.shadow.camera.top = half;
