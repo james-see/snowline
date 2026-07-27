@@ -31,6 +31,9 @@ export const DEFAULT_TILE_SCALE: Record<PbrSetId, number> = {
   rock_scree: 3,
   ice_glass: 3.2,
   ice_frost: 2.8,
+  wood_bark: 2,
+  wood_plank: 2,
+  fabric_banner: 1.5,
 };
 
 export function configureColorMap(tex: THREE.Texture, anisotropy: number): void {

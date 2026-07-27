@@ -13,6 +13,8 @@ export function getSharedPropMaterials(library: MaterialLibrary): SharedPropMate
     rock: library.prop('rock'),
     rockScree: library.prop('rockScree'),
     wood: library.prop('wood'),
+    plank: library.prop('plank'),
+    fabric: library.prop('fabric'),
     metal: library.prop('metal'),
     ice: library.prop('ice'),
   };

@@ -121,6 +121,36 @@ const PALETTES: Record<PbrSetId, VariantPalette> = {
     iceChance: 0.01,
     corduroy: 0,
   },
+  wood_bark: {
+    base: [92, 62, 38],
+    dirt: [48, 32, 22],
+    ice: [120, 110, 100],
+    roughness: 0.9,
+    roughnessVar: 0.08,
+    dirtChance: 0.25,
+    iceChance: 0,
+    corduroy: 0,
+  },
+  wood_plank: {
+    base: [118, 78, 42],
+    dirt: [70, 48, 28],
+    ice: [140, 130, 120],
+    roughness: 0.86,
+    roughnessVar: 0.1,
+    dirtChance: 0.2,
+    iceChance: 0,
+    corduroy: 0,
+  },
+  fabric_banner: {
+    base: [168, 148, 110],
+    dirt: [110, 96, 72],
+    ice: [180, 170, 150],
+    roughness: 0.92,
+    roughnessVar: 0.06,
+    dirtChance: 0.15,
+    iceChance: 0,
+    corduroy: 0,
+  },
 };
 
 /** ~primary grooves per tile — coarse enough to read at chase distance after mips. */

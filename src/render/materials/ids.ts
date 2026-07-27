@@ -6,6 +6,9 @@ export const PBR_SET_IDS = [
   'rock_scree',
   'ice_glass',
   'ice_frost',
+  'wood_bark',
+  'wood_plank',
+  'fabric_banner',
 ] as const;
 
 export type PbrSetId = (typeof PBR_SET_IDS)[number];
@@ -17,7 +20,7 @@ export type SnowVariantId = 'powder' | 'packed' | 'ice';
 export type TerrainVariantId = SnowVariantId | 'rock';
 
 /** Shared prop materials exported for `Props.ts`. */
-export type PropMaterialId = 'rock' | 'rockScree' | 'wood' | 'metal' | 'ice';
+export type PropMaterialId = 'rock' | 'rockScree' | 'wood' | 'plank' | 'fabric' | 'metal' | 'ice';
 
 export const SNOW_VARIANT_TO_PBR: Record<SnowVariantId, PbrSetId> = {
   powder: 'snow_powder',
