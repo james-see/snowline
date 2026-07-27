@@ -24,8 +24,9 @@ export interface ManifestMaterialEntry {
 
 /** Default metres-per-repeat when manifest omits tileScale. Smaller = denser micro-detail. */
 export const DEFAULT_TILE_SCALE: Record<PbrSetId, number> = {
-  snow_powder: 3.5,
-  snow_groom: 4.5,
+  snow_powder: 3.2,
+  /** Dense enough for corduroy grooves to read at chase cam distance. */
+  snow_groom: 2.6,
   rock_face: 4,
   rock_scree: 3,
   ice_glass: 3.2,

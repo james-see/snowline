@@ -16,7 +16,12 @@ import {
   DEFAULT_TILE_SCALE,
   type PbrMaps,
 } from '@/render/materials/pbrMaps.ts';
-import { makeProceduralPbr, speckledAlbedo } from '@/render/materials/proceduralMaps.ts';
+import {
+  bakeCorduroyGroom,
+  isDrawableImageSource,
+  makeProceduralPbr,
+  speckledAlbedo,
+} from '@/render/materials/proceduralMaps.ts';
 
 export interface TerrainApplyOptions {
   /** Corridor width in metres (UV.u span). */
@@ -38,39 +43,46 @@ interface SnowTuning {
   normalScale: number;
   /** Dirt/rock speckles composited onto albedo. */
   speckle: number;
+  /** Warm sun-facing / cool shade albedo response strength. */
+  sunResponse: number;
 }
 
+/** Matches RenderModule SUN_DIR — world-space, constant elevation. */
+const ALPINE_SUN_DIR = { x: 0.62, y: 0.68, z: 0.39 };
+
 /**
- * Intentionally mid-grey alpine — not plastic white. Powder soft/matte,
- * packed corduroy with readable specular, ice darker cyan with sharp coat.
+ * Intentionally mid alpine — not plastic white. Powder cool/soft,
+ * packed warmer corduroy with readable specular, ice darker cyan.
  * Colors stay below ~0.75 luma so rider gear reads even under bright fill.
  */
 const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   powder: {
-    color: 0xa8b8c8,
+    color: 0xb0c0d2,
     roughness: 0.94,
     metalness: 0.0,
     clearcoat: 0.06,
     clearcoatRoughness: 0.72,
-    sheen: 0.72,
-    sheenColor: 0x9eb8d0,
-    sheenRoughness: 0.82,
-    envMapIntensity: 0.38,
-    normalScale: 1.65,
-    speckle: 0.22,
+    sheen: 0.78,
+    sheenColor: 0xa8c4de,
+    sheenRoughness: 0.84,
+    envMapIntensity: 0.36,
+    normalScale: 1.45,
+    speckle: 0.14,
+    sunResponse: 0.55,
   },
   packed: {
-    color: 0x8fa3b6,
-    roughness: 0.52,
+    color: 0xb2a898,
+    roughness: 0.48,
     metalness: 0.03,
-    clearcoat: 0.48,
-    clearcoatRoughness: 0.18,
-    sheen: 0.22,
-    sheenColor: 0x8cb0cc,
-    sheenRoughness: 0.38,
-    envMapIntensity: 0.95,
-    normalScale: 1.95,
-    speckle: 0.28,
+    clearcoat: 0.55,
+    clearcoatRoughness: 0.14,
+    sheen: 0.28,
+    sheenColor: 0xd4c2a0,
+    sheenRoughness: 0.34,
+    envMapIntensity: 1.05,
+    normalScale: 2.35,
+    speckle: 0.08,
+    sunResponse: 0.85,
   },
   ice: {
     color: 0x6a92ae,
@@ -84,6 +96,7 @@ const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
     envMapIntensity: 1.55,
     normalScale: 1.05,
     speckle: 0.08,
+    sunResponse: 0.35,
   },
 };
 
@@ -153,6 +166,7 @@ export class MaterialLibrary {
       flatShading: false,
     });
     this.#bindSnowMaps(mat, maps, setId, tuning);
+    this.#attachSnowSunResponse(mat, tuning.sunResponse, variant);
     mat.name = `snow-${variant}`;
     this.#snow.set(variant, mat);
     this.#owned.push(mat);
@@ -260,11 +274,13 @@ export class MaterialLibrary {
       const setId = SNOW_VARIANT_TO_PBR[v];
       const maps = this.#mapsFor(setId);
       // Tighter repeats → micro-detail + corduroy readable at chase distance.
-      const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * 0.72;
+      const tileMul = v === 'packed' ? 0.55 : 0.72;
+      const tile = (maps.tileScale || DEFAULT_TILE_SCALE[setId]) * tileMul;
       this.#bindSnowMaps(mat, maps, setId, tuning, {
         repeatU: width / tile,
         repeatV: length / tile,
       });
+      this.#attachSnowSunResponse(mat, tuning.sunResponse, v);
       mat.name = `terrain-${v}`;
       this.#owned.push(mat);
       return mat;
@@ -355,14 +371,33 @@ export class MaterialLibrary {
     tuning: SnowTuning,
     repeat?: { repeatU: number; repeatV: number }
   ): void {
-    const local = cloneMaps(maps);
-    // Speckle CC0 (image) albedos; procedural DataTextures already carry dirt/ice grain.
-    const srcImg = local.albedo.image as { width?: number } | undefined;
-    if (typeof document !== 'undefined' && srcImg && (srcImg.width ?? 0) > 0) {
+    let local = cloneMaps(maps);
+
+    if (setId === 'snow_groom' && typeof document !== 'undefined') {
+      // CC0 groom lacks corduroy — bake chase-scale grooves into albedo/normal/ORM.
+      try {
+        const baked = bakeCorduroyGroom(local, {
+          strength: 1.25,
+          seed: 77 + Math.floor(tuning.normalScale * 10),
+        });
+        if (baked) {
+          this.#ownedTextures.push(baked.albedo, baked.normal, baked.orm);
+          local = baked;
+        }
+      } catch {
+        /* headless / decode failure — keep source maps */
+      }
+    } else if (
+      typeof document !== 'undefined' &&
+      isDrawableImageSource(local.albedo.image) &&
+      tuning.speckle > 0
+    ) {
+      // Speckle CC0 image albedos only — never wipe procedural DataTextures.
       try {
         const speckled = speckledAlbedo(local.albedo, {
           amount: tuning.speckle,
           seed: setId.length * 97 + Math.floor(tuning.speckle * 100),
+          warmCool: setId === 'snow_powder' ? 1.15 : 0.85,
         });
         this.#ownedTextures.push(speckled);
         local.albedo = speckled;
@@ -370,10 +405,11 @@ export class MaterialLibrary {
         /* headless / no canvas — keep source albedo */
       }
     }
+
     applyPbrMaps(mat, local, repeat);
     mat.normalScale.set(tuning.normalScale, tuning.normalScale);
-    // Strong AO so micro-valleys read as grain, not flat fill.
-    mat.aoMapIntensity = 1.25;
+    // Strong AO so micro-valleys / corduroy troughs read, not flat fill.
+    mat.aoMapIntensity = setId === 'snow_groom' ? 1.45 : 1.25;
     mat.color.setHex(tuning.color);
     mat.roughness = tuning.roughness;
     mat.metalness = tuning.metalness;
@@ -391,13 +427,52 @@ export class MaterialLibrary {
       mat.clearcoatRoughness = Math.min(mat.clearcoatRoughness, 0.05);
     } else if (setId === 'snow_groom') {
       // Packed: preserve specular response for sun glints on corduroy.
-      mat.roughness = Math.min(mat.roughness, 0.58);
-      mat.clearcoat = Math.max(mat.clearcoat, 0.42);
+      mat.roughness = Math.min(mat.roughness, 0.52);
+      mat.clearcoat = Math.max(mat.clearcoat, 0.5);
     } else if (setId === 'snow_powder') {
       // Powder stays soft — kill accidental hard specular from ORM lows.
       mat.roughness = Math.max(mat.roughness, 0.88);
       mat.clearcoat = Math.min(mat.clearcoat, 0.1);
     }
+  }
+
+  /**
+   * Warm sun-facing / cool shade tint in world space (matches RenderModule sun).
+   * Keeps snow from reading as flat grey under directional key light.
+   */
+  #attachSnowSunResponse(
+    mat: THREE.MeshPhysicalMaterial,
+    amount: number,
+    variant: SnowVariantId
+  ): void {
+    if (amount <= 0) return;
+    const key = `snow-sun-${variant}-${amount.toFixed(2)}`;
+    mat.customProgramCacheKey = () => key;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.snowSunAmount = { value: amount };
+      shader.uniforms.snowSunDir = {
+        value: new THREE.Vector3(ALPINE_SUN_DIR.x, ALPINE_SUN_DIR.y, ALPINE_SUN_DIR.z),
+      };
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          /* glsl */ `#include <common>
+uniform float snowSunAmount;
+uniform vec3 snowSunDir;`
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          /* glsl */ `#include <normal_fragment_maps>
+{
+  vec3 worldN = inverseTransformDirection( normal, viewMatrix );
+  float sunFacing = clamp( dot( normalize( worldN ), normalize( snowSunDir ) ), 0.0, 1.0 );
+  vec3 warmTint = vec3( 1.12, 1.04, 0.90 );
+  vec3 coolTint = vec3( 0.88, 0.94, 1.10 );
+  diffuseColor.rgb *= mix( coolTint, warmTint, sunFacing * sunFacing * snowSunAmount );
+}`
+        );
+    };
+    mat.needsUpdate = true;
   }
 
   #makeFromSet(id: PbrSetId): THREE.MeshPhysicalMaterial {
