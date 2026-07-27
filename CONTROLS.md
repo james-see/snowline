@@ -27,6 +27,8 @@ Hot-plug friendly: listens for `gamepadconnected` / `gamepaddisconnected`. Every
 
 **Layouts:** Prefers W3C `mapping: "standard"` (DualSense, Xbox, Switch Pro over Bluetooth typically qualify after the first button press). Non-standard Bluetooth pads with 6 axes (LX LY LT RX RY RT) are handled via a fallback axis layout. Face buttons also honor `value` when `pressed` is sticky/false.
 
+**8BitDo Ultimate 2 (X mode):** Auto-detected when `gamepad.id` contains `8BitDo` + `Ultimate`. If the browser already reports `mapping: "standard"`, W3C Xbox indices are used. On pass-through / empty mapping (common Mac BT), Snowline applies the Xbox Bluetooth raw HID preset (Chromium `MapperXboxBluetooth` / SDL Ultimate 2): A0 · B1 · X3 · Y4 · LB6 · RB7 · LT a3|b8 · RT a4|b9 · Select10 · Start11 · sticks LX0 LY1 RX2 RY5. Settings → **Controller Remap** can override any action by press; overrides persist in `snowline.settings.v1` (`gamepadBindings`).
+
 **In-run:** `GameFlow.fixedUpdate` clears input lockout while `playing` *before* rider physics, so stick carve is not eaten by menu lockout ordering.
 
 | Action | Control |
@@ -57,4 +59,4 @@ Returns connected pad ids, mapping, axes, buttons, `awaitingGesture`, `move`, an
 
 ## Settings
 
-Landing assist, reduced motion, and **Controller Test**: live connected pads (id / mapping / index), axis meters, button grid, binding legend (LS/A/B/LT/RT/Start). Back with Esc/B only — A does not leave the panel. Same snapshot as `window.__snowline.gamepadDebug()`.
+Landing assist, reduced motion, **Controller Test** (live pads / axes / buttons), and **Controller Remap** (bind-by-press overrides, Reset to auto). Back with Esc/B only — A does not leave the panel. Same snapshot as `window.__snowline.gamepadDebug()`.

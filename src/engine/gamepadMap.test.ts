@@ -107,20 +107,42 @@ describe('gamepadMap', () => {
     assert.equal(buttonDown([fakeButton(true, 0)], 0), true);
   });
 
-  it('resolveAxisLayout uses 6-axis BT fallback', () => {
+  it('resolveAxisLayout uses Xbox BT for Ultimate 2 X empty map', () => {
     const std = resolveAxisLayout({ mapping: 'standard', axes: [0, 0, 0, 0, 0, 0], id: 'x' });
     assert.equal(std.rightX, 2);
     assert.equal(std.ltAxis, null);
 
+    const u2 = resolveAxisLayout({
+      mapping: '',
+      axes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      id: '8BitDo Ultimate 2 (Vendor: 2dc8 Product: 6012)',
+    });
+    assert.equal(u2.rightX, 2);
+    assert.equal(u2.rightY, 5);
+    assert.equal(u2.ltAxis, 3);
+    assert.equal(u2.rtAxis, 4);
+
     const bt = resolveAxisLayout({
       mapping: '',
       axes: [0, 0, 0, 0, 0, 0],
-      id: 'Wireless Controller',
+      id: 'Generic Pad',
     });
     assert.equal(bt.leftX, 0);
     assert.equal(bt.rightX, 3);
     assert.equal(bt.ltAxis, 2);
     assert.equal(bt.rtAxis, 5);
+  });
+
+  it('resolveAxisLayout uses Ultimate 2 X Xbox-BT axes on pass-through', () => {
+    const u2 = resolveAxisLayout({
+      mapping: '',
+      axes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      id: '8BitDo Ultimate 2 Wireless',
+    });
+    assert.equal(u2.rightX, 2);
+    assert.equal(u2.rightY, 5);
+    assert.equal(u2.ltAxis, 3);
+    assert.equal(u2.rtAxis, 4);
   });
 
   it('normalizeTriggerAxis maps -1..1 rests', () => {
@@ -157,9 +179,10 @@ describe('gamepadMap', () => {
   it('sampleGamepad reads 6-axis non-standard Bluetooth layout', () => {
     const buttons: GamepadButton[] = Array.from({ length: 16 }, () => fakeButton(false));
     buttons[GP.A] = fakeButton(true);
-    // LX LY LT RX RY RT — left stick right, RT pulled via axis
+    // Generic empty 6-axis: LX LY LT RX RY RT — left stick right, RT pulled via a5
     const sample = sampleGamepad(
       fakePad({
+        id: 'Generic Pad',
         mapping: '',
         axes: [0.95, 0.05, -1, 0.1, 0.2, 0.85],
         buttons,
@@ -169,6 +192,28 @@ describe('gamepadMap', () => {
     assert.ok(sample.held.has('jump'));
     assert.ok(sample.held.has('boost'));
     assert.ok(!sample.held.has('lean'));
+  });
+
+  it('sampleGamepad maps Ultimate 2 X-mode raw HID', () => {
+    const buttons: GamepadButton[] = Array.from({ length: 16 }, () => fakeButton(false));
+    buttons[0] = fakeButton(true); // A
+    buttons[3] = fakeButton(true); // X (not b2)
+    buttons[11] = fakeButton(true); // Start
+    // LX LY RX LT RT RY — stick right, RT via axis 4
+    const sample = sampleGamepad(
+      fakePad({
+        id: '8BitDo Ultimate 2 Wireless',
+        mapping: '',
+        axes: [0.95, 0, 0.1, -1, 0.9, 0.2, 0, 0, 0, 0],
+        buttons,
+      }),
+    );
+    assert.ok(sample.steer > 0.5);
+    assert.ok(sample.held.has('jump'));
+    assert.ok(sample.held.has('grabIndy'));
+    assert.ok(sample.held.has('boost'));
+    assert.ok(sample.held.has('pause'));
+    assert.ok(!sample.held.has('grabMute'));
   });
 
   it('dumpGamepads snapshots live pads', () => {

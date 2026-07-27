@@ -8,6 +8,13 @@ import type { CourseModule } from '@/course/CourseModule.ts';
 import { COSMETICS, loadSave } from '@/score/SaveData.ts';
 import { COURSE_LIST } from '@/course/CourseDefs.ts';
 import {
+  BIND_LABELS,
+  BIND_UI_ACTIONS,
+  formatPadSource,
+  type GamepadBindAction,
+  type GamepadBindingMap,
+} from '@/engine/gamepadBindings.ts';
+import {
   buttonDown,
   pickActiveGamepad,
   resolveAxisLayout,
@@ -140,9 +147,19 @@ export class UiModule implements GameModule {
 
     if (flow.screen === 'settings') {
       this.#applyMenuLockout(ctx);
-      // Back only — A/confirm must not kick out of Controller Test.
-      if (nav.back) this.#leaveSettings(flow);
+      const input = ctx.input as {
+        gamepadRebindTarget?: GamepadBindAction | null;
+        cancelGamepadRebind?: () => void;
+        getGamepadBindings?: () => GamepadBindingMap | null;
+      };
+      // While listening for a remap, Esc/B cancels listen — does not leave Settings.
+      if (nav.back) {
+        if (input.gamepadRebindTarget) input.cancelGamepadRebind?.();
+        else this.#leaveSettings(flow);
+      }
+      this.#syncPadBindings(ctx);
       this.#paintPadTest(ctx);
+      this.#paintPadRemap(ctx);
     }
 
     if (flow.screen === 'results') {
@@ -664,18 +681,24 @@ export class UiModule implements GameModule {
     }
 
     const held = dump.held.length ? dump.held.join(', ') : '—';
+    const rebind = (dump as { rebindTarget?: string | null }).rebindTarget;
+    const preset = (dump as { bindings?: { preset?: string } }).bindings?.preset;
+    const listen = rebind
+      ? `<p class="pad-gesture">Remap listening — lit b# / a# are raw indices</p>`
+      : '';
     root.innerHTML = `
       ${gesture}
+      ${listen}
       ${pads}
       <div class="pad-live">
-        <div class="pad-live-meta">move.x ${dump.move.x.toFixed(2)} · lockedOut ${dump.lockedOut ? 'yes' : 'no'} · held ${escapeHtml(held)}</div>
+        <div class="pad-live-meta">move.x ${dump.move.x.toFixed(2)} · lockedOut ${dump.lockedOut ? 'yes' : 'no'} · held ${escapeHtml(held)}${preset ? ` · preset ${escapeHtml(String(preset))}` : ''}</div>
         ${axesHtml}
         ${buttonsHtml}
       </div>
       <dl class="pad-legend">
         <div><dt>LS</dt><dd>Steer</dd></div>
-        <div><dt>A</dt><dd>Jump</dd></div>
-        <div><dt>B</dt><dd>Brake</dd></div>
+        <div><dt>A / b0</dt><dd>Jump</dd></div>
+        <div><dt>B / b1</dt><dd>Brake</dd></div>
         <div><dt>LT</dt><dd>Lean</dd></div>
         <div><dt>RT</dt><dd>Boost</dd></div>
         <div><dt>Start</dt><dd>Pause</dd></div>
@@ -737,6 +760,12 @@ export class UiModule implements GameModule {
           <p class="pad-test-blurb">Live axes and buttons — same data as <code>__snowline.gamepadDebug()</code></p>
           <div id="pad-test" class="pad-test"></div>
         </section>
+        <section class="pad-remap-panel" aria-label="Controller remap">
+          <h3>Controller Remap</h3>
+          <p class="pad-test-blurb">8BitDo Ultimate 2 X mode → Xbox standard (or Xbox BT when mapping is empty). Click an action, then press a button / pull a trigger.</p>
+          <div id="pad-remap" class="pad-remap"></div>
+          <button type="button" class="btn ghost" data-act="pad-reset">Reset to Standard</button>
+        </section>
         <button class="btn primary focused" data-focus="0" data-act="back">Back</button>
         <p class="hint">Esc / B — back · press any pad button to activate</p>
       </section>`;
@@ -778,6 +807,67 @@ export class UiModule implements GameModule {
       ctx.events.emit('settings:changed');
     });
     layer?.querySelector('[data-act="back"]')?.addEventListener('click', () => this.#leaveSettings(flow));
+    layer?.querySelector('[data-act="pad-reset"]')?.addEventListener('click', () => {
+      const input = ctx.input as {
+        resetGamepadBindings?: () => void;
+      };
+      input.resetGamepadBindings?.();
+      ctx.settings.gamepadBindings = null;
+      ctx.settings.save();
+      this.#paintPadRemap(ctx);
+    });
+  }
+
+  /** Persist Input overrides back into Settings when a rebind completes. */
+  #syncPadBindings(ctx: EngineContext): void {
+    const input = ctx.input as {
+      getGamepadBindings?: () => GamepadBindingMap | null;
+      gamepadRebindTarget?: GamepadBindAction | null;
+    };
+    if (input.gamepadRebindTarget) return;
+    const binds = input.getGamepadBindings?.() ?? null;
+    if (binds === ctx.settings.gamepadBindings) return;
+    // Only write when Input holds a custom map (rebind finished).
+    if (binds && binds.preset === 'custom') {
+      ctx.settings.gamepadBindings = binds;
+      ctx.settings.save();
+    }
+  }
+
+  #paintPadRemap(ctx: EngineContext): void {
+    const root = document.getElementById('pad-remap');
+    if (!root) return;
+    const input = ctx.input as {
+      getResolvedGamepadBindings?: () => GamepadBindingMap | null;
+      getGamepadBindings?: () => GamepadBindingMap | null;
+      beginGamepadRebind?: (a: GamepadBindAction) => void;
+      gamepadRebindTarget?: GamepadBindAction | null;
+      gamepadDebug?: () => { bindings: GamepadBindingMap | null; rebindTarget: GamepadBindAction | null };
+    };
+    const dump = input.gamepadDebug?.();
+    const map =
+      dump?.bindings ??
+      input.getResolvedGamepadBindings?.() ??
+      input.getGamepadBindings?.() ??
+      null;
+    const listening = dump?.rebindTarget ?? input.gamepadRebindTarget ?? null;
+    const preset = map?.preset ?? 'standard';
+    const rows = BIND_UI_ACTIONS.map((action) => {
+      const src = map?.actions?.[action];
+      const lit = listening === action ? ' listening' : '';
+      const label = BIND_LABELS[action];
+      return `<button type="button" class="pad-remap-row${lit}" data-rebind="${action}"><span>${label}</span><b>${formatPadSource(src)}</b></button>`;
+    }).join('');
+    root.innerHTML = `
+      <p class="pad-remap-preset">Preset: <strong>${escapeHtml(preset)}</strong>${listening ? ' · press button/axis…' : ''}</p>
+      <div class="pad-remap-list">${rows}</div>`;
+    root.querySelectorAll('[data-rebind]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const action = (el as HTMLElement).dataset.rebind as GamepadBindAction;
+        input.beginGamepadRebind?.(action);
+        this.#paintPadRemap(ctx);
+      });
+    });
   }
 
   dispose(): void {

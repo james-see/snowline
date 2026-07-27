@@ -1,9 +1,16 @@
 /**
- * Gamepad mapping helpers (W3C "standard" + common Bluetooth fallbacks).
+ * Gamepad mapping helpers (W3C "standard" + Ultimate 2 X / Xbox BT fallbacks).
  * Pure functions — safe to unit-test without DOM / navigator.
  */
 
 import type { InputAction } from '@/types/input.ts';
+import {
+  applyBindingsToHeld,
+  autoBindingMap,
+  isUltimate2Id,
+  resolveBindingsForPad,
+  type GamepadBindingMap,
+} from '@/engine/gamepadBindings.ts';
 
 /** Axial / radial stick deadzone — low enough that small carve inputs read. */
 export const GAMEPAD_DEADZONE = 0.12;
@@ -113,7 +120,6 @@ export function gamepadHasActivity(gp: Gamepad, threshold = GAMEPAD_ACTIVITY): b
   if (layout.rtAxis !== null && normalizeTriggerAxis(gp.axes[layout.rtAxis] ?? 0) > threshold) {
     return true;
   }
-  // Non-layout axes (hats, extras) — skip near-zero / sentinel rests.
   for (let i = 0; i < gp.axes.length; i++) {
     if (
       i === layout.leftX ||
@@ -144,7 +150,6 @@ export function pickActiveGamepad(
   for (const gp of pads) {
     if (!gp?.connected) continue;
     if (!gamepadHasActivity(gp)) continue;
-    // Prefer the previously active slot when several pads chatter.
     if (preferredIndex !== null && gp.index === preferredIndex) return gp;
     if (!active) active = gp;
   }
@@ -186,30 +191,30 @@ export type GamepadAxisLayout = {
   leftY: number;
   rightX: number;
   rightY: number;
-  /** Axis index for LT when triggers are analog axes (else null). */
   ltAxis: number | null;
   rtAxis: number | null;
 };
 
 /**
- * Resolve stick / trigger axes. Standard mapping uses 0–3 sticks + button
- * triggers. Many Bluetooth pads expose 6 axes: LX LY LT RX RY RT.
+ * Resolve stick / trigger axes.
+ * Ultimate 2 X-mode empty map → Chromium Xbox BT (RX=a2 RY=a5 LT=a3 RT=a4).
  */
 export function resolveAxisLayout(gp: Pick<Gamepad, 'mapping' | 'axes' | 'id'>): GamepadAxisLayout {
+  if (gp.mapping !== 'standard' && isUltimate2Id(gp.id) && gp.axes.length >= 6) {
+    return { leftX: 0, leftY: 1, rightX: 2, rightY: 5, ltAxis: 3, rtAxis: 4 };
+  }
+  // Xbox-like empty maps with hat axis present.
+  if (gp.mapping !== 'standard' && gp.axes.length >= 9) {
+    return { leftX: 0, leftY: 1, rightX: 2, rightY: 5, ltAxis: 3, rtAxis: 4 };
+  }
   const n = gp.axes.length;
   if (gp.mapping === 'standard' || n <= 4) {
     return { leftX: 0, leftY: 1, rightX: 2, rightY: 3, ltAxis: null, rtAxis: null };
   }
-  // Chrome / WebKit non-standard Xbox, DualSense, Switch Pro over BT.
   if (n >= 6) {
     return { leftX: 0, leftY: 1, rightX: 3, rightY: 4, ltAxis: 2, rtAxis: 5 };
   }
   return { leftX: 0, leftY: 1, rightX: 2, rightY: 3, ltAxis: null, rtAxis: null };
-}
-
-function axisValue(axes: readonly number[], index: number | null): number {
-  if (index === null) return 0;
-  return axes[index] ?? 0;
 }
 
 /** Normalize trigger axis that may be -1..1 (rest -1) or 0..1 (rest 0). */
@@ -218,63 +223,26 @@ export function normalizeTriggerAxis(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
-function fillFaceActions(
-  held: Set<InputAction>,
-  buttons: Gamepad['buttons'],
-  layout: GamepadAxisLayout,
-  axes: readonly number[],
-): void {
-  if (buttonDown(buttons, GP.A)) {
-    held.add('jump');
-    held.add('confirm');
-  }
-  if (buttonDown(buttons, GP.B)) held.add('brake');
-  if (buttonDown(buttons, GP.X)) held.add('grabIndy');
-  if (buttonDown(buttons, GP.Y)) held.add('grabMute');
-  if (buttonDown(buttons, GP.LB)) held.add('grabMelon');
-  if (buttonDown(buttons, GP.RB)) held.add('grabMethod');
-
-  const ltAxis = normalizeTriggerAxis(axisValue(axes, layout.ltAxis));
-  const rtAxis = normalizeTriggerAxis(axisValue(axes, layout.rtAxis));
-  if (triggerDown(buttons, GP.LT) || ltAxis > GAMEPAD_TRIGGER) held.add('lean');
-  if (triggerDown(buttons, GP.RT) || rtAxis > GAMEPAD_TRIGGER) held.add('boost');
-
-  if (buttonDown(buttons, GP.START) || buttonDown(buttons, 10)) held.add('pause');
-  if (buttonDown(buttons, GP.SELECT) || buttonDown(buttons, 11)) held.add('back');
-
-  // D-pad as buttons (standard) or alternate indices on some BT stacks.
-  if (buttonDown(buttons, GP.DPAD_L) || buttonDown(buttons, 16)) held.add('spinLeft');
-  if (buttonDown(buttons, GP.DPAD_R) || buttonDown(buttons, 17)) held.add('spinRight');
-  if (buttonDown(buttons, GP.DPAD_U) || buttonDown(buttons, 18)) held.add('flipFront');
-  if (buttonDown(buttons, GP.DPAD_D) || buttonDown(buttons, 19)) held.add('flipBack');
-
-  // Hat axis (common non-standard): axis 9 in [-1,1] octants.
-  const hat = axes[9];
-  if (hat !== undefined && Number.isFinite(hat) && Math.abs(hat) <= 1.01) {
-    // Idle hat is often 3.3 / NaN / 0 — only treat discrete notches.
-    if (hat < -0.5) held.add('spinLeft');
-    else if (hat > 0.5 && hat < 1.1) held.add('spinRight');
-    // Some stacks encode Y on the same axis via specific values; skip if ambiguous.
-  }
-}
-
 /**
- * Map a gamepad into Snowline actions.
- * Stick steer, A jump, B brake, LT lean, RT boost, Start pause;
- * D-pad spin/flip; face/shoulder grabs.
+ * Map a gamepad into Snowline actions via auto-preset + optional custom binds.
  */
-export function sampleStandardGamepad(gp: Gamepad): GamepadSample {
-  return sampleGamepad(gp);
+export function sampleStandardGamepad(
+  gp: Gamepad,
+  bindings?: GamepadBindingMap | null,
+): GamepadSample {
+  return sampleGamepad(gp, bindings);
 }
 
-/** Prefer standard indices; fall back to common Bluetooth axis layouts. */
-export function sampleGamepad(gp: Gamepad): GamepadSample {
-  const layout = resolveAxisLayout(gp);
-  const left = radialDeadzone(gp.axes[layout.leftX] ?? 0, gp.axes[layout.leftY] ?? 0);
-  const right = radialDeadzone(gp.axes[layout.rightX] ?? 0, gp.axes[layout.rightY] ?? 0);
+export function sampleGamepad(
+  gp: Gamepad,
+  bindings?: GamepadBindingMap | null,
+): GamepadSample {
+  const map = resolveBindingsForPad(gp, bindings ?? undefined);
+  const left = radialDeadzone(gp.axes[map.steerAxis] ?? 0, gp.axes[map.steerYAxis] ?? 0);
+  const right = radialDeadzone(gp.axes[map.lookXAxis] ?? 0, gp.axes[map.lookYAxis] ?? 0);
   const held = new Set<InputAction>();
 
-  fillFaceActions(held, gp.buttons, layout, gp.axes);
+  applyBindingsToHeld(held, map, gp.buttons, gp.axes);
 
   if (left.x <= -GAMEPAD_STEER_DIGITAL) held.add('steerLeft');
   if (left.x >= GAMEPAD_STEER_DIGITAL) held.add('steerRight');
@@ -326,3 +294,6 @@ export function dumpGamepads(pads: Array<Gamepad | null>): GamepadDebugDump {
     pads: live,
   };
 }
+
+// Re-export for callers that only import gamepadMap.
+export { autoBindingMap, isUltimate2Id };

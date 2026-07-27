@@ -1,4 +1,8 @@
 import type { AntialiasMode, QualityPreset, QualitySettings } from '@/types/settings.ts';
+import {
+  sanitizeBindingMap,
+  type GamepadBindingMap,
+} from '@/engine/gamepadBindings.ts';
 
 const STORAGE_KEY = 'snowline.settings.v1';
 
@@ -16,6 +20,7 @@ type PresetFields = Omit<
   | 'sfxVolume'
   | 'musicVolume'
   | 'showPerfHud'
+  | 'gamepadBindings'
 >;
 
 const PRESETS: Record<QualityPreset, PresetFields> = {
@@ -139,6 +144,7 @@ export class Settings implements QualitySettings {
   sfxVolume = 1;
   musicVolume = 0.55;
   showPerfHud = false;
+  gamepadBindings: GamepadBindingMap | null = null;
 
   applyPreset(preset: QualityPreset): void {
     this.preset = preset;
@@ -157,11 +163,20 @@ export class Settings implements QualitySettings {
         this.applyPreset('high');
         return;
       }
-      const data = JSON.parse(raw) as Partial<QualitySettings> & { preset?: QualityPreset };
+      const data = JSON.parse(raw) as Partial<QualitySettings> & {
+        preset?: QualityPreset;
+        gamepadBindings?: unknown;
+      };
       if (data.preset) this.applyPreset(data.preset);
-      Object.assign(this, data);
+      const { gamepadBindings: rawBinds, ...rest } = data;
+      Object.assign(this, rest);
+      this.gamepadBindings =
+        rawBinds === null || rawBinds === undefined
+          ? null
+          : sanitizeBindingMap(rawBinds);
     } catch {
       this.applyPreset('high');
+      this.gamepadBindings = null;
     }
   }
 }
