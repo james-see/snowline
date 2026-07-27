@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 /**
- * Vertical sky ramp for scene.background — zenith → warm horizon haze.
- * Avoids flat solid sky fill (critic B11 / flat_ambient mood).
+ * Vertical sky ramp for scene.background — deep navy zenith → cool horizon.
+ * Avoids flat solid fill and milk-white horizon wash (critic B11).
  */
 export function makeSkyGradientTexture(
   zenith: THREE.ColorRepresentation,
@@ -15,7 +15,8 @@ export function makeSkyGradientTexture(
   for (let i = 0; i < size; i++) {
     // v=0 bottom (horizon), v=1 top (zenith) — Three backgrounds sample with flipY.
     const t = i / (size - 1);
-    const e = t * t; // bias toward horizon band
+    // Softer horizon bias so mid sky stays navy (peaks read against cool mass).
+    const e = Math.pow(t, 1.35);
     const r = z.r * e + h.r * (1 - e);
     const g = z.g * e + h.g * (1 - e);
     const b = z.b * e + h.b * (1 - e);
