@@ -102,27 +102,27 @@ function scatterForestBelt(
   const slots = Math.max(0, target - existing);
   if (slots === 0) return [];
 
-  // Continuous multi-row timberline — not a single lip of spaced cones.
+  // Near-solid canopy wall on both corridor lips — visual continuity over skyline spray.
   // Keep corridor clear (tests: minDist >= raceHalf * 0.85).
   const inner =
     courseId === 'timberline'
-      ? raceHalf + 0.35
+      ? raceHalf + 0.3
       : courseId === 'summit'
-        ? raceHalf + 3.2
-        : raceHalf + 0.45;
-  // Deeper rows so canopies stack into a belt in chase midfield (not a lip dotted line).
+        ? raceHalf + 3.0
+        : raceHalf + 0.4;
+  // Shallow multi-row depth: mass stays in chase FOV, not amphitheater loners.
   const beltDepth =
     courseId === 'summit'
-      ? Math.min(apron * 0.22, 26)
+      ? Math.min(apron * 0.18, 22)
       : courseId === 'timberline'
-        ? Math.min(apron * 0.26, 30)
-        : Math.min(apron * 0.22, 30);
+        ? Math.min(apron * 0.2, 22)
+        : Math.min(apron * 0.18, 24);
   const outer = inner + beltDepth;
-  // Fewer rows than a spray → tighter along-path pitch for continuous canopy.
-  const rows = courseId === 'summit' ? 3 : courseId === 'timberline' ? 4 : 4;
-  // Short front gallery: forest + carve / course_start own the budget (capture warmups stay near start).
-  const denseEnd = courseId === 'summit' ? 0.5 : 0.36;
-  const denseFrac = courseId === 'summit' ? 0.62 : 0.94;
+  // Few deep rows → short along-path pitch (solid timberline, not dotted cones).
+  const rows = courseId === 'summit' ? 2 : 3;
+  // Chase gallery owns nearly the whole budget (forest / carve / course_start).
+  const denseEnd = courseId === 'summit' ? 0.48 : 0.2;
+  const denseFrac = courseId === 'summit' ? 0.55 : 0.97;
   const denseSlots = Math.floor(slots * denseFrac);
   const out: PropPlacement[] = [];
 
@@ -130,55 +130,58 @@ function scatterForestBelt(
     const inDense = i < denseSlots;
     const local = inDense ? i : i - denseSlots;
     const localCount = inDense ? denseSlots : Math.max(1, slots - denseSlots);
-    const t0 = inDense ? 0.015 : denseEnd;
+    // Sparse tail starts past chase frames so it cannot open gallery gaps.
+    const t0 = inDense ? 0.012 : Math.max(denseEnd + 0.12, 0.32);
     const t1 = inDense ? denseEnd : 0.97;
 
-    // Grid pack: side × cell along path × lip-weighted row → continuous belt.
-    const lane = Math.floor(local / 2); // index within one flank
     const side = local % 2 === 0 ? -1 : 1;
-    const cellsAlong = Math.max(1, Math.ceil(localCount / (2 * rows)));
-    const cell = lane % cellsAlong;
-    // Lip-weighted rows (still multi-row depth) — mass in chase FOV, not skyline.
-    const rowU = (lane * 0.6180339887) % 1;
-    const row = Math.min(rows - 1, Math.floor(Math.pow(rowU, 1.35) * rows));
-    // Hex-ish stagger: odd rows shift half a cell so canopies interlock.
+    const idx = Math.floor(local / 2);
+    const perSide = Math.max(1, Math.ceil(localCount / 2));
+    const cellsAlong = Math.max(1, Math.ceil(perSide / rows));
+    // Even row fill (not power-biased) so every cell gets a lip + understory stack.
+    const cell = idx % cellsAlong;
+    const row = Math.floor(idx / cellsAlong) % rows;
+    // Hex stagger locks canopies; tiny jitter only — gaps read as FAIL.
     const stagger = (row % 2) * 0.5;
-    const cellJitter = (rng.next() - 0.5) * 0.18;
-    const t =
-      t0 + ((cell + 0.5 + stagger + cellJitter) / cellsAlong) * (t1 - t0);
-    const tt = THREE.MathUtils.clamp(t, 0.012, 0.985);
+    const cellJitter = (rng.next() - 0.5) * (inDense ? 0.08 : 0.2);
+    const t = t0 + ((cell + 0.5 + stagger + cellJitter) / cellsAlong) * (t1 - t0);
+    const tt = THREE.MathUtils.clamp(t, 0.01, 0.985);
 
-    // Even row fill inside the shallow-deep belt for continuous canopy mass.
-    const rowJitter = rng.range(0.15, 0.85);
+    // Tight row bands hugging the race lip for a continuous midfield wall.
+    const rowJitter = rng.range(0.2, 0.75);
     const latNorm = (row + rowJitter) / rows;
-    const lateral = side * (inner + latNorm * Math.max(3, outer - inner));
+    const lateral = side * (inner + latNorm * Math.max(2.5, outer - inner));
 
     path.sample(tt, _center);
     path.right(tt, _right);
     _right.y = 0;
     if (_right.lengthSq() < 1e-8) _right.set(1, 0, 0);
     else _right.normalize();
-    // Micro lateral nudge so trunks don't grid-lock; keep canopy overlap.
-    const nudge = (rng.next() - 0.5) * (courseId === 'timberline' ? 1.1 : 1.4);
+    // Micro nudge only — keep trunks from perfect grid without opening snow gaps.
+    const nudge = (rng.next() - 0.5) * (courseId === 'timberline' ? 0.55 : 0.7);
     const x = _center.x + _right.x * (lateral + nudge);
     const z = _center.z + _right.z * (lateral + nudge);
     const y = _center.y; // snapPropsToTerrain raycasts to bed
 
-    // Near rows loom large so canopies overlap; back rows understory for depth.
-    const nearLip = row <= 1 || Math.abs(lateral) < raceHalf + 10;
-    const scale = nearLip
-      ? 1.2 + rng.range(0, 1.15) // 1.2–2.35 continuous midfield wall
-      : 0.65 + rng.range(0, 0.85); // 0.65–1.5 understory
-    const far = Math.abs(lateral) > raceHalf + 18;
+    // Overlapping Kenney scales: lip trees loom; rear row still large enough to seal gaps.
+    const lip = row === 0;
+    const mid = row === 1;
+    const scale = lip
+      ? 2.4 + rng.range(0, 1.4) // 2.4–3.8 solid wall
+      : mid
+        ? 1.8 + rng.range(0, 1.1) // 1.8–2.9
+        : 1.3 + rng.range(0, 0.9); // 1.3–2.2 understory seal
+    const far = Math.abs(lateral) > raceHalf + 16;
 
     out.push({
       id: `belt-tree-${courseId}-${i}`,
       kind: 'tree',
       position: [x, y, z],
       rotationY: rng.range(0, Math.PI * 2),
+      // Mix Kenney variants for silhouette variety without thinning count.
       variant: rng.int(0, 3),
       scale,
-      recovery: far || courseId === 'alpine' || nearLip,
+      recovery: far || courseId === 'alpine' || lip || mid,
     });
   }
 
