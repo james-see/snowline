@@ -48,7 +48,7 @@ interface SnowTuning {
 }
 
 /** Matches RenderModule SUN_DIR — world-space, constant elevation. */
-const ALPINE_SUN_DIR = { x: 0.62, y: 0.68, z: 0.39 };
+const ALPINE_SUN_DIR = { x: 0.82, y: 0.34, z: 0.46 };
 
 /**
  * Intentionally mid alpine — not plastic white. Powder cool/soft,

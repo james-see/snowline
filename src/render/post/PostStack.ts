@@ -35,67 +35,97 @@ float sampleViewZ(const in vec2 uv) {
   return perspectiveDepthToViewZ(d, cameraNear, cameraFar);
 }
 
-// Screen-space contact shadows: march toward the sun in view/UV space.
-float contactShadow(const in vec2 uv, const in float depth) {
+// Screen-space directional cast shadows: march toward the sun looking for occluders.
+// Long steps sell chase-scale tree/rider stripes when ortho maps thin out at range.
+float castShadow(const in vec2 uv, const in float depth) {
   if (contactStrength < 0.001 || depth >= 0.9999) return 1.0;
 
   float viewZ = perspectiveDepthToViewZ(depth, cameraNear, cameraFar);
-  // Sun dir in view space points toward the sun; march that way from the surface.
-  vec3 dir = normalize(sunDirView);
-  if (dir.z > -0.05) dir.z = -0.05; // bias slightly toward camera-facing occluders
+  // Skip sky / extremely far samples.
+  if (-viewZ > 420.0) return 1.0;
 
-  // Longer steps for late-afternoon grazing sun / rider+trunk puddles.
-  float stepWorld = 0.16;
+  vec3 dir = normalize(sunDirView);
+  // Keep a slight camera-facing bias so grazing sun still finds rider/trunk occluders.
+  if (dir.z > -0.02) dir.z = -0.02;
+
   float occ = 0.0;
   vec2 invRes = 1.0 / resolution;
 
-  for (int i = 1; i <= 12; i++) {
+  // Phase A — long cast (≈18 m): readable striped umbra on groom.
+  float stepLong = 0.42;
+  for (int i = 1; i <= 40; i++) {
     float t = float(i);
-    float wz = viewZ + dir.z * stepWorld * t;
-    // Approximate UV step from view-space XY travel scaled by depth.
-    float scale = stepWorld * t / max(abs(viewZ), 0.5);
-    vec2 suv = uv + dir.xy * scale * 0.62;
+    float wz = viewZ + dir.z * stepLong * t;
+    float scale = stepLong * t / max(abs(viewZ), 0.5);
+    vec2 suv = uv + dir.xy * scale * 0.72;
     if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) break;
 
     float sampleDepth = texture2D(tDepth, suv).x;
     if (sampleDepth >= 0.9999) continue;
     float sz = perspectiveDepthToViewZ(sampleDepth, cameraNear, cameraFar);
 
-    // Occluder closer to camera than the ray sample → contact hit.
-    float thickness = 0.7;
-    if (sz > wz - 0.02 && sz < wz + thickness) {
-      float w = 1.0 - t / 12.0;
-      occ += w * w;
-    }
-
-    // Micro-AO from local depth discontinuities (puddles under feet/trunks).
-    vec2 nUv = uv + invRes * vec2(float(i) * 0.7, float(i) * -0.35);
-    float nz = sampleViewZ(nUv);
-    float diff = nz - viewZ;
-    if (diff > 0.04 && diff < 1.4) {
-      occ += 0.14 * (1.0 - diff / 1.4);
+    float thickness = 1.15 + t * 0.02;
+    if (sz > wz - 0.04 && sz < wz + thickness) {
+      float w = 1.0 - t / 40.0;
+      occ += w * w * 1.15;
     }
   }
 
-  occ = clamp(occ * 0.48, 0.0, 1.0);
-  return mix(1.0, 1.0 - occ, contactStrength);
+  // Phase B — tight contact puddles under feet / trunks.
+  float stepShort = 0.12;
+  for (int i = 1; i <= 10; i++) {
+    float t = float(i);
+    float wz = viewZ + dir.z * stepShort * t;
+    float scale = stepShort * t / max(abs(viewZ), 0.5);
+    vec2 suv = uv + dir.xy * scale * 0.55;
+    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) break;
+
+    float sampleDepth = texture2D(tDepth, suv).x;
+    if (sampleDepth >= 0.9999) continue;
+    float sz = perspectiveDepthToViewZ(sampleDepth, cameraNear, cameraFar);
+
+    if (sz > wz - 0.02 && sz < wz + 0.55) {
+      float w = 1.0 - t / 10.0;
+      occ += w * w * 0.85;
+    }
+
+    vec2 nUv = uv + invRes * vec2(float(i) * 0.7, float(i) * -0.35);
+    float nz = sampleViewZ(nUv);
+    float diff = nz - viewZ;
+    if (diff > 0.035 && diff < 1.2) {
+      occ += 0.16 * (1.0 - diff / 1.2);
+    }
+  }
+
+  occ = clamp(occ * 0.38, 0.0, 1.0);
+  // Keep a deep umbra so casts read on dark corduroy, not just bright powder.
+  return mix(1.0, 1.0 - occ * 0.92, contactStrength);
 }
 
-// Depth aerial haze + soft horizon grade — NOT UV fogDensity wash.
+// Depth aerial haze + horizon grade — NOT UV fogDensity wash.
 vec3 applyAerial(const in vec3 col, const in float depth) {
   if (aerialStrength < 0.001) return col;
 
   float viewZ = perspectiveDepthToViewZ(depth, cameraNear, cameraFar);
   float dist = max(-viewZ, 0.0);
-  // Soft exponential — near stays crisp, far peaks separate.
-  float haze = 1.0 - exp(-dist * 0.00115);
-  haze = clamp(haze, 0.0, 0.42) * aerialStrength;
 
-  // Mild sky gradient toward horizon (screen Y), independent of fogDensity.
-  float horizon = smoothstep(0.62, 0.08, vUv.y) * 0.14 * aerialStrength;
+  // Near stays crisp; mid/far peaks wash into warm haze (alpine ref).
+  float haze = 1.0 - exp(-dist * 0.00155);
+  haze = clamp(haze, 0.0, 0.72) * aerialStrength;
+
+  // Sky / far depth: push harder so flat zenith fill does not win.
+  float skyBoost = smoothstep(0.96, 0.9995, depth) * 0.35 * aerialStrength;
+
+  // Horizon band in screen space (independent of fogDensity white-out).
+  float horizon = smoothstep(0.72, 0.05, vUv.y) * 0.28 * aerialStrength;
 
   vec3 tint = fogColor;
-  return mix(col, tint, clamp(haze * 0.62 + horizon, 0.0, 0.5));
+  // Cool lift in distant haze so peaks separate from muddy near strip.
+  vec3 cool = mix(tint, vec3(0.72, 0.80, 0.92), 0.35);
+  vec3 grade = mix(tint, cool, clamp(haze * 0.55, 0.0, 1.0));
+
+  float amt = clamp(haze * 0.78 + horizon + skyBoost, 0.0, 0.78);
+  return mix(col, grade, amt);
 }
 
 vec3 agxTonemap(vec3 x) {
@@ -112,7 +142,7 @@ void main() {
   vec3 col = texture2D(tDiffuse, vUv).rgb * exposure;
 
   float depth = texture2D(tDepth, vUv).x;
-  float shadow = contactShadow(vUv, depth);
+  float shadow = castShadow(vUv, depth);
   col *= shadow;
 
   col = applyAerial(col, depth);
@@ -178,11 +208,11 @@ export class PostStack {
         exposure: { value: 0.9 },
         bloomStrength: { value: 0.1 },
         contactStrength: { value: 0 },
-        aerialStrength: { value: 0.85 },
-        cameraNear: { value: 0.2 },
-        cameraFar: { value: 4000 },
-        sunDirView: { value: new THREE.Vector3(0.84, 0.26, 0.47) },
-        fogColor: { value: new THREE.Color(0xb8a890) },
+        aerialStrength: { value: 1 },
+        cameraNear: { value: 0.45 },
+        cameraFar: { value: 8000 },
+        sunDirView: { value: new THREE.Vector3(0.82, 0.34, 0.46) },
+        fogColor: { value: new THREE.Color(0xc5b8a8) },
         resolution: { value: this.#resolution },
       },
     });
@@ -225,8 +255,8 @@ export class PostStack {
 
     const depthTex = extras.depth ?? this.#dummyDepth;
     const cam = extras.camera;
-    const near = cam && 'near' in cam ? cam.near : 0.2;
-    const far = cam && 'far' in cam ? cam.far : 4000;
+    const near = cam && 'near' in cam ? cam.near : 0.45;
+    const far = cam && 'far' in cam ? cam.far : 8000;
 
     let bloomTex = hdrColor;
     if (settings.bloomEnabled) {
@@ -255,17 +285,17 @@ export class PostStack {
     if (extras.sunDirView) {
       (this.#tonemapMat.uniforms.sunDirView!.value as THREE.Vector3).copy(extras.sunDirView);
     }
-    // Contact shadows whenever directional shadows or SSAO quality flag is on.
+    // Always-on long SS casts when shadows or SSAO quality flag is set.
     this.#tonemapMat.uniforms.contactStrength!.value =
-      settings.shadowsEnabled || settings.ssaoEnabled ? 0.95 : 0;
-    // Soft aerial / sky grade — depth-driven, fogDensity stays 0.
-    this.#tonemapMat.uniforms.aerialStrength!.value = 0.88;
+      settings.shadowsEnabled || settings.ssaoEnabled ? 1 : 0;
+    // Strong aerial — depth-driven, fogDensity stays 0 (white-out guard).
+    this.#tonemapMat.uniforms.aerialStrength!.value = 1.05;
     // Cap bloom so quality presets cannot re-whitewash alpine snow.
     this.#tonemapMat.uniforms.bloomStrength!.value = settings.bloomEnabled
-      ? Math.min(settings.bloomIntensity, 0.4) * 0.22
+      ? Math.min(settings.bloomIntensity, 0.4) * 0.18
       : 0;
-    this.#tonemapMat.uniforms.exposure!.value = 0.88;
-    this.#tonemapMat.uniforms.vignette!.value = settings.vignetteEnabled ? 0.22 : 0;
+    this.#tonemapMat.uniforms.exposure!.value = 0.92;
+    this.#tonemapMat.uniforms.vignette!.value = settings.vignetteEnabled ? 0.2 : 0;
 
     this.quad.material = this.#tonemapMat;
 

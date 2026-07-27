@@ -9,10 +9,10 @@ export class RenderPipelineImpl implements RenderPipeline {
   #hdrTarget: THREE.WebGLRenderTarget;
   #width = 1;
   #height = 1;
-  #fogColor = new THREE.Color(0xb8a890);
+  #fogColor = new THREE.Color(0xc5b8a8);
   // Post-stack grade density (not scene FogExp2). Zero = no UV fog wash.
   #fogDensity = 0;
-  #sunDirWorld = new THREE.Vector3(0.84, 0.26, 0.47).normalize();
+  #sunDirWorld = new THREE.Vector3(0.82, 0.34, 0.46).normalize();
   #sunDirView = new THREE.Vector3();
   #viewMatrix = new THREE.Matrix4();
 
