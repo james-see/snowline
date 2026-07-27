@@ -56,7 +56,7 @@ const ALPINE_SUN_DIR = { x: 0.86, y: 0.24, z: 0.45 };
  */
 const SNOW_TUNING: Record<SnowVariantId, SnowTuning> = {
   powder: {
-    // Cool alpine powder — SSS wrap + POM micro-depth, not grey fill.
+    // Cool alpine powder — SSS wrap + soft normals, not grey fill.
     color: 0xc0cedc,
     roughness: 0.88,
     metalness: 0.0,
@@ -511,9 +511,13 @@ export class MaterialLibrary {
 
   /**
    * Volumetric snow response (forward MeshPhysical — not a deferred G-buffer):
-   * steep parallax / POM UV offset, wrap SSS (cool shade / warm lit edge),
-   * view-dependent crystal sparkle, board contact AO, horizon detail LOD.
+   * wrap SSS (cool shade / warm lit edge), view-dependent crystal sparkle,
+   * board contact AO, horizon detail LOD.
    * Optional pathSeam: blend groom↔powder via pathBlend + world-space seam noise.
+   *
+   * Note: do NOT mutate fragment varyings (vMapUv etc.) — illegal in GLSL and
+   * kills the whole snow program (flat untextured fallback). Volume stays in
+   * normals / lighting, not POM UV offsets.
    */
   #attachSnowSunResponse(
     mat: THREE.MeshPhysicalMaterial,
@@ -525,16 +529,13 @@ export class MaterialLibrary {
     const pathSeam = seam?.pathSeam === true;
     const powder = new THREE.Color(seam?.powderColor ?? SNOW_TUNING.powder.color);
     const powderRough = seam?.powderRoughness ?? SNOW_TUNING.powder.roughness;
-    /** Powder gets deeper POM; packed stays shallow corduroy parallax. */
-    const pomDepth = variant === 'powder' ? 0.085 : variant === 'packed' ? 0.028 : 0.012;
-    const key = `snow-vol-${variant}-${amount.toFixed(2)}-p${pomDepth.toFixed(3)}${pathSeam ? '-seam' : ''}`;
+    const key = `snow-vol-${variant}-${amount.toFixed(2)}${pathSeam ? '-seam' : ''}`;
     mat.customProgramCacheKey = () => key;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.snowSunAmount = { value: amount };
       shader.uniforms.snowSunDir = {
         value: new THREE.Vector3(ALPINE_SUN_DIR.x, ALPINE_SUN_DIR.y, ALPINE_SUN_DIR.z),
       };
-      shader.uniforms.snowPomDepth = { value: pomDepth };
       const boardU = { value: this.#boardContact.clone() };
       shader.uniforms.snowBoardPos = boardU;
       this.#boardContactUniforms.push(boardU);
@@ -568,7 +569,6 @@ vSnowWorldPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`
         ? /* glsl */ `#include <common>
 uniform float snowSunAmount;
 uniform vec3 snowSunDir;
-uniform float snowPomDepth;
 uniform vec3 snowBoardPos;
 uniform vec3 snowPowderColor;
 uniform float snowPowderRough;
@@ -586,28 +586,10 @@ float snowSeamNoise( vec2 p ) {
   float c = snowSeamHash( i + vec2( 0.0, 1.0 ) );
   float d = snowSeamHash( i + vec2( 1.0, 1.0 ) );
   return mix( mix( a, b, f.x ), mix( c, d, f.x ), f.y );
-}
-float snowHeight( vec2 wp, float powderW ) {
-  // Corduroy ridges (shallow) + powder wind ripples (deeper) — material, not terrain.
-  float cord = sin( wp.x * 2.2 + wp.y * 0.35 ) * 0.5 + 0.5;
-  cord = mix( cord, sin( wp.x * 4.1 - wp.y * 0.2 ) * 0.5 + 0.5, 0.35 );
-  float powder =
-    snowSeamNoise( wp * 0.55 ) * 0.55 +
-    snowSeamNoise( wp * 1.35 + 9.0 ) * 0.3 +
-    snowSeamNoise( wp * 3.2 + 3.0 ) * 0.15;
-  float h = mix( cord * 0.55 + 0.22, powder, powderW );
-#ifdef USE_AOMAP
-  // Prefer packed height in ORM.a from corduroy bake (JPEG CC0 → a≈1, ignored).
-  float hMap = texture2D( aoMap, vMapUv ).a;
-  float mapW = smoothstep( 0.98, 0.88, hMap ) * step( 0.04, hMap );
-  h = mix( h, hMap, mapW * 0.75 );
-#endif
-  return h;
 }`
         : /* glsl */ `#include <common>
 uniform float snowSunAmount;
 uniform vec3 snowSunDir;
-uniform float snowPomDepth;
 uniform vec3 snowBoardPos;
 varying vec3 vSnowWorldPos;
 float snowSeamHash( vec2 p ) {
@@ -622,57 +604,7 @@ float snowSeamNoise( vec2 p ) {
   float c = snowSeamHash( i + vec2( 0.0, 1.0 ) );
   float d = snowSeamHash( i + vec2( 1.0, 1.0 ) );
   return mix( mix( a, b, f.x ), mix( c, d, f.x ), f.y );
-}
-float snowHeight( vec2 wp, float powderW ) {
-  float cord = sin( wp.x * 2.2 + wp.y * 0.35 ) * 0.5 + 0.5;
-  float powder =
-    snowSeamNoise( wp * 0.55 ) * 0.55 +
-    snowSeamNoise( wp * 1.35 + 9.0 ) * 0.45;
-  float h = mix( cord * 0.5 + 0.25, powder, powderW );
-#ifdef USE_AOMAP
-  float hMap = texture2D( aoMap, vMapUv ).a;
-  float mapW = smoothstep( 0.98, 0.88, hMap ) * step( 0.04, hMap );
-  h = mix( h, hMap, mapW * 0.75 );
-#endif
-  return h;
 }`;
-
-      // Steep parallax / POM — offset map UVs before sampling (sand/snow micro-volume).
-      const pomInject = /* glsl */ `
-#ifdef USE_MAP
-{
-  float viewDistPom = length( vViewPosition );
-  float pomFade = 1.0 - smoothstep( 28.0, 110.0, viewDistPom );
-  if ( pomFade > 0.01 && snowPomDepth > 1e-5 ) {
-    vec3 viewW = normalize( cameraPosition - vSnowWorldPos );
-    float powderWPom = ${pathSeam ? '1.0 - clamp( vPathBlend, 0.0, 1.0 )' : variant === 'powder' ? '1.0' : '0.15'};
-    float depthScale = snowPomDepth * mix( 0.55, 1.35, powderWPom ) * pomFade;
-    vec2 pomDir = viewW.xz / max( abs( viewW.y ), 0.18 );
-    vec2 wp0 = vSnowWorldPos.xz;
-    float h0 = snowHeight( wp0, powderWPom );
-    // 5-step steep parallax (cheap POM) — micro-depth only.
-    vec2 offset = pomDir * ( h0 - 0.5 ) * depthScale;
-    for ( int i = 0; i < 4; i++ ) {
-      float hi = snowHeight( wp0 - offset * 18.0, powderWPom );
-      offset = pomDir * ( hi - 0.5 ) * depthScale;
-    }
-    vMapUv += offset * 0.55;
-  #ifdef USE_NORMALMAP
-    vNormalMapUv += offset * 0.55;
-  #endif
-  #ifdef USE_AOMAP
-    vAoMapUv += offset * 0.55;
-  #endif
-  #ifdef USE_ROUGHNESSMAP
-    vRoughnessMapUv += offset * 0.55;
-  #endif
-  #ifdef USE_METALNESSMAP
-    vMetalnessMapUv += offset * 0.55;
-  #endif
-  }
-}
-#endif
-`;
 
       const seamBody = pathSeam
         ? /* glsl */ `
@@ -683,44 +615,44 @@ float snowHeight( vec2 wp, float powderW ) {
   float packedW = clamp( vPathBlend + ( seamN - 0.5 ) * 0.28, 0.0, 1.0 );
   packedW = smoothstep( 0.12, 0.88, packedW );
   float powderFade = 1.0 - packedW;
-  // Soften mapped detail off-path; groom keeps corduroy normals.
-  normal = normalize( mix( normal, snowGeoNormal, powderFade * 0.55 ) );
-  // Powder-only micro-relief normals (never path-scale mounds on the race line).
+  normal = normalize( mix( normal, snowGeoNormal, powderFade * 0.72 ) );
+  // Soft world-space relief normals — volume without path-scale geo moguls.
   vec2 wp = vSnowWorldPos.xz;
-  float powderN = ( snowSeamNoise( wp * 0.9 + 7.0 ) - 0.5 ) * 0.42;
-  float powderN2 = ( snowSeamNoise( wp * 2.1 + 2.0 ) - 0.5 ) * 0.22;
-  vec3 powderRelief = normalize( vec3( powderN, 1.0, powderN2 ) );
-  vec3 powderReliefV = normalize( mat3( viewMatrix ) * powderRelief );
-  normal = normalize( mix( normal, normalize( normal + powderReliefV * 0.45 ), powderFade * 0.55 ) );
+  float cordN = sin( wp.x * 1.35 + wp.y * 0.28 ) * 0.22 + sin( wp.x * 2.8 - wp.y * 0.15 ) * 0.1;
+  float bumpN = ( snowSeamNoise( wp * 0.4 ) - 0.5 ) * 0.38;
+  float powderN = ( snowSeamNoise( wp * 0.85 + 7.0 ) - 0.5 ) * 0.48;
+  vec3 reliefN = normalize( vec3(
+    cordN * packedW + powderN * powderFade * 0.7,
+    1.0 + bumpN * 0.45,
+    cordN * 0.28 * packedW + powderN * powderFade * 0.32
+  ) );
+  vec3 reliefView = normalize( mat3( viewMatrix ) * reliefN );
+  normal = normalize( mix( normal, normalize( normal + reliefView * 0.38 ), 0.48 ) );
   vec3 powderRgb = snowPowderColor;
   diffuseColor.rgb = mix( diffuseColor.rgb, powderRgb, powderFade * 0.82 );
   float flatPow = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
-  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatPow ), powderFade * 0.1 );
+  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatPow ), powderFade * 0.12 );
   roughnessFactor = mix( roughnessFactor, snowPowderRough, powderFade * 0.9 );
-  // Shallow corduroy sheen on ridges only — troughs stay soft (no emissive).
-  float cordRidge = 0.5 + 0.5 * sin( wp.x * 2.2 + wp.y * 0.35 );
-  roughnessFactor = mix( roughnessFactor, max( 0.28, roughnessFactor - 0.05 ), packedW * cordRidge * 0.22 );
+  roughnessFactor = mix( roughnessFactor, max( 0.24, roughnessFactor - 0.06 ), packedW * 0.28 );
 `
         : variant === 'powder'
           ? /* glsl */ `
   float packedW = 0.0;
   float powderFade = 1.0;
   vec2 wp = vSnowWorldPos.xz;
-  float powderN = ( snowSeamNoise( wp * 0.9 + 7.0 ) - 0.5 ) * 0.4;
+  float powderN = ( snowSeamNoise( wp * 0.85 + 7.0 ) - 0.5 ) * 0.4;
   float powderN2 = ( snowSeamNoise( wp * 2.1 + 2.0 ) - 0.5 ) * 0.22;
   vec3 powderRelief = normalize( vec3( powderN, 1.0, powderN2 ) );
   vec3 powderReliefV = normalize( mat3( viewMatrix ) * powderRelief );
-  normal = normalize( mix( normal, normalize( normal + powderReliefV * 0.4 ), 0.5 ) );
+  normal = normalize( mix( normal, normalize( normal + powderReliefV * 0.38 ), 0.48 ) );
 `
           : /* glsl */ `
   float packedW = ${variant === 'packed' ? '1.0' : '0.5'};
   float powderFade = 1.0 - packedW;
-  vec2 wp = vSnowWorldPos.xz;
 `;
 
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', commonInject)
-        .replace('#include <map_fragment>', `${pomInject}\n#include <map_fragment>`)
         .replace(
           '#include <normal_fragment_maps>',
           /* glsl */ `vec3 snowGeoNormal = normal;
@@ -728,10 +660,10 @@ float snowHeight( vec2 wp, float powderW ) {
 {
   float viewDist = length( vViewPosition );
   // Horizon softens microdetail — near snow keeps volume, far sheet stays continuous.
-  float detailFade = smoothstep( 32.0, 150.0, viewDist );
-  normal = normalize( mix( normal, snowGeoNormal, detailFade * 0.62 ) );
+  float detailFade = smoothstep( 36.0, 160.0, viewDist );
+  normal = normalize( mix( normal, snowGeoNormal, detailFade * 0.55 ) );
   float flatLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
-  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatLuma ), detailFade * 0.16 );
+  diffuseColor.rgb = mix( diffuseColor.rgb, vec3( flatLuma ), detailFade * 0.14 );
   ${seamBody}
   vec3 worldN = inverseTransformDirection( normal, viewMatrix );
   vec3 sunDirN = normalize( snowSunDir );
@@ -749,8 +681,8 @@ float snowHeight( vec2 wp, float powderW ) {
   float sss = pow( 1.0 - sunFacing, 1.45 ) * wrap;
   vec3 sssCool = vec3( 0.62, 0.78, 0.98 );
   vec3 sssWarm = vec3( 1.05, 0.96, 0.86 );
-  diffuseColor.rgb += diffuseColor.rgb * mix( sssCool, sssWarm, wrapL ) * sss * snowSunAmount * 0.28;
-  // Anisotropic crystal sparkles — Journey-style flake reflect + graze stretch (Bowles-Wang).
+  diffuseColor.rgb += diffuseColor.rgb * mix( sssCool, sssWarm, wrapL ) * sss * snowSunAmount * 0.22;
+  // Anisotropic crystal sparkles — flake reflect + graze stretch (no POM UV writes).
   vec3 viewW = normalize( cameraPosition - vSnowWorldPos );
   float graze = 1.0 - abs( dot( normalize( worldN ), viewW ) );
   vec2 sparkCell = floor( vSnowWorldPos.xz * mix( 7.2, 4.4, graze ) );
@@ -763,14 +695,13 @@ float snowHeight( vec2 wp, float powderW ) {
   flakeN = normalize( mix( normalize( worldN ), flakeN, 0.65 ) );
   vec3 flakeR = reflect( -sunDirN, flakeN );
   float sparkAlign = max( 0.0, dot( flakeR, viewW ) );
-  // Elongate acceptance at grazing so glints connect (anisotropic shimmer, less moiré).
   float sparkThresh = mix( 0.97, 0.935, graze );
   float sparkMask = step( sparkThresh, sparkAlign ) * step( 0.88, sparkHash ) * ( 1.0 - detailFade );
   float sparkle = sparkMask * sunFacing * sunFacing;
   sparkle *= mix( 0.4, 1.0, powderFade );
   roughnessFactor = mix( roughnessFactor, max( 0.12, roughnessFactor * 0.32 ), sparkle * 0.8 );
   diffuseColor.rgb += vec3( 0.92, 0.96, 1.05 ) * sparkle * 0.16;
-  // Board contact puddle — soft AO so snow doesn't float as flat albedo under rider.
+  // Board contact puddle — soft AO under rider.
   vec2 boardDelta = vSnowWorldPos.xz - snowBoardPos.xz;
   float boardDist = length( boardDelta );
   float contact = ( 1.0 - smoothstep( 0.35, 2.8, boardDist ) ) * ( 1.0 - detailFade );

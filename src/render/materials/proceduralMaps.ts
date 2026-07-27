@@ -236,7 +236,7 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
       }
 
       if (isPowder) {
-        // Wind ripples + micro height for POM — shader supplies pillowy volume.
+        // Wind ripples + micro height — normals/lighting supply pillowy volume.
         const rip = Math.sin(u * Math.PI * 6 + nMacro * 2.4) * 0.5 + 0.5;
         h = h * 0.84 + rip * 0.12 + nMacro * 0.05 + nMicro * 0.05;
       }
@@ -337,12 +337,12 @@ export function makeProceduralPbr(id: PbrSetId, size = 512): PbrMaps {
       orm[i] = Math.floor(ao * 255);
       orm[i + 1] = Math.floor(rough * 255);
       orm[i + 2] = Math.floor(metal * 255);
-      // A = height for cheap POM (DataTexture; JPEG CC0 ORM has no alpha).
+      // A = height channel (DataTexture; JPEG CC0 ORM has no alpha).
       orm[i + 3] = Math.floor(Math.min(1, Math.max(0, h)) * 255);
     }
   }
 
-  // Sobel → tangent-space normal (soft corduroy + powder micro for POM/SSS).
+  // Sobel → tangent-space normal (soft corduroy + powder micro for wrap SSS).
   const strength = id.startsWith('ice_')
     ? 1.8
     : id.startsWith('rock_')
