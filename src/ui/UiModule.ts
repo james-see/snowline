@@ -401,12 +401,19 @@ export class UiModule implements GameModule {
       layer.innerHTML = `
         <section class="screen title-screen" aria-label="Title">
           <div class="title-atmos" aria-hidden="true">
-            <div class="title-ridge"></div>
-            <div class="title-haze"></div>
+            <div class="title-sky"></div>
+            <div class="title-glow"></div>
             <div class="title-sun"></div>
+            <div class="title-peaks-rise">
+              <div class="title-peaks title-peaks--far"></div>
+              <div class="title-peaks title-peaks--mid"></div>
+              <div class="title-peaks title-peaks--near"></div>
+            </div>
+            <div class="title-snow title-snow--a"></div>
+            <div class="title-snow title-snow--b"></div>
+            <div class="title-haze"></div>
           </div>
           <div class="title-copy">
-            <p class="eyebrow">Alpine Arcade</p>
             <h1 class="brand">SNOWLINE</h1>
             <p class="tag">Carve the ridge. Own the air.</p>
             <div class="title-actions">
