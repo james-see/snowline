@@ -28,8 +28,10 @@ L/R spins, front/back flips, multi-rotations, Indy/Mute/Melon/Method grabs, grin
 | Lean | Q/E | LT |
 | Jump | Space | A |
 | Brake | S | B |
-| Boost | Shift | LB / RT |
-| Spin | ←/→ | — |
-| Flip | ↑/↓ | — |
-| Grabs | J/K/L/U | X |
+| Boost | Shift | RT |
+| Spin | ←/→ | D-pad ←/→ |
+| Flip | ↑/↓ | D-pad ↑/↓ |
+| Grabs | J/K/L/U | X/Y/LB/RB |
 | Pause | Esc | Start |
+
+See [CONTROLS.md](CONTROLS.md) for hot-plug notes and full pad map.

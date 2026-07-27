@@ -7,6 +7,7 @@ import type { RiderModule } from '@/rider/RiderModule.ts';
 import type { CourseModule } from '@/course/CourseModule.ts';
 import { COSMETICS, loadSave } from '@/score/SaveData.ts';
 import { COURSE_LIST } from '@/course/CourseDefs.ts';
+import { pickConnectedGamepad } from '@/engine/gamepadMap.ts';
 import './styles.css';
 
 const COURSES: { id: CourseId; blurb: string }[] = [
@@ -55,6 +56,7 @@ export class UiModule implements GameModule {
   #padAxesLatched = false;
   #padA = false;
   #padB = false;
+  #padIndex: number | null = null;
   #ctx: EngineContext | null = null;
   #screen: ScreenId | null = null;
 
@@ -238,13 +240,15 @@ export class UiModule implements GameModule {
     back: boolean;
   } {
     const empty = { left: false, right: false, up: false, down: false, confirm: false, back: false };
-    const pads = navigator.getGamepads?.() ?? [];
-    const gp = pads[0];
+    const pads = Array.from(navigator.getGamepads?.() ?? []);
+    const gp = pickConnectedGamepad(pads, this.#padIndex);
     if (!gp) {
+      this.#padIndex = null;
       this.#padA = false;
       this.#padB = false;
       return empty;
     }
+    this.#padIndex = gp.index;
 
     const aDown = gp.buttons[0]?.pressed ?? false;
     const bDown = gp.buttons[1]?.pressed ?? false;
