@@ -31,16 +31,16 @@ Compare Snowline captures to:
 - Every category ≥ 8, gameplay ≥ 9, mean ≥ 8.5, zero disqualifiers
 - Extra disqualifiers for this loop: `empty_mountain` (no peaks/forest), `lonely_props` (sparse furniture), `no_sun_shadows`
 
-## Current score (2026-07-26, tip `0fb692c` — camera `7cdfd71` + forest `4ffc2ac` — see `CRITIC_REPORT.md`)
+## Current score (2026-07-26, tip `ec6e846` — park+gamepad+checkpoint on camera `7cdfd71` + forest `4ffc2ac` — see `CRITIC_REPORT.md`)
 
 | Check | Result |
 |-------|--------|
 | B1_peaks | **PASS** — amphitheater + dark rock mass |
-| B2_forest | **FAIL** — forest denser mid walls; still not alpine continuous timberline |
+| B2_forest | **FAIL** — forest mid walls; still not alpine continuous timberline |
 | B3_shadows | **PASS** — long sun casts on corduroy |
 | B4_corduroy | **PASS** |
 | B5_snow_color | **PASS** — warm muddy strip |
-| B6_furniture | **PASS** — fences/banner |
+| B6_furniture | **PASS** — fences/banner (park features absent from gate shots) |
 | B7_rider | **PASS** — carve lean + contrast |
 | B8_camera | **FAIL** — carve/start midfield still empty corduroy |
 | B9_hud | **PASS** |
