@@ -15,7 +15,7 @@ const DEFAULT_SUIT = 'suit-ivory';
  * (ink shell; orange boards) while keeping save IDs intact.
  */
 const SUIT_SNOW_CONTRAST: Record<string, number> = {
-  'suit-ivory': 0x0c1220,
+  'suit-ivory': 0x0a101c,
   'suit-ember': 0x1a0e08,
 };
 
@@ -36,7 +36,7 @@ function luminance(hex: number): number {
 
 /** Fallback for any custom pale suit that would disappear on snow. */
 function ensureSnowContrast(hex: number): number {
-  return luminance(hex) > 0.45 ? 0x0c1220 : hex;
+  return luminance(hex) > 0.45 ? 0x0a101c : hex;
 }
 
 /** Pick equipped cosmetics from save; force suit/board colors that read on snow. */

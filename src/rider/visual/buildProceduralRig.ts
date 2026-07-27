@@ -57,13 +57,15 @@ function createBoardGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
-function capsule(
-  radius: number,
-  length: number,
+/** Box limb — angular athlete silhouette, not a soft capsule blob. */
+function limbBox(
+  w: number,
+  h: number,
+  d: number,
   mat: THREE.Material,
   cast = true
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 6, 10), mat);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.castShadow = cast;
   mesh.receiveShadow = true;
   return mesh;
@@ -71,14 +73,13 @@ function capsule(
 
 /**
  * High-quality procedural rider + board when no glTF is available.
- * Pivot is board center; body stands in a crouched carve-ready stance.
- * Gear is vivid alpine race kit (lime / orange) — not a grey capsule.
+ * Pivot is board center; body stands in a deep carve crouch.
+ * Angular limbs + vivid kit — never a grey capsule.
  */
 export function buildProceduralRig(): ProceduralRig {
   const root = new THREE.Group();
   root.name = 'riderVisual';
 
-  // Vivid topsheet — reads as race board against snow.
   const boardMat = new THREE.MeshStandardMaterial({
     color: 0xff5a12,
     metalness: 0.35,
@@ -89,38 +90,48 @@ export function buildProceduralRig(): ProceduralRig {
     metalness: 0.55,
     roughness: 0.38,
   });
-  // Deep ink shell + high-sat accents (alpine ref language).
   const suitMat = new THREE.MeshStandardMaterial({
-    color: 0x0c1220,
-    roughness: 0.62,
-    metalness: 0.18,
-  });
-  const accentMat = new THREE.MeshStandardMaterial({
-    color: 0xb8ff2e,
-    roughness: 0.48,
-    metalness: 0.12,
-  });
-  const bootMat = new THREE.MeshStandardMaterial({
-    color: 0x101418,
-    roughness: 0.45,
-    metalness: 0.28,
-  });
-  const lensMat = new THREE.MeshStandardMaterial({
-    color: 0x1a3a28,
-    metalness: 0.9,
-    roughness: 0.12,
-    transparent: true,
-    opacity: 0.92,
-  });
-  const stripeMat = new THREE.MeshStandardMaterial({
-    color: 0xff6a14,
-    roughness: 0.42,
+    color: 0x0a101c,
+    roughness: 0.58,
     metalness: 0.2,
   });
+  const accentMat = new THREE.MeshStandardMaterial({
+    color: 0xc8ff28,
+    roughness: 0.42,
+    metalness: 0.14,
+    emissive: 0x1a3300,
+    emissiveIntensity: 0.35,
+  });
+  const bootMat = new THREE.MeshStandardMaterial({
+    color: 0x0c1014,
+    roughness: 0.42,
+    metalness: 0.3,
+  });
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: 0x143828,
+    metalness: 0.92,
+    roughness: 0.1,
+    transparent: true,
+    opacity: 0.94,
+  });
+  const stripeMat = new THREE.MeshStandardMaterial({
+    color: 0xff5a0a,
+    roughness: 0.4,
+    metalness: 0.22,
+    emissive: 0x331100,
+    emissiveIntensity: 0.25,
+  });
   const panelMat = new THREE.MeshStandardMaterial({
-    color: 0xd4ff3a,
-    roughness: 0.5,
-    metalness: 0.1,
+    color: 0xe2ff3c,
+    roughness: 0.45,
+    metalness: 0.12,
+    emissive: 0x223300,
+    emissiveIntensity: 0.4,
+  });
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: 0xc48a62,
+    roughness: 0.72,
+    metalness: 0.05,
   });
 
   const board = new THREE.Group();
@@ -135,19 +146,18 @@ export function buildProceduralRig(): ProceduralRig {
   base.castShadow = true;
   board.add(base);
 
-  // Topsheet race stripe — lime center line.
-  const deckStripe = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.01, 1.35), accentMat);
+  const deckStripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.01, 1.4), accentMat);
   deckStripe.position.y = 0.048;
   deckStripe.castShadow = true;
   board.add(deckStripe);
 
   for (const z of [-0.18, 0.16] as const) {
-    const binding = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.22), bootMat);
+    const binding = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.035, 0.24), bootMat);
     binding.position.set(0, 0.04, z);
     binding.castShadow = true;
     board.add(binding);
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.02, 0.04), accentMat);
-    strap.position.set(0, 0.055, z);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.022, 0.045), accentMat);
+    strap.position.set(0, 0.058, z);
     strap.castShadow = true;
     board.add(strap);
   }
@@ -155,154 +165,175 @@ export function buildProceduralRig(): ProceduralRig {
 
   const body = new THREE.Group();
   body.name = 'body';
-  // Lowered + forward for crouch; lean animation offsets from here.
-  body.position.set(0, 0.02, -0.04);
+  body.position.set(0, -0.02, -0.06);
+  body.rotation.x = 0.38;
 
   const hips = new THREE.Group();
-  hips.position.set(0, 0.18, 0.02);
-  const hipMesh = capsule(0.09, 0.06, suitMat);
-  hipMesh.rotation.z = Math.PI / 2;
-  hipMesh.scale.set(1, 1, 0.85);
-  hips.add(hipMesh);
-  // Hip race panel — breaks capsule silhouette.
-  const hipPanel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.06), panelMat);
-  hipPanel.position.set(0, 0, 0.06);
-  hipPanel.castShadow = true;
+  hips.position.set(0, 0.14, 0.04);
+  hips.add(limbBox(0.24, 0.12, 0.16, suitMat));
+  const hipPanel = limbBox(0.22, 0.09, 0.06, panelMat);
+  hipPanel.position.set(0, 0.01, 0.08);
   hips.add(hipPanel);
+  const hipFlashL = limbBox(0.04, 0.1, 0.12, stripeMat);
+  hipFlashL.position.set(-0.12, 0, 0.02);
+  hips.add(hipFlashL);
+  const hipFlashR = limbBox(0.04, 0.1, 0.12, stripeMat);
+  hipFlashR.position.set(0.12, 0, 0.02);
+  hips.add(hipFlashR);
   body.add(hips);
 
   const torso = new THREE.Group();
-  torso.position.set(0, 0.36, -0.02);
-  const torsoMesh = capsule(0.12, 0.2, suitMat);
-  torsoMesh.scale.set(1.05, 1, 0.72);
+  torso.position.set(0, 0.3, -0.04);
+  torso.rotation.x = -0.42;
+  const torsoMesh = limbBox(0.28, 0.32, 0.16, suitMat);
+  torsoMesh.scale.set(1, 1, 0.9);
   torso.add(torsoMesh);
-  // Chest lime panel + orange side stripe — athlete kit, not grey blob.
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.08), panelMat);
-  chest.position.set(0, 0.02, 0.07);
-  chest.castShadow = true;
+  const shoulders = limbBox(0.36, 0.08, 0.14, suitMat);
+  shoulders.position.set(0, 0.14, 0);
+  torso.add(shoulders);
+  const chest = limbBox(0.2, 0.22, 0.09, panelMat);
+  chest.position.set(0, 0.02, 0.09);
   torso.add(chest);
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.03), stripeMat);
-  stripe.position.set(0.1, 0.01, 0.09);
-  stripe.castShadow = true;
+  const stripe = limbBox(0.055, 0.3, 0.035, stripeMat);
+  stripe.position.set(0.11, 0.02, 0.1);
   torso.add(stripe);
-  const stripeL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.03), stripeMat);
-  stripeL.position.set(-0.1, 0.01, 0.09);
-  stripeL.castShadow = true;
+  const stripeL = limbBox(0.055, 0.3, 0.035, stripeMat);
+  stripeL.position.set(-0.11, 0.02, 0.1);
   torso.add(stripeL);
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.025, 6, 14), accentMat);
-  collar.rotation.x = Math.PI / 2;
-  collar.position.y = 0.14;
-  collar.castShadow = true;
+  const collar = limbBox(0.2, 0.05, 0.12, accentMat);
+  collar.position.set(0, 0.16, 0.04);
   torso.add(collar);
   body.add(torso);
 
   const head = new THREE.Group();
-  head.position.set(0, 0.62, -0.04);
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 12), suitMat);
-  helmet.scale.set(1, 0.95, 1.05);
+  head.position.set(0, 0.52, -0.1);
+  head.rotation.x = -0.18;
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), suitMat);
+  helmet.scale.set(1.05, 0.92, 1.08);
   helmet.castShadow = true;
   head.add(helmet);
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.12), accentMat);
-  lid.position.set(0, 0.08, 0.02);
-  lid.castShadow = true;
+  const lid = limbBox(0.14, 0.04, 0.12, accentMat);
+  lid.position.set(0, 0.07, 0.02);
   head.add(lid);
-  const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.055, 0.07), lensMat);
-  goggles.position.set(0, 0.02, 0.1);
+  const goggles = limbBox(0.18, 0.055, 0.07, lensMat);
+  goggles.position.set(0, 0.015, 0.1);
   head.add(goggles);
-  const goggleFrame = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.065, 0.03), stripeMat);
-  goggleFrame.position.set(0, 0.02, 0.07);
+  const goggleFrame = limbBox(0.19, 0.065, 0.03, stripeMat);
+  goggleFrame.position.set(0, 0.015, 0.07);
   head.add(goggleFrame);
+  const neck = limbBox(0.07, 0.06, 0.07, skinMat);
+  neck.position.set(0, -0.1, 0.02);
+  head.add(neck);
   body.add(head);
 
-  // Duck stance: lead (left) foot forward, trail flexed — carve-ready crouch.
   const leftLeg = new THREE.Group();
   leftLeg.name = 'leftLeg';
-  leftLeg.position.set(-0.09, 0.16, -0.04);
-  leftLeg.rotation.set(0.88, 0.12, 0.18);
-  const leftThigh = capsule(0.052, 0.13, suitMat);
+  leftLeg.position.set(-0.1, 0.12, -0.06);
+  leftLeg.rotation.set(1.05, 0.14, 0.22);
+  const leftThigh = limbBox(0.1, 0.2, 0.11, suitMat);
   leftThigh.position.y = -0.1;
   leftLeg.add(leftThigh);
-  const leftThighStripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.03), accentMat);
-  leftThighStripe.position.set(-0.04, -0.1, 0.03);
-  leftThighStripe.castShadow = true;
+  const leftThighStripe = limbBox(0.04, 0.16, 0.03, accentMat);
+  leftThighStripe.position.set(-0.05, -0.1, 0.04);
   leftLeg.add(leftThighStripe);
   const leftShin = new THREE.Group();
   leftShin.name = 'leftShin';
-  leftShin.position.set(0, -0.2, 0.01);
-  leftShin.rotation.x = -1.15;
-  const leftShinMesh = capsule(0.045, 0.12, suitMat);
+  leftShin.position.set(0, -0.22, 0.02);
+  leftShin.rotation.x = -1.38;
+  const leftShinMesh = limbBox(0.09, 0.18, 0.1, suitMat);
   leftShinMesh.position.y = -0.09;
   leftShin.add(leftShinMesh);
-  const leftShinAccent = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.1, 0.03), stripeMat);
-  leftShinAccent.position.set(0.03, -0.09, 0.03);
+  const leftShinAccent = limbBox(0.04, 0.12, 0.03, stripeMat);
+  leftShinAccent.position.set(0.04, -0.09, 0.04);
   leftShin.add(leftShinAccent);
-  const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.18), bootMat);
-  leftBoot.position.set(0, -0.2, 0.05);
-  leftBoot.castShadow = true;
+  const leftBoot = limbBox(0.11, 0.08, 0.2, bootMat);
+  leftBoot.position.set(0, -0.2, 0.06);
   leftShin.add(leftBoot);
+  const leftBootAccent = limbBox(0.12, 0.025, 0.06, accentMat);
+  leftBootAccent.position.set(0, -0.16, 0.08);
+  leftShin.add(leftBootAccent);
   leftLeg.add(leftShin);
   body.add(leftLeg);
 
   const rightLeg = new THREE.Group();
   rightLeg.name = 'rightLeg';
-  rightLeg.position.set(0.09, 0.16, 0.1);
-  rightLeg.rotation.set(0.7, -0.1, -0.16);
-  const rightThigh = capsule(0.052, 0.13, suitMat);
+  rightLeg.position.set(0.1, 0.12, 0.12);
+  rightLeg.rotation.set(0.92, -0.12, -0.2);
+  const rightThigh = limbBox(0.1, 0.2, 0.11, suitMat);
   rightThigh.position.y = -0.1;
   rightLeg.add(rightThigh);
-  const rightThighStripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.03), accentMat);
-  rightThighStripe.position.set(0.04, -0.1, 0.03);
-  rightThighStripe.castShadow = true;
+  const rightThighStripe = limbBox(0.04, 0.16, 0.03, accentMat);
+  rightThighStripe.position.set(0.05, -0.1, 0.04);
   rightLeg.add(rightThighStripe);
   const rightShin = new THREE.Group();
   rightShin.name = 'rightShin';
-  rightShin.position.set(0, -0.2, 0.01);
-  rightShin.rotation.x = -1.05;
-  const rightShinMesh = capsule(0.045, 0.12, suitMat);
+  rightShin.position.set(0, -0.22, 0.02);
+  rightShin.rotation.x = -1.28;
+  const rightShinMesh = limbBox(0.09, 0.18, 0.1, suitMat);
   rightShinMesh.position.y = -0.09;
   rightShin.add(rightShinMesh);
-  const rightShinAccent = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.1, 0.03), stripeMat);
-  rightShinAccent.position.set(-0.03, -0.09, 0.03);
+  const rightShinAccent = limbBox(0.04, 0.12, 0.03, stripeMat);
+  rightShinAccent.position.set(-0.04, -0.09, 0.04);
   rightShin.add(rightShinAccent);
-  const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.18), bootMat);
-  rightBoot.position.set(0, -0.2, 0.03);
-  rightBoot.castShadow = true;
+  const rightBoot = limbBox(0.11, 0.08, 0.2, bootMat);
+  rightBoot.position.set(0, -0.2, 0.04);
   rightShin.add(rightBoot);
+  const rightBootAccent = limbBox(0.12, 0.025, 0.06, accentMat);
+  rightBootAccent.position.set(0, -0.16, 0.06);
+  rightShin.add(rightBootAccent);
   rightLeg.add(rightShin);
   body.add(rightLeg);
 
   const leftArm = new THREE.Group();
-  leftArm.position.set(-0.2, 0.44, -0.02);
-  leftArm.rotation.set(0.42, 0, 0.72);
-  const leftUpper = capsule(0.04, 0.14, suitMat);
+  leftArm.position.set(-0.22, 0.4, -0.06);
+  leftArm.rotation.set(0.55, 0.1, 0.95);
+  const leftUpper = limbBox(0.08, 0.2, 0.08, suitMat);
   leftUpper.position.y = -0.1;
   leftArm.add(leftUpper);
-  const leftSleeve = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.04), stripeMat);
+  const leftSleeve = limbBox(0.055, 0.14, 0.045, stripeMat);
   leftSleeve.position.set(-0.02, -0.1, 0.02);
   leftArm.add(leftSleeve);
-  const leftGlove = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), accentMat);
-  leftGlove.position.y = -0.22;
+  const leftFore = limbBox(0.07, 0.14, 0.07, suitMat);
+  leftFore.position.set(0, -0.22, 0.02);
+  leftFore.rotation.x = 0.35;
+  leftArm.add(leftFore);
+  const leftGlove = limbBox(0.07, 0.07, 0.08, accentMat);
+  leftGlove.position.set(0, -0.3, 0.04);
   leftArm.add(leftGlove);
   body.add(leftArm);
 
   const rightArm = new THREE.Group();
-  rightArm.position.set(0.2, 0.42, 0.02);
-  rightArm.rotation.set(0.35, 0, -0.62);
-  const rightUpper = capsule(0.04, 0.14, suitMat);
+  rightArm.position.set(0.22, 0.38, 0);
+  rightArm.rotation.set(0.48, -0.08, -0.88);
+  const rightUpper = limbBox(0.08, 0.2, 0.08, suitMat);
   rightUpper.position.y = -0.1;
   rightArm.add(rightUpper);
-  const rightSleeve = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.04), stripeMat);
+  const rightSleeve = limbBox(0.055, 0.14, 0.045, stripeMat);
   rightSleeve.position.set(0.02, -0.1, 0.02);
   rightArm.add(rightSleeve);
-  const rightGlove = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), accentMat);
-  rightGlove.position.y = -0.22;
+  const rightFore = limbBox(0.07, 0.14, 0.07, suitMat);
+  rightFore.position.set(0, -0.22, 0.02);
+  rightFore.rotation.x = 0.3;
+  rightArm.add(rightFore);
+  const rightGlove = limbBox(0.07, 0.07, 0.08, accentMat);
+  rightGlove.position.set(0, -0.3, 0.04);
   rightArm.add(rightGlove);
   body.add(rightArm);
 
   root.add(body);
 
   const geos: THREE.BufferGeometry[] = [];
-  const mats = [boardMat, baseMat, suitMat, accentMat, bootMat, lensMat, stripeMat, panelMat];
+  const mats = [
+    boardMat,
+    baseMat,
+    suitMat,
+    accentMat,
+    bootMat,
+    lensMat,
+    stripeMat,
+    panelMat,
+    skinMat,
+  ];
   root.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
       geos.push(obj.geometry);
